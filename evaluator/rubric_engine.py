@@ -62,6 +62,11 @@ def calculate_rubric_score(llm_output):
         RUBRIC_WEIGHTS["structure"]
     )
 
+    # If correctness is near-zero (wrong logic), cap efficiency hard
+    # — a wrong solution cannot be considered efficient
+    if correctness <= 5:
+        efficiency = min(efficiency, 5)
+
     return {
         "correctness": correctness,
         "efficiency": efficiency,

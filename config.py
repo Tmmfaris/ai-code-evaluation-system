@@ -3,10 +3,9 @@
 # ==============================
 
 APP_NAME = "AI Intelligent Evaluation Model"
-VERSION = "1.0"
+VERSION = "2.0"
 
-# Enable / Disable features
-ENABLE_RAG = True
+ENABLE_RAG = False          # ❌ disable (not needed now)
 ENABLE_LOGGING = True
 
 
@@ -14,20 +13,38 @@ ENABLE_LOGGING = True
 # 🤖 LLM CONFIGURATION
 # ==============================
 
-# Local LLM (Ollama)
-LLM_PROVIDER = "ollama"
-LLM_MODEL = "mistral"   # options: mistral, codellama, llama3
+# Provider: "llama_cpp" (GGUF) or "ollama"
+LLM_PROVIDER = "llama_cpp"
 
-# Ollama API URL
+# =========================
+# 🧠 GGUF MODEL SETTINGS
+# =========================
+
+# Path to your model
+GGUF_MODEL_PATH = "models/Phi-3-mini-4k-instruct-q4.gguf"
+
+# ⚡ Performance tuning
+N_CTX = 1024            # prompt ~200 tok + response ~130 tok; 1024 is plenty
+N_THREADS = 8           # 👉 set 6–8 if strong CPU
+N_GPU_LAYERS = 0        # keep 0 (CPU mode)
+
+# =========================
+# 🔁 OLLAMA (FALLBACK)
+# =========================
+
+LLM_MODEL = "mistral"
 OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
 
-# LLM parameters
-LLM_TEMPERATURE = 0.2
-LLM_MAX_TOKENS = 1000
+# =========================
+# ⚙️ LLM PARAMETERS
+# =========================
+
+LLM_TEMPERATURE = 0.1     # stable output
+LLM_MAX_TOKENS = 130      # compact JSON ~90 tokens; 130 is safe ceiling
 
 
 # ==============================
-# 📊 RUBRIC SCORING WEIGHTS
+# 📊 RUBRIC SCORING
 # ==============================
 
 RUBRIC_WEIGHTS = {
@@ -37,12 +54,11 @@ RUBRIC_WEIGHTS = {
     "structure": 15
 }
 
-# Total = 90 (remaining handled by concept/LLM)
 TOTAL_SCORE = 100
 
 
 # ==============================
-# 🧠 CONCEPT EVALUATION WEIGHTS
+# 🧠 CONCEPT EVALUATION
 # ==============================
 
 CONCEPT_WEIGHTS = {
@@ -52,17 +68,13 @@ CONCEPT_WEIGHTS = {
     "efficiency": 1,
     "readability": 1
 }
-# Total concept max = 10, rubric max = 90, combined max = 100
 
 
 # ==============================
-# 📚 RAG CONFIGURATION
+# 📚 RAG (DISABLED)
 # ==============================
 
-# Path to knowledge base
 KNOWLEDGE_BASE_PATH = "rag/knowledge_base/"
-
-# Retrieval settings
 TOP_K_RESULTS = 3
 
 
@@ -70,13 +82,8 @@ TOP_K_RESULTS = 3
 # 🔍 ANALYSIS SETTINGS
 # ==============================
 
-# Syntax check enabled
 ENABLE_SYNTAX_CHECK = True
-
-# Line analysis enabled
 ENABLE_LINE_ANALYSIS = True
-
-# Structure analysis enabled
 ENABLE_STRUCTURE_ANALYSIS = True
 
 
@@ -105,11 +112,11 @@ SUPPORTED_LANGUAGES = [
 # ==============================
 
 STRICT_JSON_OUTPUT = True
-MAX_FEEDBACK_LENGTH = 300
+MAX_FEEDBACK_LENGTH = 250   # ⚡ reduced
 
 
 # ==============================
 # ⏱ PERFORMANCE SETTINGS
 # ==============================
 
-MAX_EXECUTION_TIME = 10  # seconds
+MAX_EXECUTION_TIME = 8   # ⚡ reduced from 10

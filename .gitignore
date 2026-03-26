@@ -2,6 +2,11 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.venv312/
 logs/
 *.log
 .env
+models/
+*.gguf
+debug_llm.py
+debug_output.txt
