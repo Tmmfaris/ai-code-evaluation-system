@@ -37,7 +37,10 @@ def analyze_structure(code):
     # -------------------------
     has_loop = any(keyword in code_lower for keyword in ["for", "while"])
     has_condition = "if" in code_lower
-    has_function = any(keyword in code_lower for keyword in ["def", "function"])
+    has_function = any(
+        keyword in code_lower
+        for keyword in ["def", "function", " return ", "return ", "public ", "private ", "protected "]
+    )
     has_class = "class" in code_lower
 
     # -------------------------

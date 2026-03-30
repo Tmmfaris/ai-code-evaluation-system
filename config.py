@@ -40,7 +40,7 @@ OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
 # =========================
 
 LLM_TEMPERATURE = 0.1     # stable output
-LLM_MAX_TOKENS = 130      # compact JSON ~90 tokens; 130 is safe ceiling
+LLM_MAX_TOKENS = 150      # compact JSON with a little extra headroom
 
 
 # ==============================

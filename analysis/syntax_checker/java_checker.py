@@ -1,59 +1,60 @@
+import re
+
+
+JAVA_METHOD_PATTERN = re.compile(
+    r"(public|private|protected)?\s*(static\s+)?[A-Za-z_<>\[\]]+\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*\{",
+    re.MULTILINE,
+)
+
+
+
+def _looks_like_java_method(code):
+    return bool(JAVA_METHOD_PATTERN.search(code or ""))
+
+
+
 def check_java_syntax(code):
     """
     Performs basic Java syntax and structure validation.
-
-    NOTE:
-    This is a lightweight checker (not full compilation).
-    Suitable for AI evaluation systems.
+    Accepts either a full class or a standalone method snippet,
+    which is common in academy-style answers.
     """
 
     if not code or not code.strip():
         return {
             "valid": False,
             "error": "Empty code submission",
-            "line": None
+            "line": None,
         }
 
-    lines = code.split("\n")
+    has_class = "class" in code
+    has_method = _looks_like_java_method(code)
 
-    # -------------------------
-    # 1. Check for class keyword
-    # -------------------------
-    if "class" not in code:
+    if not has_class and not has_method:
         return {
             "valid": False,
-            "error": "Missing class definition",
-            "line": None
+            "error": "Expected a Java class or method definition",
+            "line": None,
         }
 
-    # -------------------------
-    # 2. Check braces balance
-    # -------------------------
     open_braces = code.count("{")
     close_braces = code.count("}")
-
     if open_braces != close_braces:
         return {
             "valid": False,
             "error": f"Unbalanced braces: {open_braces} open, {close_braces} close",
-            "line": None
+            "line": None,
         }
 
-    # -------------------------
-    # 3. Check for semicolons
-    # -------------------------
     if ";" not in code:
         return {
             "valid": False,
-            "error": "No semicolons found — invalid Java syntax",
-            "line": None
+            "error": "No semicolons found - invalid Java syntax",
+            "line": None,
         }
 
-    # -------------------------
-    # VALID JAVA
-    # -------------------------
     return {
         "valid": True,
         "error": None,
-        "line": None
+        "line": None,
     }

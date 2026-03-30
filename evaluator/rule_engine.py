@@ -1,4 +1,9 @@
 import ast
+import re
+
+
+JAVA_METHOD_NAME_RE = re.compile(r"(?:public|private|protected)?\s*(?:static\s+)?[A-Za-z_<>\[\]]+\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+
 
 
 def _safe_parse_python(code):
@@ -8,10 +13,12 @@ def _safe_parse_python(code):
         return None
 
 
+
 def _function_nodes(tree):
     if tree is None:
         return []
     return [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+
 
 
 def _has_self_recursive_call(function_node):
@@ -23,6 +30,7 @@ def _has_self_recursive_call(function_node):
     )
 
 
+
 def _has_lower_or_casefold(function_node):
     return any(
         isinstance(node, ast.Call)
@@ -30,6 +38,7 @@ def _has_lower_or_casefold(function_node):
         and node.func.attr in {"lower", "upper", "casefold"}
         for node in ast.walk(function_node)
     )
+
 
 
 def _uses_sorted_call(function_node):
@@ -41,6 +50,7 @@ def _uses_sorted_call(function_node):
     )
 
 
+
 def _uses_set_call(function_node):
     return any(
         isinstance(node, ast.Call)
@@ -50,11 +60,13 @@ def _uses_set_call(function_node):
     )
 
 
+
 def _returns_constant_bool(function_node):
     return any(
         isinstance(node, ast.Return) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, bool)
         for node in ast.walk(function_node)
     )
+
 
 
 def _returns_upper_comparison(function_node):
@@ -73,11 +85,13 @@ def _returns_upper_comparison(function_node):
     )
 
 
+
 def _returns_modulus_without_comparison(function_node):
     return any(
         isinstance(node, ast.Return) and isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.Mod)
         for node in ast.walk(function_node)
     )
+
 
 
 def _returns_sorted_index(function_node, index_value):
@@ -93,6 +107,7 @@ def _returns_sorted_index(function_node, index_value):
     )
 
 
+
 def _returns_constant_true(function_node):
     return any(
         isinstance(node, ast.Return)
@@ -100,6 +115,7 @@ def _returns_constant_true(function_node):
         and node.value.value is True
         for node in ast.walk(function_node)
     )
+
 
 
 def _has_prime_lower_bound_guard(function_node):
@@ -114,6 +130,7 @@ def _has_prime_lower_bound_guard(function_node):
     return False
 
 
+
 def _uses_sqrt_bound(function_node):
     for node in ast.walk(function_node):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "int":
@@ -125,6 +142,7 @@ def _uses_sqrt_bound(function_node):
     return False
 
 
+
 def _contains_lowercase_vowel_membership(function_node):
     for node in ast.walk(function_node):
         if isinstance(node, ast.Compare) and any(isinstance(op, ast.In) for op in node.ops):
@@ -134,8 +152,115 @@ def _contains_lowercase_vowel_membership(function_node):
     return False
 
 
+
+def _java_method_name(code):
+    match = JAVA_METHOD_NAME_RE.search(code or "")
+    return match.group(1) if match else None
+
+
+
+def _java_contains(code, text):
+    return text.lower() in (code or "").lower()
+
+
+
+def _analyze_java_submission_rules(question, student_answer):
+    question_text = (question or "").lower()
+    code = student_answer or ""
+    lowered = code.lower()
+    findings = []
+    method_name = _java_method_name(code)
+
+    if "factorial" in question_text and method_name and f"{method_name}(" not in lowered.split("return", 1)[-1]:
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The method does not implement recursive factorial logic.",
+            "suggestion": "Use a base case and a recursive call to the same method."
+        })
+
+    if "palindrome" in question_text and re.search(r"return\s+true\s*;", lowered):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The method always returns true instead of checking whether the string is a palindrome.",
+            "suggestion": "Compare the original string with its reversed form or equivalent mirrored logic."
+        })
+
+    if ("only digits" in question_text or "digit" in question_text) and re.search(r"return\s+true\s*;", lowered):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The method always returns true instead of checking whether the string contains only digits.",
+            "suggestion": "Use matches(\"\\\\d+\") or an equivalent digit check."
+        })
+
+    if "positive" in question_text and ">= 0" in code:
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 22,
+            "feedback": "The method checks for non-negative numbers instead of strictly positive numbers.",
+            "suggestion": "Return true only when the number is greater than zero."
+        })
+
+    if ("maximum" in question_text or "max" in question_text) and "arrays.sort" in lowered:
+        findings.append({
+            "type": "efficiency_cap",
+            "efficiency_max": 12,
+            "feedback": "The result is correct, but sorting the full array is less efficient than scanning once for the maximum.",
+            "suggestion": "Track the maximum in a single pass instead of sorting the entire array."
+        })
+
+    if ("minimum" in question_text or "min" in question_text) and "arrays.sort" in lowered:
+        findings.append({
+            "type": "correct_solution_with_penalty",
+            "correctness_min": 34,
+            "efficiency_max": 12,
+            "readability_min": 8,
+            "structure_min": 12,
+            "feedback": "The result is correct, but sorting the full array is less efficient than finding the minimum directly.",
+            "suggestion": "Track the minimum in a single pass instead of sorting the full array."
+        })
+
+    if "vowel" in question_text and "aeiou" in lowered and ".tolowercase()" not in lowered:
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 34,
+            "efficiency_max": 15,
+            "feedback": "The code counts lowercase vowels only and misses uppercase vowel inputs.",
+            "suggestion": "Convert the string to lowercase before checking vowel membership."
+        })
+
+    if "lowercase" in question_text and ".tolowercase()" in lowered:
+        findings.append({
+            "type": "feedback_only",
+            "feedback": "The method correctly converts the input string to lowercase.",
+        })
+
+    if "remove spaces" in question_text and '.replace(" ", "")' in code:
+        findings.append({
+            "type": "feedback_only",
+            "feedback": "The method correctly removes spaces from the input string.",
+        })
+
+    return findings
+
+
+
 def analyze_submission_rules(question, student_answer, language):
-    if (language or "").lower() != "python":
+    language = (language or "").lower()
+    if language == "java":
+        return _analyze_java_submission_rules(question, student_answer)
+    if language != "python":
         return []
 
     tree = _safe_parse_python(student_answer)
@@ -148,7 +273,17 @@ def analyze_submission_rules(question, student_answer, language):
     findings = []
 
     if "prime" in question_text:
-        if not _has_prime_lower_bound_guard(function_node):
+        if _returns_constant_true(function_node):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 2,
+                "efficiency_max": 2,
+                "readability_max": 5,
+                "structure_max": 8,
+                "feedback": "The function always returns True instead of checking whether the number is prime.",
+                "suggestion": "Test divisibility and return False for non-prime values."
+            })
+        elif not _has_prime_lower_bound_guard(function_node):
             findings.append({
                 "type": "correctness_cap",
                 "correctness_max": 28,
@@ -254,6 +389,7 @@ def analyze_submission_rules(question, student_answer, language):
         })
 
     return findings
+
 
 
 def apply_rule_adjustments(rubric_score, feedback, suggestions, findings):

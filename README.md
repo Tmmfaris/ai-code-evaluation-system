@@ -1,47 +1,31 @@
 # AI Intelligent Evaluation Model
 
-A FastAPI-based code evaluation service for academy and LMS use cases. It evaluates student code answers using a hybrid pipeline that combines:
+This project is a FastAPI service for evaluating student coding answers for academy and LMS workflows. It uses a hybrid scoring pipeline so the final result does not depend only on the LLM.
 
-- GGUF-based local LLM evaluation
-- rule-based validation
-- execution-based checks for common Python questions
-- rubric and concept scoring
+## Overview
 
-The API is designed so an external app or LMS can send one student or many students, with one question or many questions, through a single endpoint.
+The service accepts one unified request shape through `POST /evaluate/students`. That single endpoint supports:
 
-## Features
+1. one student, one question
+2. one student, multiple questions
+3. multiple students, one question each
+4. multiple students, multiple questions each
 
-- Single unified evaluation API: `POST /evaluate/students`
-- Supports:
-  - one student, one question
-  - one student, multiple questions
-  - multiple students, one question each
-  - multiple students, multiple questions each
-- Local GGUF inference using `llama-cpp-python`
-- Controlled parallel evaluation for multiple students
-- Rule-based corrections for common code-evaluation mistakes
-- Execution-based validation for common Python question patterns
-- App-friendly response format with:
-  - per-student summary
-  - per-question score
-  - concepts
-  - detailed feedback
+The evaluator combines:
 
-## Tech Stack
+- deterministic exact-match shortcuts
+- rule-based analysis
+- execution-based checks for many Python and Java academy-style questions
+- syntax and structure checks
+- GGUF-based local LLM fallback for cases not covered by the deterministic path
 
-- Python
-- FastAPI
-- Uvicorn
-- `llama-cpp-python`
-- Local GGUF model
+## API
 
-## Current API
-
-The main evaluation API is:
+Main evaluation endpoint:
 
 `POST /evaluate/students`
 
-If running locally, use:
+Local URL:
 
 `http://127.0.0.1:8000/evaluate/students`
 
@@ -49,20 +33,6 @@ Supporting routes:
 
 - `GET /`
 - `GET /health`
-
-## Supported Input Cases
-
-The same endpoint supports all of these:
-
-1. One student, one question
-2. One student, multiple questions
-3. Multiple students, one question each
-4. Multiple students, multiple questions each
-
-This is possible because the request shape is:
-
-- `students`: a list of students
-- `submissions`: a list of question submissions per student
 
 ## Request Format
 
@@ -85,21 +55,26 @@ This is possible because the request shape is:
 }
 ```
 
-### Request Fields
+Request fields:
 
 - `student_id`: unique student identifier
 - `submissions`: list of question attempts for that student
 - `question_id`: optional question identifier
 - `question`: original question text
-- `model_answer`: expected/sample answer
-- `student_answer`: student submission
-- `language`: programming language, for example `python`
+- `model_answer`: expected answer or sample answer
+- `student_answer`: submitted student answer
+- `language`: language of the answer, such as `python`, `java`, `html`, or `json`
+
+Validation limits:
+
+- maximum `20` students per request
+- maximum `20` questions per student
 
 ## Response Format
 
 ```json
 {
-  "execution_time": 10.526,
+  "execution_time": 8.214,
   "students": [
     {
       "student_id": "101",
@@ -117,7 +92,7 @@ This is possible because the request shape is:
               "efficiency": "Good",
               "readability": "Good"
             },
-            "feedback": "Code is correct and follows good structure and readability practices."
+            "feedback": "The student answer exactly matches the expected function for adding two numbers."
           }
         }
       ]
@@ -126,20 +101,163 @@ This is possible because the request shape is:
 }
 ```
 
-### Response Notes
+Response fields:
 
-- `execution_time`: total API processing time
-- `question_count`: number of questions evaluated for the student
-- `total_score`: sum of that student’s question scores
-- `score`: score for a single question
+- `execution_time`: total API processing time in seconds
+- `question_count`: number of evaluated questions for the student
+- `total_score`: sum of that student's question scores
+- `score`: score for one question, out of `100`
 - `concepts`: qualitative evaluation summary
-- `feedback`: detailed feedback for the student answer
+- `feedback`: detailed textual feedback
 
-If a question fails validation or evaluation, an `error` field may appear for that question item.
+If a question cannot be evaluated normally, the question item may contain an `error` field instead of `data`. Empty student answers are currently handled as structured zero-score results with `feedback: "No answer provided."`
 
-## Example Payloads
+## Scoring
 
-### 1. One Student, One Question
+Each question is scored out of `100`.
+
+Rubric component:
+
+- `correctness`: `40`
+- `efficiency`: `20`
+- `readability`: `15`
+- `structure`: `15`
+
+Rubric subtotal: `90`
+
+Concept component:
+
+- `logic`: `4`
+- `edge_cases`: `2`
+- `completeness`: `2`
+- `efficiency`: `1`
+- `readability`: `1`
+
+Concept subtotal: `10`
+
+Final score:
+
+`rubric (90) + concepts (10) = 100`
+
+## Evaluation Flow
+
+For each submission, the evaluator uses the following strategy:
+
+1. validate the request fields
+2. detect empty answers and return a zero-score result when needed
+3. normalize code for exact-match comparison
+4. use the exact-match fast path when student and model answers are the same
+5. run syntax and structure analysis
+6. try deterministic execution and rule-based evaluation
+7. fall back to the local GGUF LLM only when no deterministic path applies
+8. normalize and format the final score, concepts, and feedback
+
+This hybrid flow makes the system much more stable than pure LLM scoring.
+
+## Supported Languages
+
+Configured language support includes:
+
+- `python`
+- `java`
+- `html`
+- `json`
+
+Current behavior by language:
+
+- `python`: strongest deterministic coverage, including many common academy-style algorithm questions
+- `java`: deterministic coverage for many common method-based academy questions
+- `html` and `json`: still supported, with syntax/structure checks and LLM-assisted evaluation
+
+## Accuracy Notes
+
+The system is designed for high consistency on controlled academy-style questions, especially where expected behavior is clear.
+
+Strongest areas:
+
+- exact-match answers
+- clearly correct vs clearly wrong solutions
+- common Python algorithm questions
+- common Java method questions
+- alternative correct solutions that still produce correct behavior
+
+Important limitation:
+
+- 100% accuracy is not realistic for unrestricted open-ended code evaluation
+
+If you need the highest possible accuracy for one academy, the best path is to expand deterministic execution coverage for that exact syllabus.
+
+## Performance Notes
+
+Current optimizations include:
+
+- thread-based parallel processing for multiple students
+- exact-match fast path
+- deterministic scoring before LLM fallback
+- reduced token usage for LLM fallback
+
+Current thread configuration:
+
+- student-level parallelism uses `ThreadPoolExecutor(max_workers=6)`
+
+Performance still depends on:
+
+- number of students
+- number of questions
+- how many submissions fall back to the GGUF model
+- local machine resources
+
+## Setup
+
+### 1. Create and activate a virtual environment
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### 2. Install dependencies
+
+At minimum, install the packages used by the API and local model runtime.
+
+```powershell
+pip install fastapi uvicorn pydantic requests llama-cpp-python
+```
+
+### 3. Add the GGUF model
+
+Place the model file here:
+
+`models/Phi-3-mini-4k-instruct-q4.gguf`
+
+The model path and LLM settings are configured in `config.py`.
+
+### 4. Run the API
+
+```powershell
+python -m uvicorn app:app --reload
+```
+
+### 5. Open Swagger
+
+`http://127.0.0.1:8000/docs`
+
+## App and LMS Integration
+
+Recommended integration flow:
+
+1. frontend sends evaluation data to your app backend
+2. app backend calls `POST /evaluate/students`
+3. this API returns structured evaluation results
+4. app backend stores the results or forwards them to the frontend
+
+Using the backend as the caller is better than calling this API directly from the frontend.
+
+## Example Use Cases
+
+This one endpoint supports all common academy request shapes.
+
+One student, one question:
 
 ```json
 {
@@ -160,7 +278,7 @@ If a question fails validation or evaluation, an `error` field may appear for th
 }
 ```
 
-### 2. One Student, Multiple Questions
+One student, multiple questions:
 
 ```json
 {
@@ -188,7 +306,7 @@ If a question fails validation or evaluation, an `error` field may appear for th
 }
 ```
 
-### 3. Multiple Students, One Question Each
+Multiple students, one question each:
 
 ```json
 {
@@ -221,7 +339,7 @@ If a question fails validation or evaluation, an `error` field may appear for th
 }
 ```
 
-### 4. Multiple Students, Multiple Questions
+Multiple students, multiple questions:
 
 ```json
 {
@@ -268,168 +386,42 @@ If a question fails validation or evaluation, an `error` field may appear for th
 }
 ```
 
-## Scoring System
-
-The final score is out of `100`.
-
-### Rubric Weights
-
-- `correctness`: 40
-- `efficiency`: 20
-- `readability`: 15
-- `structure`: 15
-
-Rubric subtotal: `90`
-
-### Concept Weights
-
-- `logic`: 4
-- `edge_cases`: 2
-- `completeness`: 2
-- `efficiency`: 1
-- `readability`: 1
-
-Concept subtotal: `10`
-
-### Final Score
-
-`rubric total (90) + concept total (10) = 100`
-
-## Evaluation Pipeline
-
-For each question submission, the service performs:
-
-1. Input cleaning and validation
-2. Syntax checking
-3. Line analysis
-4. Structure analysis
-5. Prompt generation
-6. Local GGUF LLM evaluation
-7. LLM response parsing
-8. Rubric score calculation
-9. Rule-based correction
-10. Execution-based validation for common Python question types
-11. Concept evaluation
-12. Final score combination and normalization
-13. Response formatting
-
-## Accuracy Approach
-
-This project does not rely only on the LLM for scoring.
-
-It uses a hybrid evaluation method:
-
-- LLM for initial reasoning and feedback
-- rule-based checks for known patterns
-- execution-based checks for common Python questions
-- score normalization to reduce unstable LLM scoring
-
-This improves consistency significantly over pure LLM scoring.
-
-## Performance Notes
-
-- The API uses controlled concurrency for multiple students.
-- Current student-level processing is parallelized with a thread pool.
-- GGUF inference itself is guarded by locks to keep the shared local model stable.
-- Large requests can still take time, especially with many students and many questions.
-
-Current validation limits:
-
-- maximum `20` students per request
-- maximum `20` questions per student
-
-## Setup
-
-### 1. Create and activate a virtual environment
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-### 2. Install dependencies
-
-Install the project dependencies you use in your environment. At minimum, this project needs FastAPI, Uvicorn, Requests, Pydantic, and `llama-cpp-python`.
-
-Example:
-
-```powershell
-pip install fastapi uvicorn requests pydantic llama-cpp-python
-```
-
-### 3. Add the GGUF model
-
-Place the model file at:
-
-`models/Phi-3-mini-4k-instruct-q4.gguf`
-
-This path is configured in [config.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/config.py).
-
-### 4. Run the server
-
-```powershell
-python -m uvicorn app:app --reload
-```
-
-### 5. Open Swagger docs
-
-`http://127.0.0.1:8000/docs`
-
-## App Integration Recommendation
-
-For app or LMS integration, the recommended flow is:
-
-1. Frontend sends evaluation data to the app backend
-2. App backend calls `POST /evaluate/students`
-3. This service returns evaluation results
-4. App backend stores or forwards the results to the frontend
-
-This is better than calling the model API directly from the frontend.
-
 ## Project Structure
 
 ```text
 ai-intelligent-evaluation-model/
-├── app.py
-├── config.py
-├── schemas.py
-├── analysis/
-│   ├── line_analyzer.py
-│   ├── structure_analyzer.py
-│   └── syntax_checker/
-├── evaluator/
-│   ├── concept_evaluator.py
-│   ├── execution_engine.py
-│   ├── main_evaluator.py
-│   ├── rubric_engine.py
-│   ├── rule_engine.py
-│   └── scoring_engine.py
-├── llm/
-│   ├── llm_engine.py
-│   ├── prompt_builder.py
-│   └── response_parser.py
-├── models/
-│   └── Phi-3-mini-4k-instruct-q4.gguf
-├── services/
-├── tests/
-├── utils/
-└── logs/
+|-- app.py
+|-- config.py
+|-- schemas.py
+|-- analysis/
+|   |-- line_analyzer.py
+|   |-- structure_analyzer.py
+|   `-- syntax_checker/
+|-- evaluator/
+|   |-- concept_evaluator.py
+|   |-- execution_engine.py
+|   |-- main_evaluator.py
+|   |-- rubric_engine.py
+|   |-- rule_engine.py
+|   `-- scoring_engine.py
+|-- llm/
+|   |-- llm_engine.py
+|   |-- prompt_builder.py
+|   `-- response_parser.py
+|-- models/
+|   `-- Phi-3-mini-4k-instruct-q4.gguf
+|-- tests/
+|-- utils/
+`-- logs/
 ```
-
-## Limitations
-
-- 100% accuracy is not realistic for unrestricted open-ended code evaluation.
-- Accuracy is strongest for academy-style questions with clear expected behavior.
-- Performance depends on local machine resources and GGUF model speed.
-- Very large batches may need chunking or background job processing in a production LMS.
 
 ## Recommended Next Improvements
 
-- add persistent database storage for evaluation history
+- add persistent evaluation storage
 - add async job processing for large academy batches
-- add `exam_id`, `course_id`, `subject`, and `max_marks`
-- expand execution-based test coverage for your academy syllabus
-- add faculty override and re-evaluation workflow
+- add exam metadata such as `exam_id`, `course_id`, `subject`, and `max_marks`
+- expand deterministic coverage for more syllabus-specific questions
+- add faculty review and manual override workflow
 
 ## License
 

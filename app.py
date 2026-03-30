@@ -37,6 +37,20 @@ def build_evaluation_data(result):
     )
 
 
+def build_zero_score_data(feedback):
+    return EvaluationResponse(
+        score=0,
+        concepts=ConceptEvaluation(
+            logic="Weak",
+            edge_cases="Needs Improvement",
+            completeness="Low",
+            efficiency="Poor",
+            readability="Needs Improvement",
+        ),
+        feedback=feedback,
+    )
+
+
 def build_student_evaluation_response(req: StudentEvaluationRequest):
     if not req.submissions:
         raise HTTPException(status_code=400, detail="No question submissions provided")
@@ -44,7 +58,6 @@ def build_student_evaluation_response(req: StudentEvaluationRequest):
     if len(req.submissions) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 questions per student request")
 
-    start_time = time.time()
     results = []
     total_score = 0
 
@@ -58,7 +71,8 @@ def build_student_evaluation_response(req: StudentEvaluationRequest):
             continue
 
         if not submission.student_answer.strip():
-            results.append(StudentQuestionResultItem(question_id=submission.question_id, error="Student answer is empty"))
+            evaluation_data = build_zero_score_data("No answer provided.")
+            results.append(StudentQuestionResultItem(question_id=submission.question_id, data=evaluation_data))
             continue
 
         result = evaluate_submission(
@@ -115,7 +129,7 @@ def build_multi_student_evaluation_response(req: MultiStudentEvaluationRequest):
                 questions=[StudentQuestionResultItem(question_id=None, error="Internal evaluation error")],
             )
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {
             executor.submit(_evaluate_one_student, i, student_req): i
             for i, student_req in enumerate(req.students)

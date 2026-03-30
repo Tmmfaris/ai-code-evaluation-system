@@ -9,14 +9,9 @@ def build_prompt(
     rag_context=None
 ):
     """
-    Builds a structured prompt for LLM-based evaluation
+    Builds a structured prompt for LLM-based evaluation.
     """
 
-    # =========================
-    # FORMAT ANALYSIS INPUTS
-    # =========================
-
-    # Format syntax result
     if syntax_result and isinstance(syntax_result, dict):
         if syntax_result.get("valid"):
             syntax_text = "No syntax errors detected"
@@ -27,7 +22,6 @@ def build_prompt(
     else:
         syntax_text = "No syntax issues detected"
 
-    # Format structure analysis
     if structure_analysis and isinstance(structure_analysis, dict):
         parts = [
             f"Has loop: {structure_analysis.get('has_loop', False)}",
@@ -42,7 +36,6 @@ def build_prompt(
     else:
         structure_text = "Not provided"
 
-    # Format line-by-line analysis (compact, max 10 lines to save tokens)
     if line_analysis and isinstance(line_analysis, list):
         line_parts = []
         for item in line_analysis:
@@ -59,9 +52,6 @@ def build_prompt(
     else:
         line_text = "Not provided"
 
-    # =========================
-    # PROMPT TEMPLATE (Phi-3 instruct chat format)
-    # =========================
     prompt = f"""<|user|>
 You are a strict programming evaluator. Evaluate ONLY the STUDENT CODE. Do NOT give credit for the CORRECT SOLUTION.
 
@@ -73,6 +63,10 @@ CORRECT SOLUTION (for reference only):
 
 STUDENT CODE (evaluate this):
 {student_answer}
+
+Structure summary: {structure_text}
+Line summary:
+{line_text}
 
 Evaluation rules:
 - Do not penalize alternative correct solutions just because they differ from the reference answer.
@@ -87,10 +81,10 @@ Evaluation rules:
 - Keep feedback simple, direct, and accurate.
 
 Rubric:
-- correctness (0-40): Does student code produce same output as correct solution for all inputs? If not → 0 to 10. If fully correct → 36-40.
-- efficiency (0-20): Is algorithm efficient? If correctness=0 then efficiency must also be 0-5.
-- readability (0-15): Comments present, clear naming? No comments → deduct 5-8.
-- structure (0-15): Proper function definition and organisation?
+- correctness (0-40): Does the student code produce the expected behavior for the required inputs? If not, keep this low. If fully correct, use 36-40.
+- efficiency (0-20): Is the approach reasonably efficient for the problem? If correctness is 0, efficiency should also stay low.
+- readability (0-15): Is the code clear and understandable? Do not require comments for short, simple, correct solutions.
+- structure (0-15): Is the function definition and organization appropriate?
 score = sum of rubric.
 
 Return ONLY this compact single-line JSON (no spaces/newlines):
