@@ -107,7 +107,7 @@ def parse_llm_response(response_text):
             print(f"[Parser] Repair failed: {e}")
 
     print(f"[Parser] All strategies failed — returning fallback")
-    return fallback_response("Failed to parse LLM response")
+    return fallback_response("LLM response parsing failed, so a safe fallback evaluation was used.")
 
 
 
@@ -187,10 +187,10 @@ def fallback_response(message="LLM response error"):
     """
 
     return {
-        "score": 50,
+        "score": 55,
         "feedback": message,
         "strengths": "",
-        "improvements": "",
+        "improvements": "Retry the evaluation or rely on rule-based checks for common question types.",
         "concepts": {
             "logic": "Unknown",
             "edge_cases": "Unknown",
@@ -199,9 +199,9 @@ def fallback_response(message="LLM response error"):
             "readability": "Unknown"
         },
         "rubric": {
-            "correctness": 0,
-            "efficiency": 0,
-            "readability": 0,
-            "structure": 0
+            "correctness": 20,
+            "efficiency": 10,
+            "readability": 5,
+            "structure": 10
         }
     }

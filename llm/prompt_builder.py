@@ -74,6 +74,18 @@ CORRECT SOLUTION (for reference only):
 STUDENT CODE (evaluate this):
 {student_answer}
 
+Evaluation rules:
+- Do not penalize alternative correct solutions just because they differ from the reference answer.
+- Do not suggest replacing working logic with a built-in function unless the current approach has a meaningful correctness, efficiency, or readability problem.
+- Do not ask the student to match the reference solution style for consistency alone.
+- If the student solution is correct, feedback should focus on real issues only, not preference-based rewrites.
+- Follow these rules strictly.
+- Score correctness first.
+- Minor inefficiencies must not reduce correctness score.
+- If logic is mostly correct but has an edge-case mistake, the overall score should usually stay in the 60-80 range.
+- If logic is completely wrong, the overall score should usually stay in the 0-20 range.
+- Keep feedback simple, direct, and accurate.
+
 Rubric:
 - correctness (0-40): Does student code produce same output as correct solution for all inputs? If not → 0 to 10. If fully correct → 36-40.
 - efficiency (0-20): Is algorithm efficient? If correctness=0 then efficiency must also be 0-5.
@@ -82,7 +94,7 @@ Rubric:
 score = sum of rubric.
 
 Return ONLY this compact single-line JSON (no spaces/newlines):
-{{"score":<0-100>,"feedback":"<one sentence>","improvements":"<one sentence>","rubric":{{"correctness":<0-40>,"efficiency":<0-20>,"readability":<0-15>,"structure":<0-15>}}}}
+{{"score":<0-100>,"feedback":"<2-3 concise sentences with a clear explanation>","improvements":"<one short improvement sentence or empty string>","rubric":{{"correctness":<0-40>,"efficiency":<0-20>,"readability":<0-15>,"structure":<0-15>}}}}
 <|end|>
 <|assistant|>
 """

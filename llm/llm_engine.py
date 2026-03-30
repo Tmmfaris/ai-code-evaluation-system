@@ -1,5 +1,6 @@
 import requests
 import time
+import threading
 
 from config import (
     LLM_PROVIDER,
@@ -27,6 +28,8 @@ _FALLBACK_JSON = (
 # GGUF MODEL INSTANCE
 # =========================
 _llm_instance = None
+_llm_init_lock = threading.Lock()
+_llm_inference_lock = threading.Lock()
 
 
 def _get_llm_instance():
@@ -36,24 +39,26 @@ def _get_llm_instance():
     global _llm_instance
 
     if _llm_instance is None:
-        try:
-            from llama_cpp import Llama
+        with _llm_init_lock:
+            if _llm_instance is None:
+                try:
+                    from llama_cpp import Llama
 
-            print(f"[LLM] Loading GGUF model from: {GGUF_MODEL_PATH}")
+                    print(f"[LLM] Loading GGUF model from: {GGUF_MODEL_PATH}")
 
-            _llm_instance = Llama(
-                model_path=GGUF_MODEL_PATH,
-                n_ctx=N_CTX,
-                n_threads=N_THREADS,
-                n_batch=512,
-                n_gpu_layers=N_GPU_LAYERS,
-                verbose=False
-            )
+                    _llm_instance = Llama(
+                        model_path=GGUF_MODEL_PATH,
+                        n_ctx=N_CTX,
+                        n_threads=N_THREADS,
+                        n_batch=512,
+                        n_gpu_layers=N_GPU_LAYERS,
+                        verbose=False
+                    )
 
-            print("[LLM] GGUF model loaded successfully")
+                    print("[LLM] GGUF model loaded successfully")
 
-        except Exception as e:
-            raise RuntimeError(f"[LLM] Failed to load GGUF model: {e}")
+                except Exception as e:
+                    raise RuntimeError(f"[LLM] Failed to load GGUF model: {e}")
 
     return _llm_instance
 
@@ -70,7 +75,8 @@ def _call_llama_cpp(prompt):
 
         print("[LLM] Running GGUF inference...")
 
-        output = llm(
+        with _llm_inference_lock:
+            output = llm(
             prompt,
             max_tokens=LLM_MAX_TOKENS,
             temperature=LLM_TEMPERATURE,
@@ -78,8 +84,8 @@ def _call_llama_cpp(prompt):
             top_p=1.0,
             repeat_penalty=1.0,
             stop=["\n"],    # compact JSON has no newlines — stop the instant it ends
-            echo=False
-        )
+                echo=False
+            )
 
         text = output["choices"][0]["text"].strip()
 

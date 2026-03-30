@@ -8,6 +8,8 @@ from llm.response_parser import parse_llm_response
 
 from evaluator.rubric_engine import calculate_rubric_score
 from evaluator.concept_evaluator import evaluate_concepts
+from evaluator.execution_engine import analyze_python_execution
+from evaluator.rule_engine import analyze_submission_rules, apply_rule_adjustments
 from evaluator.scoring_engine import combine_scores
 
 from utils.logger import log_info, log_error, log_request, log_result
@@ -25,6 +27,73 @@ def run_syntax_check(code, language):
         return {"valid": True, "error": None}
 
     return check_syntax(code, language)
+
+
+def normalize_score(score, concepts):
+    logic = concepts.get("logic")
+    completeness = concepts.get("completeness")
+
+    if logic == "Strong" and score < 70:
+        return max(score, 70)
+
+    if logic == "Weak" and completeness == "Low" and score > 20:
+        return min(score, 20)
+
+    if logic == "Weak" and completeness == "Medium" and score < 60:
+        return max(score, 60)
+
+    return score
+
+
+def cleanup_improvements(improvements, rubric_score, concepts):
+    text = (improvements or "").strip()
+    if not text:
+        return text
+
+    correctness = rubric_score.get("correctness", 0)
+    efficiency = rubric_score.get("efficiency", 0)
+    logic = concepts.get("logic")
+
+    noisy_phrases = (
+        "use built-in",
+        "consider using the provided solution",
+        "for consistency",
+        "shorter built-in alternative",
+        "add comments",
+        "comments for clarity",
+    )
+
+    if correctness >= 36 and logic == "Strong" and efficiency >= 17:
+        lowered = text.lower()
+        if any(phrase in lowered for phrase in noisy_phrases):
+            return ""
+
+    return text
+
+
+def relax_readability_for_simple_correct_code(rubric_score, structure_analysis):
+    if not isinstance(rubric_score, dict):
+        return rubric_score
+
+    if not isinstance(structure_analysis, dict):
+        return rubric_score
+
+    correctness = rubric_score.get("correctness", 0)
+    efficiency = rubric_score.get("efficiency", 0)
+    readability = rubric_score.get("readability", 0)
+    structure = rubric_score.get("structure", 0)
+    line_count = structure_analysis.get("line_count", 0)
+    if (
+        correctness >= 36
+        and efficiency >= 17
+        and structure >= 13
+        and line_count <= 6
+        and readability < 15
+    ):
+        rubric_score = dict(rubric_score)
+        rubric_score["readability"] = 15
+
+    return rubric_score
 
 
 # ==============================
@@ -112,6 +181,33 @@ def evaluate_submission(
         rubric_score = calculate_rubric_score(parsed_llm)
 
         # ==========================
+        # 6.5 Rule-Based Adjustments
+        # ==========================
+        rule_findings = analyze_submission_rules(
+            question=question,
+            student_answer=student_answer,
+            language=language
+        )
+        execution_finding = analyze_python_execution(
+            question=question,
+            sample_answer=sample_answer,
+            student_answer=student_answer
+        )
+        if execution_finding:
+            rule_findings.append(execution_finding)
+        rubric_score, parsed_llm["feedback"], parsed_llm["improvements"] = apply_rule_adjustments(
+            rubric_score=rubric_score,
+            feedback=parsed_llm.get("feedback", ""),
+            suggestions=parsed_llm.get("improvements", ""),
+            findings=rule_findings
+        )
+        rubric_score = relax_readability_for_simple_correct_code(
+            rubric_score=rubric_score,
+            structure_analysis=structure_analysis
+        )
+        parsed_llm["rubric"] = rubric_score
+
+        # ==========================
         # 7. Concept Evaluation
         # ==========================
         concept_result = evaluate_concepts(parsed_llm)
@@ -123,6 +219,7 @@ def evaluate_submission(
             rubric_score=rubric_score,
             concept_score=concept_result
         )
+        final_score = normalize_score(final_score, concept_result)
 
 
         # ==========================
@@ -137,6 +234,11 @@ def evaluate_submission(
         # Override score with combined score
         result["score"] = final_score
         result["concepts"] = concept_result
+        result["suggestions"] = cleanup_improvements(
+            result.get("suggestions", ""),
+            rubric_score,
+            concept_result
+        )
 
         # ==========================
         # 📝 Log result
