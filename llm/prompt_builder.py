@@ -3,6 +3,7 @@ def build_prompt(
     sample_answer,
     student_answer,
     language,
+    question_profile=None,
     syntax_result=None,
     structure_analysis=None,
     line_analysis=None,
@@ -52,10 +53,20 @@ def build_prompt(
     else:
         line_text = "Not provided"
 
+    if isinstance(question_profile, dict):
+        category = question_profile.get("category", "general")
+        task_type = question_profile.get("task_type", "unknown")
+        risk = question_profile.get("risk", "medium")
+        markers = ", ".join(question_profile.get("markers", [])) or "none"
+        profile_text = f"Category: {category} | Task: {task_type} | Risk: {risk} | Markers: {markers}"
+    else:
+        profile_text = "Category: general | Task: unknown | Risk: medium | Markers: none"
+
     prompt = f"""<|user|>
 You are a strict programming evaluator. Evaluate ONLY the STUDENT CODE. Do NOT give credit for the CORRECT SOLUTION.
 
 Language: {language} | Syntax: {syntax_text}
+Question profile: {profile_text}
 Question: {question}
 
 CORRECT SOLUTION (for reference only):
@@ -74,6 +85,7 @@ Evaluation rules:
 - Do not ask the student to match the reference solution style for consistency alone.
 - If the student solution is correct, feedback should focus on real issues only, not preference-based rewrites.
 - If the question explicitly requires a technique or construct, such as recursion, streams, Set, Map, exception handling, abstract class design, or a specific safety requirement, treat missing that requirement as a real grading issue.
+- Use the question profile as routing context: respect the task category and risk level when deciding whether a solution is fully correct, partially correct, or unsafe to over-score.
 - Do not label valid standalone Java methods or valid Java statement snippets as syntax errors just because they are not wrapped in a full class.
 - Follow these rules strictly.
 - Score correctness first.

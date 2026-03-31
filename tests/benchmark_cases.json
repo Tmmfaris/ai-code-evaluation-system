@@ -1,0 +1,82 @@
+[
+  {
+    "id": "py_filter_even_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Write a function to filter even numbers from list",
+    "model_answer": "def even(lst): return [x for x in lst if x%2==0]",
+    "student_answer": "def even(lst): return list(filter(lambda x:x%2==0,lst))",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_numeric_constant_true",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to check if string is numeric",
+    "model_answer": "def is_num(s): return s.isdigit()",
+    "student_answer": "def is_num(s): return True",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_remove_dup_preserve_order_wrong",
+    "language": "python",
+    "category": "lists",
+    "question": "Write a function to remove duplicates while preserving order",
+    "model_answer": "def remove_dup(lst): return list(dict.fromkeys(lst))",
+    "student_answer": "def remove_dup(lst): return list(set(lst))",
+    "expected_min_score": 0,
+    "expected_max_score": 25
+  },
+  {
+    "id": "java_even_remainder_wrong",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to check if number is even",
+    "model_answer": "static boolean isEven(int n){ return n%2==0; }",
+    "student_answer": "static boolean isEven(int n){ return n%2; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_min_sort_partial",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to find minimum element in array",
+    "model_answer": "static int min(int[] arr){ int m=arr[0]; for(int i:arr){ if(i<m) m=i;} return m; }",
+    "student_answer": "static int min(int[] arr){ Arrays.sort(arr); return arr[0]; }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_vowels_missing_lower_partial",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to count vowels in string",
+    "model_answer": "static int countV(String s){ int c=0; for(char ch:s.toLowerCase().toCharArray()){ if(\"aeiou\".indexOf(ch)>=0) c++; } return c; }",
+    "student_answer": "static int countV(String s){ int c=0; for(char ch:s.toCharArray()){ if(\"aeiou\".indexOf(ch)>=0) c++; } return c; }",
+    "expected_min_score": 75,
+    "expected_max_score": 90
+  },
+  {
+    "id": "java_empty_alt_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to check if string is empty",
+    "model_answer": "static boolean isEmpty(String s){ return s.isEmpty(); }",
+    "student_answer": "static boolean isEmpty(String s){ return s.length()==0; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_average_returns_sum_wrong",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to find average of array",
+    "model_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return (double)s/arr.length; }",
+    "student_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return s; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  }
+]

@@ -20,6 +20,14 @@ def _function_nodes(tree):
     return [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
 
 
+def _find_function_node(functions, *names):
+    wanted = {name.lower() for name in names if name}
+    for function in functions or []:
+        if function.name.lower() in wanted:
+            return function
+    return functions[0] if functions else None
+
+
 
 def _has_self_recursive_call(function_node):
     return any(
@@ -184,6 +192,53 @@ def _returns_constant_true(function_node):
     )
 
 
+def _returns_constant_string(function_node, value):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == value
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_string_key_index(function_node):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Subscript)
+        and isinstance(node.value.value, ast.Name)
+        and isinstance(node.value.slice, ast.Name)
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_dict_comp_len_key(function_node):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.DictComp)
+        and isinstance(node.value.key, ast.Call)
+        and isinstance(node.value.key.func, ast.Name)
+        and node.value.key.func.id == "len"
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_sorted_slice_without_set(function_node):
+    for node in ast.walk(function_node):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Subscript):
+            continue
+        if not isinstance(node.value.value, ast.Call):
+            continue
+        call = node.value.value
+        if not isinstance(call.func, ast.Name) or call.func.id != "sorted":
+            continue
+        if call.args and isinstance(call.args[0], ast.Call) and isinstance(call.args[0].func, ast.Name) and call.args[0].func.id == "set":
+            continue
+        slice_node = node.value.slice
+        if isinstance(slice_node, ast.Slice) and isinstance(slice_node.lower, ast.UnaryOp) and isinstance(slice_node.lower.op, ast.USub) and isinstance(slice_node.lower.operand, ast.Constant) and slice_node.lower.operand.value == 2:
+            return True
+    return False
+
+
 
 def _has_prime_lower_bound_guard(function_node):
     for node in ast.walk(function_node):
@@ -268,13 +323,15 @@ def _generic_requirement_findings(question, student_answer, language):
             "suggestion": "Use the required stream-based approach if the question explicitly asks for it."
         })
 
-    if language != "java" and ("exception handling" in question_text or "safely" in question_text or "safe" in question_text) and not (
+    if language != "java" and ("exception handling" in question_text or "with exception" in question_text or "safely" in question_text or "safe" in question_text) and not (
         "try" in code and ("catch" in code or "except" in code)
     ):
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 28,
-            "efficiency_max": 15,
+            "correctness_max": 14,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
             "feedback": "The answer does not include the required safe error handling for this task.",
             "suggestion": "Add try/catch or try/except handling and return a safe fallback result on failure."
         })
@@ -320,6 +377,100 @@ def _generic_requirement_findings(question, student_answer, language):
         })
 
     return findings
+
+
+def analyze_question_risk(question, language, question_profile=None):
+    question_text = (question or "").lower()
+    language = (language or "").lower()
+    profile = question_profile or {}
+    category = profile.get("category", "general")
+    risk = profile.get("risk", "medium")
+
+    low_risk_markers = (
+        "add two numbers",
+        "even",
+        "reverse string",
+        "reverse list",
+        "palindrome",
+        "factorial",
+        "prime",
+        "sum of digits",
+        "count words",
+        "count vowels",
+        "lowercase",
+        "uppercase",
+        "remove spaces",
+        "minimum",
+        "maximum",
+        "second largest",
+        "top 2 largest",
+        "power of 2",
+        "power of two",
+        "binary search",
+        "balanced parentheses",
+        "flatten",
+        "frequency",
+        "remove duplicates",
+        "common elements",
+        "numeric",
+        "only digits",
+        "positive",
+        "sum of all elements",
+        "filter even numbers",
+    )
+    if risk == "low" or any(marker in question_text for marker in low_risk_markers):
+        return []
+
+    high_risk_markers = (
+        "create a class",
+        "abstract class",
+        "read a file",
+        "csv",
+        "json",
+        "xml",
+        "api",
+        "database",
+        "sql",
+        "network",
+        "socket",
+        "http",
+        "thread",
+        "concurrency",
+        "stream",
+        "sort objects",
+        "employee",
+        "framework",
+        "react",
+        "spring",
+        "django",
+        "flask",
+        "servlet",
+        "gui",
+    )
+    if risk == "high" or any(marker in question_text for marker in high_risk_markers):
+        return [{
+            "type": "correctness_cap",
+            "correctness_max": 24,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+        }]
+
+    if category in {"arrays_lists", "arrays_search_sort", "collections"}:
+        return [{
+            "type": "correctness_cap",
+            "correctness_max": 32,
+            "efficiency_max": 15,
+        }]
+
+    if language in {"python", "java"} and ("class" in question_text or "method" in question_text or "function" in question_text):
+        return [{
+            "type": "correctness_cap",
+            "correctness_max": 32,
+            "efficiency_max": 15,
+        }]
+
+    return []
 
 
 
@@ -371,6 +522,17 @@ def _analyze_java_submission_rules(question, student_answer):
             "suggestion": "Return true only when the number is greater than zero."
         })
 
+    if "even" in question_text and re.search(r"return\s+[^;]*%\s*2\s*;", lowered) and "==" not in lowered:
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The method returns a remainder instead of a boolean even-check result.",
+            "suggestion": "Compare the remainder to 0 so the method returns true or false directly."
+        })
+
     if ("maximum" in question_text or "max" in question_text) and "arrays.sort" in lowered:
         findings.append({
             "type": "efficiency_cap",
@@ -414,8 +576,8 @@ def _analyze_java_submission_rules(question, student_answer):
     if "using streams" in question_text and not _java_contains_any(lowered, ".stream()", ".filter("):
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 34,
-            "efficiency_max": 15,
+            "correctness_max": 30,
+            "efficiency_max": 12,
             "feedback": "The logic may be correct, but it does not use streams as required by the question.",
             "suggestion": "Use stream operations such as stream().filter(...) to satisfy the required approach."
         })
@@ -425,8 +587,8 @@ def _analyze_java_submission_rules(question, student_answer):
     ):
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 28,
-            "efficiency_max": 15,
+            "correctness_max": 24,
+            "efficiency_max": 12,
             "feedback": "The method does not include the required exception handling for this task.",
             "suggestion": "Wrap the risky operation in try/catch and return a safe fallback value on failure."
         })
@@ -434,8 +596,8 @@ def _analyze_java_submission_rules(question, student_answer):
     if "abstract class" in question_text and "abstract class" not in lowered:
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 28,
-            "efficiency_max": 15,
+            "correctness_max": 24,
+            "efficiency_max": 12,
             "feedback": "The answer does not implement the required abstract class structure.",
             "suggestion": "Declare the base class as abstract and implement the required method in the subclass."
         })
@@ -451,8 +613,8 @@ def _analyze_java_submission_rules(question, student_answer):
     ):
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 28,
-            "efficiency_max": 15,
+            "correctness_max": 24,
+            "efficiency_max": 12,
             "feedback": "The code sorts the list, but it does not define ordering by salary.",
             "suggestion": "Provide a salary-based comparator or Comparable implementation so employees are sorted by salary."
         })
@@ -475,6 +637,17 @@ def _analyze_java_submission_rules(question, student_answer):
             "suggestion": "Use a Set or a distinct-based approach to satisfy the required technique."
         })
 
+    if "intersection of two arrays" in question_text and "for(" in lowered and "for(" in lowered.split("for(", 1)[-1] and "res.add(" in lowered:
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 18,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The method can find shared values, but nested loops can add duplicates and do not control the intersection result carefully.",
+            "suggestion": "Use a HashSet for membership checks and control duplicates in the intersection output."
+        })
+
     return findings
 
 
@@ -490,12 +663,45 @@ def analyze_submission_rules(question, student_answer, language):
 
     tree = _safe_parse_python(student_answer)
     functions = _function_nodes(tree)
-    function_node = functions[0] if functions else None
+    function_node = _find_function_node(functions, "grade", "safe_div", "remove_dup", "is_num")
     if function_node is None:
         return generic_findings
 
     question_text = (question or "").lower()
     findings = list(generic_findings)
+
+    if "grade" in question_text and "student" in question_text and _returns_constant_string(function_node, "A"):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The class always returns grade A instead of computing the grade from the marks.",
+            "suggestion": "Add conditions for the marks ranges so the method returns A, B, or C correctly."
+        })
+
+    if "parse" in question_text and "json" in question_text and "key" in question_text and _returns_string_key_index(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 10,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "The function indexes the raw string directly instead of parsing the JSON string before reading the key.",
+            "suggestion": "Parse the JSON string first, then read the value for the requested key."
+        })
+
+    if "group" in question_text and "words" in question_text and "length" in question_text and _returns_dict_comp_len_key(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 10,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "Using a dict comprehension with len(w) as the key overwrites earlier words of the same length instead of grouping them together.",
+            "suggestion": "Build a dictionary whose values are lists, then append each word to the list for its length."
+        })
 
     if "prime" in question_text:
         if _returns_constant_true(function_node):
@@ -615,6 +821,17 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Remove duplicates first, or track the two largest distinct values explicitly."
         })
 
+    if "top 2 largest" in question_text and _returns_sorted_slice_without_set(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 10,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "Sorting without removing duplicates can return repeated largest values instead of the top two distinct numbers.",
+            "suggestion": "Remove duplicates first, or track the two largest distinct values explicitly."
+        })
+
     if "binary search" in question_text and _uses_for_loop(function_node) and not _uses_while_loop(function_node):
         findings.append({
             "type": "correct_solution_with_penalty",
@@ -636,8 +853,8 @@ def analyze_submission_rules(question, student_answer, language):
     if "duplicate" in question_text and "preserving order" in question_text and _returns_list_set_call(function_node):
         findings.append({
             "type": "hard_fail",
-            "correctness_max": 10,
-            "efficiency_max": 10,
+            "correctness_max": 8,
+            "efficiency_max": 8,
             "readability_max": 10,
             "structure_max": 12,
             "feedback": "Using set removes duplicates but does not preserve the original order of the list.",
@@ -677,7 +894,7 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Raise each digit to the power of the total number of digits instead of always using 3."
         })
 
-    if ("only digits" in question_text or "isdigit" in question_text) and _returns_constant_true(function_node):
+    if ("only digits" in question_text or "isdigit" in question_text or "numeric" in question_text) and _returns_constant_true(function_node):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 2,
@@ -700,23 +917,22 @@ def apply_rule_adjustments(rubric_score, feedback, suggestions, findings):
     if not findings:
         return adjusted, updated_feedback, updated_suggestions
 
+    mins = {}
+    maxes = {}
     for finding in findings:
-        if "correctness_min" in finding:
-            adjusted["correctness"] = max(adjusted.get("correctness", 0), finding["correctness_min"])
-        if "correctness_max" in finding:
-            adjusted["correctness"] = min(adjusted.get("correctness", 0), finding["correctness_max"])
-        if "efficiency_min" in finding:
-            adjusted["efficiency"] = max(adjusted.get("efficiency", 0), finding["efficiency_min"])
-        if "efficiency_max" in finding:
-            adjusted["efficiency"] = min(adjusted.get("efficiency", 0), finding["efficiency_max"])
-        if "readability_min" in finding:
-            adjusted["readability"] = max(adjusted.get("readability", 0), finding["readability_min"])
-        if "readability_max" in finding:
-            adjusted["readability"] = min(adjusted.get("readability", 0), finding["readability_max"])
-        if "structure_min" in finding:
-            adjusted["structure"] = max(adjusted.get("structure", 0), finding["structure_min"])
-        if "structure_max" in finding:
-            adjusted["structure"] = min(adjusted.get("structure", 0), finding["structure_max"])
+        for key in ("correctness", "efficiency", "readability", "structure"):
+            min_key = f"{key}_min"
+            max_key = f"{key}_max"
+            if min_key in finding:
+                mins[key] = max(mins.get(key, finding[min_key]), finding[min_key])
+            if max_key in finding:
+                maxes[key] = min(maxes.get(key, finding[max_key]), finding[max_key]) if key in maxes else finding[max_key]
+
+    for key, value in mins.items():
+        adjusted[key] = max(adjusted.get(key, 0), value)
+
+    for key, value in maxes.items():
+        adjusted[key] = min(adjusted.get(key, 0), value)
 
     priority_feedback = next((item["feedback"] for item in findings if item.get("feedback")), updated_feedback)
     priority_suggestion = next((item["suggestion"] for item in findings if item.get("suggestion")), updated_suggestions)

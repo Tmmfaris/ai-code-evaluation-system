@@ -33,6 +33,11 @@ Supporting routes:
 
 - `GET /`
 - `GET /health`
+- `POST /questions/register`
+- `GET /questions/{question_id}`
+- `GET /questions`
+- `GET /evaluations`
+- `GET /evaluations/students/{student_id}`
 
 ## Request Format
 
@@ -64,6 +69,8 @@ Request fields:
 - `model_answer`: expected answer or sample answer
 - `student_answer`: submitted student answer
 - `language`: language of the answer, such as `python`, `java`, `html`, or `javascript`
+
+If the backend has already registered the question through the question-profile API, then `question`, `model_answer`, and `language` can also be resolved from the stored `question_id`.
 
 Validation limits:
 
@@ -111,6 +118,8 @@ Response fields:
 - `feedback`: detailed textual feedback
 
 If a question cannot be evaluated normally, the question item may contain an `error` field instead of `data`. Empty student answers are currently handled as structured zero-score results with `feedback: "No answer provided."`
+
+Every evaluated submission is also stored in the evaluation history database for later faculty/admin retrieval.
 
 ## Scoring
 
@@ -252,6 +261,46 @@ Recommended integration flow:
 4. app backend stores the results or forwards them to the frontend
 
 Using the backend as the caller is better than calling this API directly from the frontend.
+
+## Question Profile API
+
+To reduce accuracy drop for new question types, faculty-created questions can be registered before evaluation.
+
+Register a question profile:
+
+`POST /questions/register`
+
+```json
+{
+  "question_id": "q1",
+  "question": "Write a function to calculate factorial",
+  "model_answer": "def fact(n): return 1 if n == 0 else n * fact(n-1)",
+  "language": "python",
+  "course_id": "course-101",
+  "faculty_id": "faculty-200",
+  "topic": "recursion"
+}
+```
+
+What this does:
+
+- stores the faculty question and model answer in a local question-profile store
+- classifies the question by category, task type, and risk level
+- lets the evaluation API reuse that profile later through `question_id`
+
+Current storage design:
+
+- question profiles are accessed through a storage layer
+- default backend is SQLite database storage
+- existing JSON question profiles are imported automatically on first SQLite startup when the database is empty
+- the storage layer is still designed so the backend can later be swapped to PostgreSQL without changing the evaluation API
+
+Suggested workflow:
+
+1. faculty creates question and model answer in the app
+2. backend calls `POST /questions/register`
+3. student submissions later call `POST /evaluate/students`
+4. if `question_id` is present, the evaluator can use the stored profile as fallback context
 
 ## Example Use Cases
 
@@ -422,6 +471,55 @@ ai-intelligent-evaluation-model/
 - add exam metadata such as `exam_id`, `course_id`, `subject`, and `max_marks`
 - expand deterministic coverage for more syllabus-specific questions
 - add faculty review and manual override workflow
+
+## Question Profile Storage
+
+The academy-facing question profile store now uses SQLite by default.
+
+Current config:
+
+- `QUESTION_PROFILE_BACKEND = "sqlite"`
+- `QUESTION_PROFILE_DB_PATH = "data/question_profiles.db"`
+
+Legacy support:
+
+- `QUESTION_PROFILE_STORE_PATH = "data/question_profiles.json"` is still kept as a legacy import source
+- if the SQLite database is empty and the legacy JSON file exists, the service imports those records automatically
+
+Why SQLite now:
+
+- better fit for many faculty questions, many courses, and multiple exams
+- safer concurrent reads than a plain JSON file
+- easier future migration path to PostgreSQL if the academy app grows further
+
+## Evaluation History Storage
+
+Evaluation results are now also stored in SQLite by default.
+
+Current config:
+
+- `EVALUATION_HISTORY_BACKEND = "sqlite"`
+- `EVALUATION_HISTORY_DB_PATH = "data/evaluation_history.db"`
+
+What gets stored for each submission:
+
+- `student_id`
+- `question_id`
+- `question`
+- `model_answer`
+- `student_answer`
+- `language`
+- `score`
+- `concepts`
+- `feedback`
+- `status`
+- `error`
+- `created_at`
+
+Useful routes:
+
+- `GET /evaluations`
+- `GET /evaluations/students/{student_id}`
 
 ## License
 

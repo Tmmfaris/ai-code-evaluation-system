@@ -120,3 +120,20 @@ MAX_FEEDBACK_LENGTH = 250   # ⚡ reduced
 # ==============================
 
 MAX_EXECUTION_TIME = 8   # ⚡ reduced from 10
+
+
+# ==============================
+# QUESTION PROFILE STORAGE
+# ==============================
+
+QUESTION_PROFILE_BACKEND = "sqlite"
+QUESTION_PROFILE_STORE_PATH = "data/question_profiles.json"
+QUESTION_PROFILE_DB_PATH = "data/question_profiles.db"
+
+
+# ==============================
+# EVALUATION HISTORY STORAGE
+# ==============================
+
+EVALUATION_HISTORY_BACKEND = "sqlite"
+EVALUATION_HISTORY_DB_PATH = "data/evaluation_history.db"

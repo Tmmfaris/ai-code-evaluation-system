@@ -1,4 +1,4 @@
-from .generic_rules import analyze_generic_requirements, apply_rule_adjustments
+from .generic_rules import analyze_generic_requirements, analyze_question_risk, apply_rule_adjustments
 from .java_rules import analyze_java_submission_rules
 from .python_rules import analyze_python_submission_rules
 

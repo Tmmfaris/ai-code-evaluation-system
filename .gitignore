@@ -8,5 +8,8 @@ logs/
 .env
 models/
 *.gguf
+data/*.db
+data/*.db-journal
+data/question_profiles.json
 debug_llm.py
 debug_output.txt

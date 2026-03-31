@@ -1,17 +1,28 @@
 import ast
+import builtins
 import multiprocessing
 import queue
 import re
 import threading
 
 
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    allowed = {"json", "csv", "math"}
+    if name in allowed:
+        return builtins.__import__(name, globals, locals, fromlist, level)
+    raise ImportError(f"Import of module '{name}' is not allowed in the evaluator sandbox")
+
+
 SAFE_BUILTINS = {
+    "__build_class__": builtins.__build_class__,
+    "__import__": _safe_import,
     "abs": abs,
     "all": all,
     "any": any,
     "bool": bool,
     "dict": dict,
     "enumerate": enumerate,
+    "filter": filter,
     "float": float,
     "int": int,
     "len": len,
@@ -40,6 +51,20 @@ def _extract_first_function_name(code):
     for node in tree.body:
         if isinstance(node, ast.FunctionDef):
             return node.name
+    return None
+
+
+def _extract_class_method_name(code, class_name, method_name):
+    try:
+        tree = ast.parse(code)
+    except Exception:
+        return None
+
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name.lower() == class_name.lower():
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name.lower() == method_name.lower():
+                    return item.name
     return None
 
 
@@ -86,6 +111,8 @@ def _success_feedback(question):
         return "The function correctly rotates the list by the requested number of steps."
     if "common elements" in lowered:
         return "The function correctly returns the common elements from the two input lists."
+    if "filter even numbers" in lowered:
+        return "The function correctly filters the even numbers from the input list."
     if "even" in lowered:
         return "The function correctly returns a boolean even-check result for representative test cases."
     if "reverse" in lowered and "string" in lowered:
@@ -133,6 +160,10 @@ def _java_success_feedback(question):
         return "The method correctly returns the expected search result for representative cases."
     if "balanced parentheses" in lowered:
         return "The method correctly detects balanced and unbalanced parentheses."
+    if "intersection of two arrays" in lowered:
+        return "The method correctly finds the intersection of the two arrays."
+    if "anagram" in lowered:
+        return "The method correctly checks whether the two strings are anagrams."
     if "power of 2" in lowered or "power of two" in lowered:
         return "The method correctly identifies powers of two."
     if "common elements" in lowered:
@@ -145,6 +176,8 @@ def _java_success_feedback(question):
         return "The method performs the expected basic JSON-format validation."
     if "frequency using map" in lowered:
         return "The method correctly counts frequencies using a Map."
+    if "longest substring without repeating characters" in lowered:
+        return "The method correctly finds the length of the longest substring without repeating characters."
     if "stack using array" in lowered:
         return "The class correctly implements stack operations using an array."
     if "list is sorted" in lowered:
@@ -163,6 +196,8 @@ def _java_success_feedback(question):
         return "The method correctly removes spaces from the input string."
     if "lowercase" in lowered:
         return "The method correctly converts the input string to lowercase."
+    if "string is empty" in lowered:
+        return "The method correctly checks whether the string is empty."
     if "uppercase" in lowered:
         return "The method correctly checks whether the string is uppercase."
     if "square" in lowered:
@@ -174,6 +209,15 @@ def _java_success_feedback(question):
 
 
 def _build_cases(question):
+    if _question_contains(question, "filter", "even") and _question_contains(question, "list"):
+        return [([2, 3, 4],), ([1, 5],), ([],), ([-4, -3, 0],)]
+
+    if _question_contains(question, "handle", "division", "exception") or _question_contains(question, "division", "exception"):
+        return [(6, 2), (5, 0), (-8, 4)]
+
+    if _question_contains(question, "safely", "divide") or _question_contains(question, "safe", "divide"):
+        return [(6, 2), (5, 0), (-8, 4)]
+
     if _question_contains(question, "palindrome"):
         return [("level",), ("hello",), ("",), ("abba",)]
 
@@ -219,6 +263,12 @@ def _build_cases(question):
     if _question_contains(question, "binary", "search"):
         return [([1, 3, 5, 7, 9], 7), ([1, 3, 5, 7, 9], 2), ([2], 2), ([2], 1)]
 
+    if _question_contains(question, "group", "words", "length"):
+        return [(["a", "bb", "c", "dd"],), (["hi", "to", "tea"],), ([],), (["one"],)]
+
+    if _question_contains(question, "parse", "json", "string") and "key" in (question or "").lower():
+        return [('{"a": 1, "b": 2}', "a"), ('{"name": "x"}', "name"), ('{"flag": true}', "flag")]
+
     if _question_contains(question, "lowercase"):
         return [("ABC",), ("AbC",), ("already",), ("123A",)]
 
@@ -233,6 +283,9 @@ def _build_cases(question):
 
     if _question_contains(question, "second largest"):
         return [([1, 5, 3, 4],), ([10, 8, 9],), ([-1, -5, -3],), ([1, 2, 2],), ([5, 5, 3, 1],)]
+
+    if _question_contains(question, "top", "2", "largest"):
+        return [([1, 5, 3, 4],), ([10, 8, 9],), ([1, 2, 2],), ([5, 5, 3, 1],)]
 
     if _question_contains(question, "remove spaces"):
         return [("a b c",), (" no spaces ",), ("",), ("a  b",)]
@@ -264,7 +317,7 @@ def _build_cases(question):
     if _question_contains(question, "duplicate"):
         return [([1, 2, 2, 3],), ([1, 1, 1],), ([],), (["a", "b", "a"],)]
 
-    if _question_contains(question, "only digits"):
+    if _question_contains(question, "only digits") or _question_contains(question, "numeric"):
         return [("123",), ("12a",), ("",), ("007",)]
 
     if _question_contains(question, "even"):
@@ -287,7 +340,7 @@ def _build_cases(question):
 
 def _worker(code, function_name, cases, queue):
     try:
-        namespace = {"__builtins__": SAFE_BUILTINS}
+        namespace = {"__builtins__": SAFE_BUILTINS, "__name__": "__main__"}
         exec(code, namespace, namespace)
         func = namespace.get(function_name)
         if not callable(func):
@@ -350,6 +403,57 @@ def _run_code_with_thread_timeout(code, function_name, cases):
 
 
 def analyze_python_execution(question, sample_answer, student_answer):
+    question_text = (question or "").lower()
+
+    if "grade" in question_text and "student" in question_text:
+        sample_method = _extract_class_method_name(sample_answer, "Student", "grade")
+        student_method = _extract_class_method_name(student_answer, "Student", "grade")
+        if sample_method and student_method:
+            sample_run = _run_code_with_timeout(
+                f"{sample_answer}\n\ndef __runner__(marks):\n    obj = Student()\n    obj.marks = marks\n    return obj.grade()",
+                "__runner__",
+                [(95,), (80,), (50,)],
+            )
+            if sample_run.get("ok"):
+                student_run = _run_code_with_timeout(
+                    f"{student_answer}\n\ndef __runner__(marks):\n    obj = Student()\n    obj.marks = marks\n    return obj.grade()",
+                    "__runner__",
+                    [(95,), (80,), (50,)],
+                )
+                if not student_run.get("ok"):
+                    return {
+                        "result_type": "execution_error",
+                        "correctness_max": 5,
+                        "efficiency_max": 5,
+                        "feedback": f"Code could not be executed reliably: {student_run.get('error', 'execution error')}.",
+                        "suggestion": "Fix the class so the grade method runs successfully for standard test inputs."
+                    }
+                passed = 0
+                for expected, actual in zip(sample_run["outputs"], student_run["outputs"]):
+                    if expected.get("ok") and actual.get("ok") and expected.get("result") == actual.get("result"):
+                        passed += 1
+                if passed == 3:
+                    return {
+                        "result_type": "full_pass",
+                        "correctness_min": 36,
+                        "feedback": "The class correctly computes grades from the student's marks."
+                    }
+                if passed == 0:
+                    return {
+                        "result_type": "zero_pass",
+                        "correctness_max": 5,
+                        "efficiency_max": 5,
+                        "feedback": "The class does not compute the correct grade from the student's marks.",
+                        "suggestion": "Return A, B, or C based on the marks thresholds in the question."
+                    }
+                return {
+                    "result_type": "partial_pass",
+                    "correctness_max": 20,
+                    "efficiency_max": 12,
+                    "feedback": "The class computes the correct grade for some marks ranges, but not all of them.",
+                    "suggestion": "Check each marks threshold carefully so A, B, and C are all handled correctly."
+                }
+
     cases = _build_cases(question)
     if not cases:
         return None
@@ -378,9 +482,11 @@ def analyze_python_execution(question, sample_answer, student_answer):
     total = len(cases)
     passed = 0
 
-    question_text = (question or "").lower()
-
     if "duplicate" in question_text and "preserving order" in question_text:
+        for expected, actual in zip(sample_outputs, student_outputs):
+            if expected.get("ok") and actual.get("ok") and expected.get("result") == actual.get("result"):
+                passed += 1
+    elif "top 2 largest" in question_text:
         for expected, actual in zip(sample_outputs, student_outputs):
             if expected.get("ok") and actual.get("ok") and expected.get("result") == actual.get("result"):
                 passed += 1
@@ -511,18 +617,18 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "even" in question_text:
-        if _java_has(code, "return", "% 2 == 0"):
+        if re.search(r"return\s+[^;]*%\s*2\s*==\s*0\s*;", code):
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
             }
-        if _java_has(code, "return", "% 2"):
+        if re.search(r"return\s+[^;]*%\s*2\s*;", code) and "==" not in code:
             return {
-                "result_type": "partial_pass",
-                "correctness_max": 28,
-                "efficiency_max": 15,
-                "feedback": "The method returns a remainder instead of an explicit boolean even check.",
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method returns a remainder instead of a boolean even-check result.",
                 "suggestion": "Compare the remainder to 0 so the method returns true or false directly.",
             }
 
@@ -624,9 +730,9 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
         if "for(" in code and "%2==0" in code and "add(" in code:
             return {
-                "result_type": "correct_but_inefficient",
-                "correctness_min": 36,
-                "efficiency_max": 14,
+                "result_type": "partial_pass",
+                "correctness_max": 28,
+                "efficiency_max": 15,
                 "feedback": "The method correctly filters even numbers, but it does not use streams as requested.",
                 "suggestion": "Use stream().filter(...) if you need to follow the stream-based requirement exactly.",
             }
@@ -791,12 +897,36 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "suggestion": "Use low, high, and mid pointers with a loop to implement binary search in logarithmic time.",
             }
 
+    if "anagram" in question_text:
+        if "arrays.sort" in code and "arrays.equals" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+        if ".length()==" in code or ".length() ==" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking only string length does not determine whether two strings are anagrams.",
+                "suggestion": "Compare character frequencies or sort both character arrays before comparing them.",
+            }
+
     if "balanced parentheses" in question_text:
         if "stack<" in code and ("isempty()" in code or ".pop()" in code):
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if '.contains("(")' in code and '.contains(")")' in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking only whether both parentheses characters appear does not determine whether the parentheses are balanced.",
+                "suggestion": "Track order and balance with a stack or counter that never goes negative.",
             }
         if ".length()%2==0" in code or ".length() % 2 == 0" in code:
             return {
@@ -837,6 +967,22 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "efficiency_max": 15,
                 "feedback": "The method finds common elements, but nested loops are less efficient and can add duplicates when inputs repeat values.",
                 "suggestion": "Use a HashSet to test membership and control duplicate results more efficiently.",
+            }
+
+    if "intersection of two arrays" in question_text:
+        if ("hashset" in code or "set<" in code) and "contains(" in code and ".maptoint" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+        if "for(" in code and "for(" in code.split("for(", 1)[-1] and "res.add(" in code:
+            return {
+                "result_type": "partial_pass",
+                "correctness_max": 24,
+                "efficiency_max": 12,
+                "feedback": "The method can find shared values, but nested loops are less efficient and can add duplicates when values repeat.",
+                "suggestion": "Use a HashSet for membership checks and control duplicates in the intersection result.",
             }
 
     if "remove spaces" in question_text:
@@ -903,6 +1049,70 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "suggestion": "Return true only when the number is greater than zero.",
             }
 
+    if "sum of array" in question_text:
+        if "for(" in code and "+=" in code and "return s" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly calculates the sum of the array elements.",
+            }
+        if re.search(r"return\s+0\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method returns 0 instead of summing the array elements.",
+                "suggestion": "Loop through the array and accumulate the total before returning it.",
+            }
+
+    if "second largest" in question_text:
+        if "distinct()" in code and "sorted()" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly finds the second distinct largest element.",
+            }
+        if "arrays.sort" in code and "a[a.length-2]" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Sorting without removing duplicates can return the largest value again instead of the second distinct largest element.",
+                "suggestion": "Remove duplicates first, or track the two largest distinct values explicitly.",
+            }
+
+    if "average of array" in question_text:
+        if re.search(r"return\s*\(\s*double\s*\)\s*[a-z_][a-z0-9_]*\s*/\s*arr\.length\s*;", code) or re.search(r"return\s+[a-z_][a-z0-9_]*\s*/\s*\(\s*double\s*\)\s*arr\.length\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly calculates the average of the array elements.",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*;", code) and "arr.length" not in code.split("return", 1)[-1]:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method returns the sum instead of dividing by the array length to compute the average.",
+                "suggestion": "Divide the sum by arr.length and return a double result for the average.",
+            }
+
+    if "find frequency of elements using map" in question_text or "frequency using map" in question_text:
+        if "getordefault" in code and "put(" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+        if "put(i,1)" in code or "put(i, 1)" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method stores 1 for every element instead of incrementing counts for repeated values.",
+                "suggestion": "Use getOrDefault(...) + 1 so repeated elements increase their stored frequency.",
+            }
+
     if "lowercase" in question_text:
         if ".tolowercase()" in code:
             return {
@@ -944,11 +1154,29 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
         if "aeiou" in code and ".tochararray()" in code:
             return {
-                "result_type": "partial_pass",
-                "correctness_max": 28,
-                "efficiency_max": 15,
+                "result_type": "mostly_correct",
+                "correctness_max": 34,
+                "efficiency_max": 14,
                 "feedback": "The method counts lowercase vowels but misses uppercase vowel inputs.",
                 "suggestion": "Convert the string to lowercase before checking vowel membership.",
+            }
+
+    if "string is empty" in question_text:
+        if ".isempty()" in code or ".length()==0" in code or ".length() == 0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+
+    if "longest substring without repeating characters" in question_text:
+        if re.search(r"return\s+s\.length\(\)\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the full string length does not solve the longest-substring-without-repeats problem.",
+                "suggestion": "Use a sliding window or equivalent logic to track the longest substring without repeated characters.",
             }
 
     if "only digits" in question_text or "digit" in question_text or "numeric" in question_text:

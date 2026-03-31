@@ -84,17 +84,17 @@ def test_html():
 
 
 # =========================
-# TEST CASE 4: JSON INPUT
+# TEST CASE 4: JAVASCRIPT INPUT
 # =========================
-def test_json():
-    print("\n=== TEST 4: JSON INPUT ===\n")
+def test_javascript():
+    print("\n=== TEST 4: JAVASCRIPT INPUT ===\n")
 
     result = evaluate_submission(
         student_id="104",
-        question="Create a JSON object with name and age",
-        sample_answer='{"name": "John", "age": 25}',
-        student_answer='{"name": "John", "age": 25}',
-        language="json"
+        question="Write a JavaScript function to add two numbers",
+        sample_answer="function add(a,b){ return a+b; }",
+        student_answer="function add(a,b){ return a+b; }",
+        language="javascript"
     )
 
     print(result)
@@ -135,7 +135,7 @@ def run_all_tests():
         test_valid_python()
         test_syntax_error()
         test_html()
-        test_json()
+        test_javascript()
         test_empty_input()
 
         print("\n🎉 All Tests Completed Successfully!\n")

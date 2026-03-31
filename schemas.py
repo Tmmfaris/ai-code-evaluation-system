@@ -4,10 +4,10 @@ from typing import List, Optional
 
 class QuestionSubmission(BaseModel):
     question_id: Optional[str] = Field(None, example="q1")
-    question: str = Field(..., example="Write a function to calculate factorial")
-    model_answer: str = Field(..., example="def f(n): return 1 if n==0 else n*f(n-1)")
+    question: Optional[str] = Field(None, example="Write a function to calculate factorial")
+    model_answer: Optional[str] = Field(None, example="def f(n): return 1 if n==0 else n*f(n-1)")
     student_answer: str = Field(..., example="def fact(n): return 1 if n==0 else n*fact(n-1)")
-    language: str = Field(..., example="python")
+    language: Optional[str] = Field(None, example="python")
 
 
 class StudentEvaluationRequest(BaseModel):
@@ -98,3 +98,40 @@ class StudentEvaluationResponse(BaseModel):
 class MultiStudentEvaluationResponse(BaseModel):
     execution_time: float = Field(..., example=20.5)
     students: List[StudentEvaluationResponse]
+
+
+class QuestionProfileRequest(BaseModel):
+    question_id: str = Field(..., example="q1")
+    question: str = Field(..., example="Write a function to calculate factorial")
+    model_answer: str = Field(..., example="def fact(n): return 1 if n == 0 else n * fact(n-1)")
+    language: str = Field(..., example="python")
+    course_id: Optional[str] = Field(None, example="course-101")
+    faculty_id: Optional[str] = Field(None, example="faculty-200")
+    topic: Optional[str] = Field(None, example="recursion")
+
+
+class QuestionProfileResponse(BaseModel):
+    question_id: str
+    question: str
+    model_answer: str
+    language: str
+    course_id: Optional[str] = None
+    faculty_id: Optional[str] = None
+    topic: Optional[str] = None
+    profile: dict
+
+
+class EvaluationHistoryItem(BaseModel):
+    id: int
+    student_id: str
+    question_id: Optional[str] = None
+    question: str
+    model_answer: str
+    student_answer: str
+    language: str
+    score: int
+    concepts: dict
+    feedback: str
+    status: str
+    error: Optional[str] = None
+    created_at: str

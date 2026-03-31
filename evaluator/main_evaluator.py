@@ -9,8 +9,9 @@ from llm.response_parser import parse_llm_response
 from evaluator.rubric_engine import calculate_rubric_score
 from evaluator.concept_evaluator import evaluate_concepts
 from evaluator.execution import analyze_execution
-from evaluator.rules import analyze_submission_rules, apply_rule_adjustments
+from evaluator.rules import analyze_submission_rules, analyze_question_risk, apply_rule_adjustments
 from evaluator.scoring_engine import combine_scores
+from evaluator.question_classifier import classify_question
 
 from utils.logger import log_info, log_error, log_request, log_result
 from utils.formatter import format_final_output, format_error_response
@@ -41,9 +42,6 @@ def normalize_score(score, concepts, rubric_score):
 
     if logic == "Weak" and completeness == "Low" and score > 18:
         return min(score, 18)
-
-    if logic == "Weak" and completeness == "Medium" and score < 60:
-        return max(score, 60)
 
     return score
 
@@ -178,6 +176,138 @@ def build_syntax_error_result(syntax_result):
     }
 
 
+def merge_hybrid_rubric(llm_rubric, execution_finding, structure_analysis):
+    if not isinstance(llm_rubric, dict):
+        llm_rubric = {}
+
+    merged = {
+        "correctness": llm_rubric.get("correctness", 0),
+        "efficiency": llm_rubric.get("efficiency", 0),
+        "readability": llm_rubric.get("readability", 0),
+        "structure": llm_rubric.get("structure", 0),
+    }
+
+    if not execution_finding:
+        return merged
+
+    deterministic = build_deterministic_result(
+        execution_finding=execution_finding,
+        structure_analysis=structure_analysis,
+    )["rubric"]
+    result_type = execution_finding.get("result_type")
+
+    if result_type == "full_pass":
+        for key in ("correctness", "efficiency", "readability", "structure"):
+            merged[key] = max(merged.get(key, 0), deterministic.get(key, 0))
+        return merged
+
+    if result_type == "mostly_correct":
+        merged["correctness"] = max(merged.get("correctness", 0), deterministic.get("correctness", 0))
+        merged["readability"] = max(merged.get("readability", 0), deterministic.get("readability", 0))
+        merged["structure"] = max(merged.get("structure", 0), deterministic.get("structure", 0))
+        merged["efficiency"] = min(merged.get("efficiency", 0), deterministic.get("efficiency", 0))
+        return merged
+
+    if result_type == "correct_but_inefficient":
+        merged["correctness"] = max(merged.get("correctness", 0), deterministic.get("correctness", 0))
+        merged["readability"] = max(merged.get("readability", 0), deterministic.get("readability", 0))
+        merged["structure"] = max(merged.get("structure", 0), deterministic.get("structure", 0))
+        merged["efficiency"] = min(merged.get("efficiency", 0), deterministic.get("efficiency", 0))
+        return merged
+
+    if result_type in {"partial_pass", "execution_error", "zero_pass"}:
+        for key in ("correctness", "efficiency", "readability", "structure"):
+            merged[key] = min(merged.get(key, 0), deterministic.get(key, 0))
+        return merged
+
+    return merged
+
+
+def infer_score_bounds(execution_finding, findings, syntax_result, language):
+    if language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
+        return 0, 12
+
+    min_score = 0
+    max_score = 100
+    result_type = (execution_finding or {}).get("result_type")
+
+    if result_type == "full_pass":
+        min_score = max(min_score, 85)
+    elif result_type == "mostly_correct":
+        min_score = max(min_score, 70)
+        max_score = min(max_score, 90)
+    elif result_type == "correct_but_inefficient":
+        min_score = max(min_score, 75)
+        max_score = min(max_score, 95)
+    elif result_type == "partial_pass":
+        min_score = max(min_score, 40)
+        max_score = min(max_score, 85)
+    elif result_type in {"zero_pass", "execution_error"}:
+        max_score = min(max_score, 20)
+
+    for finding in findings or []:
+        finding_type = finding.get("type")
+        correctness_max = finding.get("correctness_max")
+        if finding_type == "hard_fail":
+            max_score = min(max_score, 20)
+        elif correctness_max is not None:
+            if correctness_max <= 8:
+                max_score = min(max_score, 20)
+            elif correctness_max <= 14:
+                max_score = min(max_score, 25)
+            elif correctness_max <= 22:
+                max_score = min(max_score, 75)
+        if finding_type == "correct_solution_with_penalty":
+            min_score = max(min_score, 75)
+            max_score = min(max_score, 95)
+
+    return min_score, max_score
+
+
+def calibrate_final_score(base_score, llm_score, execution_finding, findings, syntax_result, language):
+    if llm_score is None:
+        return base_score
+
+    min_score, max_score = infer_score_bounds(
+        execution_finding=execution_finding,
+        findings=findings,
+        syntax_result=syntax_result,
+        language=language,
+    )
+    llm_clamped = max(min_score, min(max_score, int(llm_score)))
+    result_type = (execution_finding or {}).get("result_type")
+    has_hard_fail = any(finding.get("type") == "hard_fail" for finding in (findings or []))
+    has_strict_cap = any(
+        finding.get("correctness_max") is not None and finding.get("correctness_max") <= 14
+        for finding in (findings or [])
+    )
+
+    if has_hard_fail or has_strict_cap or result_type in {"zero_pass", "execution_error"}:
+        return min(base_score, llm_clamped)
+
+    if result_type == "full_pass":
+        return max(base_score, llm_clamped)
+
+    if result_type in {"mostly_correct", "correct_but_inefficient"}:
+        return max(base_score, llm_clamped)
+
+    if result_type == "partial_pass":
+        return int(round((base_score + llm_clamped) / 2))
+
+    return llm_clamped
+
+
+def choose_hybrid_feedback(llm_result, execution_finding, syntax_result, language):
+    if language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
+        syntax_result = build_syntax_error_result(syntax_result)
+        return syntax_result["feedback"], syntax_result["improvements"]
+
+    if execution_finding and execution_finding.get("feedback"):
+        return execution_finding.get("feedback", ""), execution_finding.get("suggestion", "")
+
+    return llm_result.get("feedback", ""), llm_result.get("improvements", "")
+
+
 def build_exact_match_feedback(question, language):
     lowered = (question or "").lower()
     language = (language or "").lower()
@@ -265,6 +395,11 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             language = "general"
 
         log_info(f"Processing evaluation | Student: {student_id} | Language: {language}")
+        question_profile = classify_question(question, language)
+        log_info(
+            f"Question profile | Student: {student_id} | Language: {language} | "
+            f"Category: {question_profile.get('category')} | Task: {question_profile.get('task_type')} | Risk: {question_profile.get('risk')}"
+        )
 
         structure_analysis = analyze_structure(student_answer)
         if normalize_code(sample_answer) == student_answer:
@@ -308,37 +443,33 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             student_answer=student_answer,
             language=language,
         )
+        if not execution_finding:
+            rule_findings.extend(analyze_question_risk(question, language, question_profile))
         if execution_finding:
             rule_findings.append(execution_finding)
 
-        if language in {"python", "java"} and execution_finding:
-            log_info(
-                f"Evaluation path | Student: {student_id} | Language: {language} | Mode: deterministic | "
-                f"Type: {execution_finding.get('result_type', 'unknown')}"
-            )
-            parsed_llm = build_deterministic_result(
-                execution_finding=execution_finding,
-                structure_analysis=structure_analysis,
-            )
-            rubric_score = dict(parsed_llm["rubric"])
-        elif language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
+        if language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
             log_info(
                 f"Evaluation path | Student: {student_id} | Language: {language} | Mode: syntax_error"
             )
             parsed_llm = build_syntax_error_result(syntax_result)
             rubric_score = dict(parsed_llm["rubric"])
         else:
-            reason = "no deterministic pattern matched"
+            mode = "hybrid"
+            if execution_finding:
+                mode = f"hybrid | Type: {execution_finding.get('result_type', 'unknown')}"
+            reason = "guarded llm review"
             if language not in {"python", "java"}:
-                reason = "language not on deterministic path"
+                reason = "language not on deterministic execution path"
             log_info(
-                f"Evaluation path | Student: {student_id} | Language: {language} | Mode: llm | Reason: {reason}"
+                f"Evaluation path | Student: {student_id} | Language: {language} | Mode: {mode} | Reason: {reason}"
             )
             prompt = build_prompt(
                 question=question,
                 sample_answer=sample_answer,
                 student_answer=student_answer,
                 language=language,
+                question_profile=question_profile,
                 syntax_result=syntax_result,
                 line_analysis=line_analysis,
                 structure_analysis=structure_analysis,
@@ -348,7 +479,17 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             log_info("Calling LLM...")
             raw_llm_output = call_llm(prompt)
             parsed_llm = parse_llm_response(raw_llm_output)
-            rubric_score = calculate_rubric_score(parsed_llm)
+            rubric_score = merge_hybrid_rubric(
+                llm_rubric=calculate_rubric_score(parsed_llm),
+                execution_finding=execution_finding,
+                structure_analysis=structure_analysis,
+            )
+            parsed_llm["feedback"], parsed_llm["improvements"] = choose_hybrid_feedback(
+                llm_result=parsed_llm,
+                execution_finding=execution_finding,
+                syntax_result=syntax_result,
+                language=language,
+            )
 
         rubric_score, parsed_llm["feedback"], parsed_llm["improvements"] = apply_rule_adjustments(
             rubric_score=rubric_score,
@@ -369,6 +510,14 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             concept_score=concept_result,
         )
         final_score = normalize_score(final_score, concept_result, rubric_score)
+        final_score = calibrate_final_score(
+            base_score=final_score,
+            llm_score=parsed_llm.get("score"),
+            execution_finding=execution_finding,
+            findings=rule_findings,
+            syntax_result=syntax_result,
+            language=language,
+        )
 
         result = format_final_output(
             student_id=student_id,

@@ -11,9 +11,22 @@ from schemas import (
     StudentQuestionResultItem,
     EvaluationResponse,
     ConceptEvaluation,
+    QuestionProfileRequest,
+    QuestionProfileResponse,
+    EvaluationHistoryItem,
 )
 
 from evaluator.main_evaluator import evaluate_submission
+from evaluator.question_profile_store import (
+    get_question_profile,
+    list_question_profiles,
+    upsert_question_profile,
+)
+from evaluator.evaluation_history_store import (
+    list_recent_evaluation_records,
+    list_student_evaluation_records,
+    save_evaluation_record,
+)
 from utils.logger import log_error
 
 
@@ -51,6 +64,38 @@ def build_zero_score_data(feedback):
     )
 
 
+def persist_evaluation_event(
+    student_id,
+    question_id,
+    question,
+    model_answer,
+    student_answer,
+    language,
+    data=None,
+    error=None,
+):
+    payload = {
+        "student_id": student_id,
+        "question_id": question_id,
+        "question": question,
+        "model_answer": model_answer,
+        "student_answer": student_answer,
+        "language": language,
+        "score": 0,
+        "concepts": {},
+        "feedback": "",
+        "status": "error" if error else "success",
+        "error": error,
+    }
+
+    if data is not None:
+        payload["score"] = data.score
+        payload["concepts"] = data.concepts.model_dump()
+        payload["feedback"] = data.feedback
+
+    save_evaluation_record(payload)
+
+
 def build_student_evaluation_response(req: StudentEvaluationRequest):
     if not req.submissions:
         raise HTTPException(status_code=400, detail="No question submissions provided")
@@ -62,28 +107,82 @@ def build_student_evaluation_response(req: StudentEvaluationRequest):
     total_score = 0
 
     for submission in req.submissions:
-        if not submission.question.strip():
+        profile = get_question_profile(submission.question_id) if submission.question_id else None
+        question = (submission.question or (profile or {}).get("question") or "").strip()
+        model_answer = (submission.model_answer or (profile or {}).get("model_answer") or "").strip()
+        language = ((submission.language or (profile or {}).get("language") or "")).strip().lower()
+
+        if not question:
+            persist_evaluation_event(
+                student_id=req.student_id,
+                question_id=submission.question_id,
+                question="",
+                model_answer=model_answer,
+                student_answer=submission.student_answer,
+                language=language,
+                error="Question is empty",
+            )
             results.append(StudentQuestionResultItem(question_id=submission.question_id, error="Question is empty"))
             continue
 
-        if not submission.model_answer.strip():
+        if not model_answer:
+            persist_evaluation_event(
+                student_id=req.student_id,
+                question_id=submission.question_id,
+                question=question,
+                model_answer="",
+                student_answer=submission.student_answer,
+                language=language,
+                error="Sample answer is empty",
+            )
             results.append(StudentQuestionResultItem(question_id=submission.question_id, error="Sample answer is empty"))
+            continue
+
+        if not language:
+            persist_evaluation_event(
+                student_id=req.student_id,
+                question_id=submission.question_id,
+                question=question,
+                model_answer=model_answer,
+                student_answer=submission.student_answer,
+                language="",
+                error="Language is empty",
+            )
+            results.append(StudentQuestionResultItem(question_id=submission.question_id, error="Language is empty"))
             continue
 
         if not submission.student_answer.strip():
             evaluation_data = build_zero_score_data("No answer provided.")
+            persist_evaluation_event(
+                student_id=req.student_id,
+                question_id=submission.question_id,
+                question=question,
+                model_answer=model_answer,
+                student_answer=submission.student_answer,
+                language=language,
+                data=evaluation_data,
+            )
             results.append(StudentQuestionResultItem(question_id=submission.question_id, data=evaluation_data))
             continue
 
         result = evaluate_submission(
             student_id=req.student_id,
-            question=submission.question,
-            sample_answer=submission.model_answer,
+            question=question,
+            sample_answer=model_answer,
             student_answer=submission.student_answer,
-            language=submission.language,
+            language=language,
         )
 
         if result.get("status") == "error":
+            persist_evaluation_event(
+                student_id=req.student_id,
+                question_id=submission.question_id,
+                question=question,
+                model_answer=model_answer,
+                student_answer=submission.student_answer,
+                language=language,
+                error=result.get("feedback", "Evaluation failed"),
+            )
             results.append(
                 StudentQuestionResultItem(
                     question_id=submission.question_id,
@@ -93,6 +192,15 @@ def build_student_evaluation_response(req: StudentEvaluationRequest):
             continue
 
         evaluation_data = build_evaluation_data(result)
+        persist_evaluation_event(
+            student_id=req.student_id,
+            question_id=submission.question_id,
+            question=question,
+            model_answer=model_answer,
+            student_answer=submission.student_answer,
+            language=language,
+            data=evaluation_data,
+        )
         results.append(StudentQuestionResultItem(question_id=submission.question_id, data=evaluation_data))
         total_score += evaluation_data.score
 
@@ -175,3 +283,31 @@ def health():
 @app.post("/evaluate/students", response_model=MultiStudentEvaluationResponse, response_model_exclude_none=True)
 def evaluate_students(req: MultiStudentEvaluationRequest):
     return build_multi_student_evaluation_response(req)
+
+
+@app.post("/questions/register", response_model=QuestionProfileResponse, response_model_exclude_none=True)
+def register_question_profile(req: QuestionProfileRequest):
+    return QuestionProfileResponse(**upsert_question_profile(req.model_dump()))
+
+
+@app.get("/questions/{question_id}", response_model=QuestionProfileResponse, response_model_exclude_none=True)
+def fetch_question_profile(question_id: str):
+    profile = get_question_profile(question_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Question profile not found")
+    return QuestionProfileResponse(**profile)
+
+
+@app.get("/questions", response_model=list[QuestionProfileResponse], response_model_exclude_none=True)
+def fetch_question_profiles():
+    return [QuestionProfileResponse(**profile) for profile in list_question_profiles()]
+
+
+@app.get("/evaluations", response_model=list[EvaluationHistoryItem], response_model_exclude_none=True)
+def fetch_recent_evaluations(limit: int = 100):
+    return [EvaluationHistoryItem(**item) for item in list_recent_evaluation_records(limit=limit)]
+
+
+@app.get("/evaluations/students/{student_id}", response_model=list[EvaluationHistoryItem], response_model_exclude_none=True)
+def fetch_student_evaluations(student_id: str, limit: int = 100):
+    return [EvaluationHistoryItem(**item) for item in list_student_evaluation_records(student_id=student_id, limit=limit)]
