@@ -103,7 +103,7 @@ SUPPORTED_LANGUAGES = [
     "python",
     "java",
     "html",
-    "json"
+    "javascript"
 ]
 
 

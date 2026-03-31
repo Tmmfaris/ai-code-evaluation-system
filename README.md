@@ -63,7 +63,7 @@ Request fields:
 - `question`: original question text
 - `model_answer`: expected answer or sample answer
 - `student_answer`: submitted student answer
-- `language`: language of the answer, such as `python`, `java`, `html`, or `json`
+- `language`: language of the answer, such as `python`, `java`, `html`, or `javascript`
 
 Validation limits:
 
@@ -161,13 +161,13 @@ Configured language support includes:
 - `python`
 - `java`
 - `html`
-- `json`
+- `javascript`
 
 Current behavior by language:
 
 - `python`: strongest deterministic coverage, including many common academy-style algorithm questions
 - `java`: deterministic coverage for many common method-based academy questions
-- `html` and `json`: still supported, with syntax/structure checks and LLM-assisted evaluation
+- `html` and `javascript`: still supported, with syntax/structure checks and LLM-assisted evaluation
 
 ## Accuracy Notes
 

@@ -73,6 +73,8 @@ Evaluation rules:
 - Do not suggest replacing working logic with a built-in function unless the current approach has a meaningful correctness, efficiency, or readability problem.
 - Do not ask the student to match the reference solution style for consistency alone.
 - If the student solution is correct, feedback should focus on real issues only, not preference-based rewrites.
+- If the question explicitly requires a technique or construct, such as recursion, streams, Set, Map, exception handling, abstract class design, or a specific safety requirement, treat missing that requirement as a real grading issue.
+- Do not label valid standalone Java methods or valid Java statement snippets as syntax errors just because they are not wrapped in a full class.
 - Follow these rules strictly.
 - Score correctness first.
 - Minor inefficiencies must not reduce correctness score.

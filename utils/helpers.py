@@ -49,8 +49,8 @@ def detect_language(code):
     if "<html" in code_lower or "<div" in code_lower:
         return "html"
 
-    if code.strip().startswith("{"):
-        return "json"
+    if "function " in code_lower or "const " in code_lower or "let " in code_lower or "=>" in code_lower:
+        return "javascript"
 
     return "unknown"
 

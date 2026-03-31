@@ -5,7 +5,7 @@
 from .python_checker import check_python_syntax
 from .java_checker import check_java_syntax
 from .html_checker import check_html_syntax
-from .json_checker import check_json_syntax
+from .javascript_checker import check_javascript_syntax
 
 
 # =========================
@@ -16,7 +16,7 @@ SYNTAX_CHECKERS = {
     "python": check_python_syntax,
     "java": check_java_syntax,
     "html": check_html_syntax,
-    "json": check_json_syntax,
+    "javascript": check_javascript_syntax,
 }
 
 

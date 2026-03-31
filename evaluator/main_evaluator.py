@@ -8,8 +8,8 @@ from llm.response_parser import parse_llm_response
 
 from evaluator.rubric_engine import calculate_rubric_score
 from evaluator.concept_evaluator import evaluate_concepts
-from evaluator.execution_engine import analyze_execution
-from evaluator.rule_engine import analyze_submission_rules, apply_rule_adjustments
+from evaluator.execution import analyze_execution
+from evaluator.rules import analyze_submission_rules, apply_rule_adjustments
 from evaluator.scoring_engine import combine_scores
 
 from utils.logger import log_info, log_error, log_request, log_result
@@ -114,6 +114,14 @@ def build_deterministic_result(execution_finding, structure_analysis):
             "readability": readability,
             "structure": 15,
         }
+    elif result_type == "mostly_correct":
+        readability = 15 if line_count <= 6 else 13
+        rubric = {
+            "correctness": 34,
+            "efficiency": 14,
+            "readability": readability,
+            "structure": 15,
+        }
     elif result_type == "correct_but_inefficient":
         readability = 15 if line_count <= 6 else 13
         rubric = {
@@ -149,6 +157,24 @@ def build_deterministic_result(execution_finding, structure_analysis):
         "feedback": execution_finding.get("feedback", ""),
         "improvements": execution_finding.get("suggestion", ""),
         "rubric": rubric,
+    }
+
+
+def build_syntax_error_result(syntax_result):
+    message = (syntax_result or {}).get("error", "Syntax error")
+    line = (syntax_result or {}).get("line")
+    detail = f"{message} on line {line}" if line else message
+
+    return {
+        "score": 0,
+        "feedback": f"The code has a syntax error and cannot be evaluated correctly: {detail}.",
+        "improvements": "Fix the syntax error before resubmitting the answer.",
+        "rubric": {
+            "correctness": 0,
+            "efficiency": 0,
+            "readability": 5,
+            "structure": 5,
+        },
     }
 
 
@@ -294,6 +320,12 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 execution_finding=execution_finding,
                 structure_analysis=structure_analysis,
             )
+            rubric_score = dict(parsed_llm["rubric"])
+        elif language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
+            log_info(
+                f"Evaluation path | Student: {student_id} | Language: {language} | Mode: syntax_error"
+            )
+            parsed_llm = build_syntax_error_result(syntax_result)
             rubric_score = dict(parsed_llm["rubric"])
         else:
             reason = "no deterministic pattern matched"
