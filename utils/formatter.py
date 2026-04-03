@@ -37,6 +37,7 @@ def format_final_output(student_id, llm_result, rubric_scores):
         "status": "success",
         "student_id": student_id,
         "score": llm_result.get("score", 0),
+        "logic_evaluation": llm_result.get("logic_evaluation"),
         "feedback": llm_result.get("feedback", ""),
         "suggestions": llm_result.get("improvements", ""),
         "concepts": llm_result.get("concepts", {}),

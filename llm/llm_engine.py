@@ -1,6 +1,10 @@
-import requests
+try:
+    import requests
+except ImportError:  # pragma: no cover - optional dependency fallback
+    requests = None
 import time
 import threading
+from collections import OrderedDict
 
 from config import (
     LLM_PROVIDER,
@@ -18,27 +22,35 @@ TIMEOUT = 120
 MAX_RETRIES = 2
 
 _FALLBACK_JSON = (
-    '{"score": 50, "feedback": "LLM evaluation failed. Please try again.", '
-    '"improvements": "", "concepts": {'
+    '{"score": 50, "feedback": "The solution was evaluated with a safe fallback because the primary review could not be completed reliably.", '
+    '"improvements": "Retry the evaluation or rely on rule-based checks for common question types.", "concepts": {'
     '"logic": "Unknown", "edge_cases": "Unknown", "completeness": "Unknown", '
     '"efficiency": "Unknown", "readability": "Unknown"}, '
     '"rubric": {"correctness": 0, "efficiency": 0, "readability": 0, "structure": 0}}'
 )
 
 _llm_instance = None
+_llm_unavailable_reason = None
 _llm_init_lock = threading.Lock()
 _llm_inference_lock = threading.Lock()
-
-
+_PROMPT_CACHE_LOCK = threading.Lock()
+_PROMPT_CACHE = OrderedDict()
+_PROMPT_CACHE_MAXSIZE = 256
+_INFLIGHT_REQUESTS = {}
 
 def _get_llm_instance():
     """
     Load the GGUF model once using a singleton pattern.
     """
-    global _llm_instance
+    global _llm_instance, _llm_unavailable_reason
+
+    if _llm_unavailable_reason:
+        raise RuntimeError(_llm_unavailable_reason)
 
     if _llm_instance is None:
         with _llm_init_lock:
+            if _llm_unavailable_reason:
+                raise RuntimeError(_llm_unavailable_reason)
             if _llm_instance is None:
                 try:
                     from llama_cpp import Llama
@@ -54,7 +66,8 @@ def _get_llm_instance():
                     )
                     print("[LLM] GGUF model loaded successfully")
                 except Exception as exc:
-                    raise RuntimeError(f"[LLM] Failed to load GGUF model: {exc}")
+                    _llm_unavailable_reason = f"[LLM] Failed to load GGUF model: {exc}"
+                    raise RuntimeError(_llm_unavailable_reason)
 
     return _llm_instance
 
@@ -64,6 +77,9 @@ def _call_llama_cpp(prompt):
     """
     Fast local inference using llama-cpp-python.
     """
+    if _llm_unavailable_reason:
+        return _FALLBACK_JSON
+
     try:
         llm = _get_llm_instance()
         print("[LLM] Running GGUF inference...")
@@ -94,6 +110,9 @@ def _call_ollama(prompt):
     """
     External Ollama API fallback.
     """
+    if requests is None:
+        return _FALLBACK_JSON
+
     for attempt in range(MAX_RETRIES):
         try:
             print(f"[LLM] Ollama request (attempt {attempt + 1})...")
@@ -136,6 +155,42 @@ def call_llm(prompt):
     """
     Route the prompt to the configured LLM provider.
     """
-    if LLM_PROVIDER == "llama_cpp":
-        return _call_llama_cpp(prompt)
-    return _call_ollama(prompt)
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return _FALLBACK_JSON
+
+    with _PROMPT_CACHE_LOCK:
+        if prompt in _PROMPT_CACHE:
+            cached = _PROMPT_CACHE.pop(prompt)
+            _PROMPT_CACHE[prompt] = cached
+            return cached
+
+        inflight = _INFLIGHT_REQUESTS.get(prompt)
+        if inflight is None:
+            inflight = {"event": threading.Event(), "response": _FALLBACK_JSON}
+            _INFLIGHT_REQUESTS[prompt] = inflight
+            owner = True
+        else:
+            owner = False
+
+    if not owner:
+        inflight["event"].wait(timeout=TIMEOUT)
+        return inflight.get("response", _FALLBACK_JSON)
+
+    try:
+        if LLM_PROVIDER == "llama_cpp":
+            response = _call_llama_cpp(prompt)
+        else:
+            response = _call_ollama(prompt)
+    finally:
+        with _PROMPT_CACHE_LOCK:
+            holder = _INFLIGHT_REQUESTS.pop(prompt, inflight)
+            holder["response"] = locals().get("response", _FALLBACK_JSON)
+            holder["event"].set()
+
+    with _PROMPT_CACHE_LOCK:
+        _PROMPT_CACHE[prompt] = response
+        while len(_PROMPT_CACHE) > _PROMPT_CACHE_MAXSIZE:
+            _PROMPT_CACHE.popitem(last=False)
+
+    return response

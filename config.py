@@ -103,7 +103,11 @@ SUPPORTED_LANGUAGES = [
     "python",
     "java",
     "html",
-    "javascript"
+    "javascript",
+    "css",
+    "react",
+    "mongodb",
+    "mysql",
 ]
 
 

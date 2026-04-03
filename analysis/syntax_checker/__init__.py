@@ -6,6 +6,10 @@ from .python_checker import check_python_syntax
 from .java_checker import check_java_syntax
 from .html_checker import check_html_syntax
 from .javascript_checker import check_javascript_syntax
+from .css_checker import check_css_syntax
+from .react_checker import check_react_syntax
+from .mongodb_checker import check_mongodb_syntax
+from .mysql_checker import check_mysql_syntax
 
 
 # =========================
@@ -17,6 +21,10 @@ SYNTAX_CHECKERS = {
     "java": check_java_syntax,
     "html": check_html_syntax,
     "javascript": check_javascript_syntax,
+    "css": check_css_syntax,
+    "react": check_react_syntax,
+    "mongodb": check_mongodb_syntax,
+    "mysql": check_mysql_syntax,
 }
 
 

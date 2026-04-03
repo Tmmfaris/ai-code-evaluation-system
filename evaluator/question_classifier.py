@@ -1,4 +1,9 @@
-def classify_question(question, language):
+from copy import deepcopy
+from functools import lru_cache
+
+
+@lru_cache(maxsize=512)
+def _classify_question_cached(question, language):
     question_text = (question or "").lower()
     language = (language or "").lower()
 
@@ -16,6 +21,18 @@ def classify_question(question, language):
         profile["risk"] = risk
         profile["markers"] = [marker for marker in markers if marker]
         return profile
+
+    if language == "react":
+        return mark("frontend_component", "react_component", "high", "react", "frontend", "jsx")
+
+    if language == "css":
+        return mark("frontend_style", "styling", "medium", "css", "frontend", "styling")
+
+    if language == "mysql":
+        return mark("database_query", "sql_query", "high", "sql", "database", "mysql")
+
+    if language == "mongodb":
+        return mark("database_query", "document_query", "high", "mongodb", "database", "nosql")
 
     if any(token in question_text for token in ("read a file", "count number of lines", "count number of words", "csv", "json", "xml")):
         task = "parsing" if any(token in question_text for token in ("json", "xml", "csv")) else "file_io"
@@ -46,3 +63,7 @@ def classify_question(question, language):
         return mark("general_code", "function_logic", "medium", "general")
 
     return profile
+
+
+def classify_question(question, language):
+    return deepcopy(_classify_question_cached(question or "", language or ""))

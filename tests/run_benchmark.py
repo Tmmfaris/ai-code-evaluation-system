@@ -15,6 +15,12 @@ def load_cases():
         return json.load(handle)
 
 
+def load_thresholds():
+    path = os.path.join(os.path.dirname(__file__), "benchmark_thresholds.json")
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def run_benchmark():
     cases = load_cases()
     total = 0
@@ -78,14 +84,55 @@ def run_benchmark():
     return {
         "passed": passed,
         "total": total,
+        "overall_accuracy": (passed / total * 100) if total else 0.0,
         "by_language": dict(by_language),
         "by_category": dict(by_category),
         "failures": failures,
     }
 
 
+def check_thresholds(summary, thresholds=None):
+    thresholds = thresholds or load_thresholds()
+    errors = []
+
+    overall_min = thresholds.get("overall_min_accuracy")
+    if overall_min is not None and summary["overall_accuracy"] < overall_min:
+        errors.append(
+            f"Overall accuracy {summary['overall_accuracy']:.1f}% is below required {overall_min:.1f}%"
+        )
+
+    for language, min_pct in sorted((thresholds.get("by_language") or {}).items()):
+        stats = summary["by_language"].get(language)
+        if not stats or not stats["total"]:
+            errors.append(f"No benchmark coverage found for language '{language}'")
+            continue
+        pct = stats["passed"] / stats["total"] * 100
+        if pct < min_pct:
+            errors.append(
+                f"Language '{language}' accuracy {pct:.1f}% is below required {min_pct:.1f}%"
+            )
+
+    for category, min_pct in sorted((thresholds.get("by_category") or {}).items()):
+        stats = summary["by_category"].get(category)
+        if not stats or not stats["total"]:
+            errors.append(f"No benchmark coverage found for category '{category}'")
+            continue
+        pct = stats["passed"] / stats["total"] * 100
+        if pct < min_pct:
+            errors.append(
+                f"Category '{category}' accuracy {pct:.1f}% is below required {min_pct:.1f}%"
+            )
+
+    return errors
+
+
 def main():
-    run_benchmark()
+    summary = run_benchmark()
+    threshold_errors = check_thresholds(summary)
+    if threshold_errors:
+        print("\nThreshold failures:")
+        for item in threshold_errors:
+            print(f"- {item}")
 
 
 if __name__ == "__main__":

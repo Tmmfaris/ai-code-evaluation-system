@@ -1,3 +1,6 @@
+from copy import deepcopy
+from functools import lru_cache
+
 from config import (
     QUESTION_PROFILE_BACKEND,
     QUESTION_PROFILE_DB_PATH,
@@ -24,12 +27,26 @@ _REPOSITORY = _build_repository()
 
 
 def upsert_question_profile(payload: dict) -> dict:
-    return _REPOSITORY.upsert(payload)
+    profile = _REPOSITORY.upsert(payload)
+    _get_question_profile_cached.cache_clear()
+    _list_question_profiles_cached.cache_clear()
+    return profile
 
 
-def get_question_profile(question_id: str):
+@lru_cache(maxsize=512)
+def _get_question_profile_cached(question_id: str):
     return _REPOSITORY.get(question_id)
 
 
+def get_question_profile(question_id: str):
+    profile = _get_question_profile_cached(question_id)
+    return deepcopy(profile) if profile else profile
+
+
+@lru_cache(maxsize=1)
+def _list_question_profiles_cached():
+    return tuple(_REPOSITORY.list_all())
+
+
 def list_question_profiles():
-    return _REPOSITORY.list_all()
+    return deepcopy(list(_list_question_profiles_cached()))

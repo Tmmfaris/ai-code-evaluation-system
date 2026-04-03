@@ -1,4 +1,7 @@
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:  # pragma: no cover - optional dependency fallback
+    BeautifulSoup = None
 
 
 def check_html_syntax(code):
@@ -19,6 +22,28 @@ def check_html_syntax(code):
         }
 
     try:
+        if BeautifulSoup is None:
+            open_tags = code.count("<")
+            close_tags = code.count(">")
+            if open_tags == 0 or close_tags == 0:
+                return {
+                    "valid": False,
+                    "error": "No valid HTML tags found",
+                    "line": None
+                }
+            if open_tags != close_tags:
+                return {
+                    "valid": False,
+                    "error": "Unbalanced HTML tags",
+                    "line": None
+                }
+            warning = None if "<html" in code.lower() else "Missing <html> root element (optional but recommended)"
+            return {
+                "valid": True,
+                "error": warning,
+                "line": None
+            }
+
         soup = BeautifulSoup(code, "html.parser")
 
         # -------------------------

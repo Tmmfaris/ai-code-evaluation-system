@@ -40,6 +40,16 @@
     "expected_max_score": 20
   },
   {
+    "id": "java_add_returns_first_operand_wrong",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to add two numbers",
+    "model_answer": "static int add(int a,int b){ return a+b; }",
+    "student_answer": "static int add(int a,int b){ return a; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
     "id": "java_min_sort_partial",
     "language": "java",
     "category": "arrays",
@@ -78,5 +88,605 @@
     "student_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return s; }",
     "expected_min_score": 0,
     "expected_max_score": 20
+  },
+  {
+    "id": "py_factorial_non_recursive_wrong",
+    "language": "python",
+    "category": "recursion",
+    "question": "Write a function to find factorial using recursion",
+    "model_answer": "def fact(n): return 1 if n == 0 else n * fact(n - 1)",
+    "student_answer": "def fact(n): return n * n",
+    "expected_min_score": 10,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_add_uses_subtraction_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Write a function to add two numbers",
+    "model_answer": "def add(a, b): return a + b",
+    "student_answer": "def add(a, b): return a - b",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_add_returns_first_operand_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Write a function to add two numbers",
+    "model_answer": "def add(a, b): return a + b",
+    "student_answer": "def add(a, b): return a",
+    "expected_min_score": 10,
+    "expected_max_score": 20
+  },
+  {
+    "id": "css_basic_rule_full",
+    "language": "css",
+    "category": "frontend_style",
+    "question": "Write CSS to make all h1 elements red",
+    "model_answer": "h1 { color: red; }",
+    "student_answer": "h1 { color: red; }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "css_wrong_property_low",
+    "language": "css",
+    "category": "frontend_style",
+    "question": "Write CSS to make all h1 elements red",
+    "model_answer": "h1 { color: red; }",
+    "student_answer": "h1 { font-size: 20px; }",
+    "expected_min_score": 0,
+    "expected_max_score": 30
+  },
+  {
+    "id": "react_component_full",
+    "language": "react",
+    "category": "frontend_component",
+    "question": "Create a React component that renders a heading Hello",
+    "model_answer": "export default function App(){ return <h1>Hello</h1>; }",
+    "student_answer": "export default function App(){ return <h1>Hello</h1>; }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "react_plain_js_low",
+    "language": "react",
+    "category": "frontend_component",
+    "question": "Create a React component that renders a heading Hello",
+    "model_answer": "export default function App(){ return <h1>Hello</h1>; }",
+    "student_answer": "function hello(){ return 'Hello'; }",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "mysql_select_full",
+    "language": "mysql",
+    "category": "database_query",
+    "question": "Write a MySQL query to select all rows from students",
+    "model_answer": "SELECT * FROM students;",
+    "student_answer": "SELECT * FROM students;",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "mysql_wrong_table_low",
+    "language": "mysql",
+    "category": "database_query",
+    "question": "Write a MySQL query to select all rows from students",
+    "model_answer": "SELECT * FROM students;",
+    "student_answer": "SELECT * FROM teachers;",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "mongodb_find_full",
+    "language": "mongodb",
+    "category": "database_query",
+    "question": "Write a MongoDB query to find all active students",
+    "model_answer": "db.students.find({ active: true })",
+    "student_answer": "db.students.find({ active: true })",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "mongodb_wrong_collection_low",
+    "language": "mongodb",
+    "category": "database_query",
+    "question": "Write a MongoDB query to find all active students",
+    "model_answer": "db.students.find({ active: true })",
+    "student_answer": "db.teachers.find({ active: true })",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "py_remove_spaces_alt_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to remove spaces from a string",
+    "model_answer": "def remove_spaces(s): return s.replace(' ', '')",
+    "student_answer": "def remove_spaces(s): return ''.join(s.split())",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_vowels_missing_lower_partial",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to count vowels in a string",
+    "model_answer": "def count_vowels(s): return sum(1 for c in s.lower() if c in 'aeiou')",
+    "student_answer": "def count_vowels(s): return sum(1 for c in s if c in 'aeiou')",
+    "expected_min_score": 70,
+    "expected_max_score": 90
+  },
+  {
+    "id": "py_palindrome_constant_true_low",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to check if a string is a palindrome",
+    "model_answer": "def is_palindrome(s): return s == s[::-1]",
+    "student_answer": "def is_palindrome(s): return True",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_positive_includes_zero_partial",
+    "language": "python",
+    "category": "basics",
+    "question": "Write a function to check if number is positive",
+    "model_answer": "def is_positive(n): return n > 0",
+    "student_answer": "def is_positive(n): return n >= 0",
+    "expected_min_score": 45,
+    "expected_max_score": 80
+  },
+  {
+    "id": "py_longest_word_sorted_alt_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to find longest word in a sentence",
+    "model_answer": "def longest_word(s): return max(s.split(), key=len)",
+    "student_answer": "def longest_word(s): return sorted(s.split(), key=len)[-1]",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "py_rotate_reverse_low",
+    "language": "python",
+    "category": "lists",
+    "question": "Write a function to rotate list by k steps",
+    "model_answer": "def rotate(lst, k): return lst[k:] + lst[:k]",
+    "student_answer": "def rotate(lst, k): return lst[::-1]",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_common_elements_duplicates_partial",
+    "language": "python",
+    "category": "lists",
+    "question": "Write a function to find common elements in two lists",
+    "model_answer": "def common(a, b): return list(set(a) & set(b))",
+    "student_answer": "def common(a, b): return [i for i in a if i in b]",
+    "expected_min_score": 40,
+    "expected_max_score": 70
+  },
+  {
+    "id": "java_binary_search_linear_partial",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to implement binary search",
+    "model_answer": "static int bs(int[] a,int x){ int l=0,r=a.length-1; while(l<=r){ int m=(l+r)/2; if(a[m]==x) return m; else if(a[m]<x) l=m+1; else r=m-1;} return -1; }",
+    "student_answer": "static int bs(int[] a,int x){ for(int i=0;i<a.length;i++){ if(a[i]==x) return i;} return -1; }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_set_required_returns_input_low",
+    "language": "java",
+    "category": "collections",
+    "question": "Write a method to remove duplicates using Set",
+    "model_answer": "static List<Integer> rd(List<Integer> l){ return new ArrayList<>(new HashSet<>(l)); }",
+    "student_answer": "static List<Integer> rd(List<Integer> l){ return l; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "javascript_even_full",
+    "language": "javascript",
+    "category": "basics",
+    "question": "Write a JavaScript function to check if a number is even",
+    "model_answer": "function isEven(n){ return n % 2 === 0; }",
+    "student_answer": "function isEven(n){ return n % 2 === 0; }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "javascript_add_returns_first_operand_wrong",
+    "language": "javascript",
+    "category": "basics",
+    "question": "Write a JavaScript function to add two numbers",
+    "model_answer": "function add(a, b){ return a + b; }",
+    "student_answer": "function add(a, b){ return a; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "javascript_even_constant_true_low",
+    "language": "javascript",
+    "category": "basics",
+    "question": "Write a JavaScript function to check if a number is even",
+    "model_answer": "function isEven(n){ return n % 2 === 0; }",
+    "student_answer": "function isEven(n){ return true; }",
+    "expected_min_score": 0,
+    "expected_max_score": 25
+  },
+  {
+    "id": "html_heading_full",
+    "language": "html",
+    "category": "frontend_markup",
+    "question": "Write HTML to display a heading Hello",
+    "model_answer": "<h1>Hello</h1>",
+    "student_answer": "<h1>Hello</h1>",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "html_wrong_tag_low",
+    "language": "html",
+    "category": "frontend_markup",
+    "question": "Write HTML to display a heading Hello",
+    "model_answer": "<h1>Hello</h1>",
+    "student_answer": "<p>Hello</p>",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "py_csv_average_returns_zero_low",
+    "language": "python",
+    "category": "files",
+    "question": "Write a function to calculate average from CSV file (values column)",
+    "model_answer": "import csv\ndef avg(file):\n with open(file) as f:\n  r=csv.DictReader(f)\n  vals=[int(row['value']) for row in r]\n return sum(vals)/len(vals)",
+    "student_answer": "def avg(file): return 0",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_safe_div_without_exception_low",
+    "language": "python",
+    "category": "exceptions",
+    "question": "Write a function to safely divide two numbers using exception handling",
+    "model_answer": "def safe_div(a,b):\n try:\n  return a/b\n except:\n  return 0",
+    "student_answer": "def safe_div(a,b):\n return a/b",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_word_frequency_count_split_low",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to count frequency of words in text",
+    "model_answer": "def freq(s):\n d={}\n for w in s.split():\n  d[w]=d.get(w,0)+1\n return d",
+    "student_answer": "def freq(s): return {w:s.count(w) for w in s.split()}",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_email_constant_true_low",
+    "language": "python",
+    "category": "strings",
+    "question": "Write a function to validate email (basic check)",
+    "model_answer": "def is_email(s): return '@' in s and '.' in s",
+    "student_answer": "def is_email(s): return True",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_positive_includes_zero_partial",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to check if number is positive",
+    "model_answer": "static boolean isPos(int n){ return n>0; }",
+    "student_answer": "static boolean isPos(int n){ return n>=0; }",
+    "expected_min_score": 40,
+    "expected_max_score": 70
+  },
+  {
+    "id": "java_reverse_array_returns_input_low",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to reverse array",
+    "model_answer": "static int[] rev(int[] arr){ for(int i=0;i<arr.length/2;i++){ int t=arr[i]; arr[i]=arr[arr.length-1-i]; arr[arr.length-1-i]=t;} return arr; }",
+    "student_answer": "static int[] rev(int[] arr){ return arr; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_digit_nonempty_wrong_low",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to check if string contains only digits",
+    "model_answer": "static boolean isDigit(String s){ return s.matches(\"\\\\d+\"); }",
+    "student_answer": "static boolean isDigit(String s){ return s.length()>0; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_reverse_words_loop_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to reverse words in a sentence",
+    "model_answer": "static String revWords(String s){ String[] w=s.split(\" \"); Collections.reverse(Arrays.asList(w)); return String.join(\" \",w);} ",
+    "student_answer": "static String revWords(String s){ String[] w=s.split(\" \"); String res=\"\"; for(int i=w.length-1;i>=0;i--){ res+=w[i]+\" \"; } return res.trim(); }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_gcd_product_wrong_low",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to find GCD of two numbers",
+    "model_answer": "static int gcd(int a,int b){ return b==0?a:gcd(b,a%b);} ",
+    "student_answer": "static int gcd(int a,int b){ return a*b; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_armstrong_constant_true_low",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to check Armstrong number",
+    "model_answer": "static boolean arm(int n){ int s=0,t=n; while(t>0){ int d=t%10; s+=d*d*d; t/=10;} return s==n;}",
+    "student_answer": "static boolean arm(int n){ return true; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_sort_array_empty_body_low",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to sort array",
+    "model_answer": "static void sort(int[] arr){ Arrays.sort(arr);} ",
+    "student_answer": "static void sort(int[] arr){ }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_second_largest_returns_max_low",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to find second largest",
+    "model_answer": "static int sl(int[] arr){ Arrays.sort(arr); return arr[arr.length-2]; }",
+    "student_answer": "static int sl(int[] arr){ int max=arr[0]; for(int i:arr){ if(i>max) max=i;} return max; }",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "java_numeric_parseint_trycatch_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to check if string is numeric",
+    "model_answer": "static boolean num(String s){ return s.matches(\"\\\\d+\"); }",
+    "student_answer": "static boolean num(String s){ try{ Integer.parseInt(s); return true;} catch(Exception e){ return false;} }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_power_loop_full",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to find power (a^b)",
+    "model_answer": "static int pow(int a,int b){ return (int)Math.pow(a,b);} ",
+    "student_answer": "static int pow(int a,int b){ int r=1; for(int i=0;i<b;i++) r*=a; return r; }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_remove_spaces_replaceall_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to remove spaces from a string",
+    "model_answer": "static String rs(String s){ return s.replace(\" \",\"\"); }",
+    "student_answer": "static String rs(String s){ return s.replaceAll(\"\\\\s+\",\"\"); }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_average_integer_division_partial",
+    "language": "java",
+    "category": "arrays",
+    "question": "Write a method to find average of array",
+    "model_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return (double)s/arr.length; }",
+    "student_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return s/arr.length; }",
+    "expected_min_score": 55,
+    "expected_max_score": 80
+  },
+  {
+    "id": "java_prime_missing_low_bound_partial",
+    "language": "java",
+    "category": "basics",
+    "question": "Write a method to check if a number is prime",
+    "model_answer": "static boolean isPrime(int n){ if(n<2) return false; for(int i=2;i*i<=n;i++){ if(n%i==0) return false;} return true; }",
+    "student_answer": "static boolean isPrime(int n){ for(int i=2;i<n;i++){ if(n%i==0) return false;} return true; }",
+    "expected_min_score": 80,
+    "expected_max_score": 90
+  },
+  {
+    "id": "java_word_count_split_space_partial",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to count words",
+    "model_answer": "static int wc(String s){ return s.trim().split(\"\\\\s+\").length; }",
+    "student_answer": "static int wc(String s){ return s.split(\" \").length; }",
+    "expected_min_score": 75,
+    "expected_max_score": 90
+  },
+  {
+    "id": "java_vowels_missing_uppercase_partial",
+    "language": "java",
+    "category": "strings",
+    "question": "Write a method to count vowels",
+    "model_answer": "static int v(String s){ int c=0; for(char ch:s.toLowerCase().toCharArray()){ if(\"aeiou\".indexOf(ch)!=-1) c++; } return c; }",
+    "student_answer": "static int v(String s){ int c=0; for(char ch:s.toCharArray()){ if(\"aeiou\".indexOf(ch)!=-1) c++; } return c; }",
+    "expected_min_score": 75,
+    "expected_max_score": 90
+  },
+  {
+    "id": "java_char_frequency_containskey_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Find frequency of characters in a string",
+    "model_answer": "static Map<Character,Integer> freq(String s){ Map<Character,Integer> m=new HashMap<>(); for(char c:s.toCharArray()) m.put(c,m.getOrDefault(c,0)+1); return m; }",
+    "student_answer": "static Map<Character,Integer> freq(String s){ Map<Character,Integer> m=new HashMap<>(); for(char c:s.toCharArray()){ if(m.containsKey(c)) m.put(c,m.get(c)+1); else m.put(c,1);} return m; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_balanced_parentheses_counter_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Check balanced parentheses",
+    "model_answer": "static boolean bal(String s){ Stack<Character> st=new Stack<>(); for(char c:s.toCharArray()){ if(c=='(') st.push(c); else if(c==')'){ if(st.isEmpty()) return false; st.pop(); }} return st.isEmpty(); }",
+    "student_answer": "static boolean bal(String s){ int c=0; for(char ch:s.toCharArray()){ if(ch=='(') c++; else if(ch==')') c--; if(c<0) return false;} return c==0; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_first_non_repeating_index_scan_high",
+    "language": "java",
+    "category": "strings",
+    "question": "Find first non-repeating character",
+    "model_answer": "static char fnr(String s){ Map<Character,Integer> m=new HashMap<>(); for(char c:s.toCharArray()) m.put(c,m.getOrDefault(c,0)+1); for(char c:s.toCharArray()) if(m.get(c)==1) return c; return '_'; }",
+    "student_answer": "static char fnr(String s){ for(int i=0;i<s.length();i++){ if(s.indexOf(s.charAt(i))==s.lastIndexOf(s.charAt(i))) return s.charAt(i);} return '_'; }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_sorted_constant_true_low",
+    "language": "java",
+    "category": "arrays",
+    "question": "Check if array is sorted",
+    "model_answer": "static boolean sorted(int[] arr){ for(int i=1;i<arr.length;i++) if(arr[i]<arr[i-1]) return false; return true; }",
+    "student_answer": "static boolean sorted(int[] arr){ return true; }",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "java_sum_even_sums_all_low",
+    "language": "java",
+    "category": "arrays",
+    "question": "Find sum of even numbers in array",
+    "model_answer": "static int sumEven(int[] arr){ int s=0; for(int i:arr) if(i%2==0) s+=i; return s; }",
+    "student_answer": "static int sumEven(int[] arr){ int s=0; for(int i:arr) s+=i; return s; }",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "java_manual_merge_arrays_full",
+    "language": "java",
+    "category": "arrays",
+    "question": "Merge two arrays",
+    "model_answer": "static int[] merge(int[] a,int[] b){ int[] r=new int[a.length+b.length]; System.arraycopy(a,0,r,0,a.length); System.arraycopy(b,0,r,a.length,b.length); return r; }",
+    "student_answer": "static int[] merge(int[] a,int[] b){ int[] r=new int[a.length+b.length]; for(int i=0;i<a.length;i++) r[i]=a[i]; for(int i=0;i<b.length;i++) r[a.length+i]=b[i]; return r; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_duplicates_returns_seen_set_low",
+    "language": "java",
+    "category": "arrays",
+    "question": "Find duplicates in array",
+    "model_answer": "static Set<Integer> dup(int[] arr){ Set<Integer> s=new HashSet<>(),d=new HashSet<>(); for(int i:arr){ if(!s.add(i)) d.add(i);} return d; }",
+    "student_answer": "static Set<Integer> dup(int[] arr){ Set<Integer> s=new HashSet<>(); for(int i:arr){ if(s.contains(i)) return s; else s.add(i);} return s; }",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "java_toint_charcode_low",
+    "language": "java",
+    "category": "strings",
+    "question": "Convert string to integer",
+    "model_answer": "static int toInt(String s){ return Integer.parseInt(s); }",
+    "student_answer": "static int toInt(String s){ return (int)s.charAt(0); }",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "java_ipv4_trycatch_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Check if a string is a valid IPv4 address",
+    "model_answer": "public static boolean isIP(String s){ String[] p=s.split(\"\\\\.\"); if(p.length!=4) return false; for(String x:p){ int n=Integer.parseInt(x); if(n<0||n>255) return false;} return true; }",
+    "student_answer": "public static boolean isIP(String s){ String[] p=s.split(\"\\\\.\"); if(p.length!=4) return false; for(String x:p){ try{ int n=Integer.parseInt(x); if(n<0||n>255) return false;}catch(Exception e){ return false;} } return true; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_first_missing_positive_sort_partial",
+    "language": "java",
+    "category": "arrays",
+    "question": "Find first missing positive number",
+    "model_answer": "public static int firstMissing(int[] arr){ java.util.Set<Integer> set=new java.util.HashSet<>(); for(int x:arr) set.add(x); for(int i=1;i<=arr.length+1;i++){ if(!set.contains(i)) return i;} return -1; }",
+    "student_answer": "public static int firstMissing(int[] arr){ java.util.Arrays.sort(arr); int expected=1; for(int x:arr){ if(x==expected) expected++; } return expected; }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_factorial_avoid_overflow_partial",
+    "language": "java",
+    "category": "basics",
+    "question": "Find factorial of large number (avoid overflow)",
+    "model_answer": "public static java.math.BigInteger fact(int n){ java.math.BigInteger res=java.math.BigInteger.ONE; for(int i=2;i<=n;i++) res=res.multiply(java.math.BigInteger.valueOf(i)); return res; }",
+    "student_answer": "public static int fact(int n){ int res=1; for(int i=2;i<=n;i++) res*=i; return res; }",
+    "expected_min_score": 55,
+    "expected_max_score": 80
+  },
+  {
+    "id": "java_unique_chars_nested_loops_partial",
+    "language": "java",
+    "category": "strings",
+    "question": "Check if string has all unique characters",
+    "model_answer": "public static boolean unique(String s){ java.util.Set<Character> set=new java.util.HashSet<>(); for(char c:s.toCharArray()){ if(!set.add(c)) return false;} return true; }",
+    "student_answer": "public static boolean unique(String s){ for(int i=0;i<s.length();i++){ for(int j=i+1;j<s.length();j++){ if(s.charAt(i)==s.charAt(j)) return false;} } return true; }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_even_bitwise_full",
+    "language": "java",
+    "category": "basics",
+    "question": "Check if number is even",
+    "model_answer": "public static boolean even(int n){ return n%2==0; }",
+    "student_answer": "public static boolean even(int n){ return (n&1)==0; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_password_char_scan_full",
+    "language": "java",
+    "category": "strings",
+    "question": "Validate a password (min 8 chars, at least 1 digit, 1 uppercase, 1 lowercase)",
+    "model_answer": "public static boolean valid(String s){ return s.length()>=8 && s.matches(\".*[0-9].*\") && s.matches(\".*[A-Z].*\") && s.matches(\".*[a-z].*\"); }",
+    "student_answer": "public static boolean valid(String s){ if(s.length()<8) return false; boolean d=false,u=false,l=false; for(char c:s.toCharArray()){ if(Character.isDigit(c)) d=true; if(Character.isUpperCase(c)) u=true; if(Character.isLowerCase(c)) l=true; } return d&&u&&l; }",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "java_lcp_char_scan_high",
+    "language": "java",
+    "category": "strings",
+    "question": "Find the longest common prefix among strings",
+    "model_answer": "public static String lcp(String[] arr){ String p=arr[0]; for(int i=1;i<arr.length;i++){ while(!arr[i].startsWith(p)) p=p.substring(0,p.length()-1);} return p; }",
+    "student_answer": "public static String lcp(String[] arr){ String res=\"\"; for(int i=0;i<arr[0].length();i++){ char c=arr[0].charAt(i); for(String s:arr){ if(i>=s.length()||s.charAt(i)!=c) return res; } res+=c; } return res; }",
+    "expected_min_score": 80,
+    "expected_max_score": 95
+  },
+  {
+    "id": "java_armstrong_fixed_cube_partial",
+    "language": "java",
+    "category": "basics",
+    "question": "Check if a number is Armstrong",
+    "model_answer": "public static boolean arm(int n){ int k=String.valueOf(n).length(),t=n,sum=0; while(t>0){ int d=t%10; sum+=Math.pow(d,k); t/=10;} return sum==n; }",
+    "student_answer": "public static boolean arm(int n){ int sum=0,t=n; while(t>0){ int d=t%10; sum+=d*d*d; t/=10;} return sum==n; }",
+    "expected_min_score": 55,
+    "expected_max_score": 80
   }
 ]

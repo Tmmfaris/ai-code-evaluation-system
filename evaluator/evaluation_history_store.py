@@ -1,3 +1,7 @@
+import atexit
+import queue
+import threading
+
 from config import EVALUATION_HISTORY_BACKEND, EVALUATION_HISTORY_DB_PATH
 from evaluator.evaluation_history_repository import SqliteEvaluationHistoryRepository
 
@@ -9,10 +13,40 @@ def _build_repository():
 
 
 _REPOSITORY = _build_repository()
+_SAVE_QUEUE = queue.Queue()
+_SAVE_STOP = object()
+
+
+def _save_worker():
+    while True:
+        payload = _SAVE_QUEUE.get()
+        if payload is _SAVE_STOP:
+            _SAVE_QUEUE.task_done()
+            break
+        try:
+            _REPOSITORY.save(payload)
+        finally:
+            _SAVE_QUEUE.task_done()
+
+
+_SAVE_THREAD = threading.Thread(target=_save_worker, daemon=True)
+_SAVE_THREAD.start()
+
+
+def _shutdown_save_worker():
+    try:
+        _SAVE_QUEUE.put(_SAVE_STOP)
+        _SAVE_QUEUE.join()
+    except Exception:
+        pass
+
+
+atexit.register(_shutdown_save_worker)
 
 
 def save_evaluation_record(payload: dict) -> dict:
-    return _REPOSITORY.save(payload)
+    _SAVE_QUEUE.put(dict(payload))
+    return payload
 
 
 def list_recent_evaluation_records(limit: int = 100):

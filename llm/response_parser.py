@@ -91,7 +91,7 @@ def parse_llm_response(response_text):
             print(f"[Parser] Repair failed: {exc}")
 
     print("[Parser] All strategies failed, returning fallback")
-    return fallback_response("LLM response parsing failed, so a safe fallback evaluation was used.")
+    return fallback_response()
 
 
 
@@ -152,7 +152,7 @@ def validate_response(data):
 
 
 
-def fallback_response(message="LLM response error"):
+def fallback_response(message="The solution was evaluated with a safe fallback because the primary review could not be completed reliably."):
     """
     Safe fallback when parsing fails.
     """

@@ -1,0 +1,25 @@
+{
+  "overall_min_accuracy": 85.0,
+  "by_language": {
+    "python": 85.0,
+    "java": 85.0,
+    "javascript": 50.0,
+    "html": 50.0,
+    "css": 50.0,
+    "react": 50.0,
+    "mysql": 50.0,
+    "mongodb": 50.0
+  },
+  "by_category": {
+    "basics": 80.0,
+    "strings": 80.0,
+    "arrays": 80.0,
+    "lists": 80.0,
+    "recursion": 80.0,
+    "collections": 80.0,
+    "frontend_markup": 50.0,
+    "frontend_style": 50.0,
+    "frontend_component": 50.0,
+    "database_query": 50.0
+  }
+}

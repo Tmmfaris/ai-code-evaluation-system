@@ -1,4 +1,5 @@
 import re
+import ast
 
 
 # =========================
@@ -30,6 +31,50 @@ def normalize_code(code):
     return "\n".join(cleaned)
 
 
+def normalize_python_structure(code):
+    """
+    Repairs a narrow Python payload formatting issue:
+    function headers written as `def f(...): stmt` followed by more indented lines.
+    """
+    normalized = normalize_code(code)
+    if not normalized:
+        return normalized
+
+    try:
+        ast.parse(normalized)
+        return normalized
+    except Exception:
+        pass
+
+    lines = normalized.split("\n")
+    if len(lines) < 2:
+        return normalized
+
+    first_line = lines[0]
+    match = re.match(r"^(\s*(?:async\s+)?def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(.*\)\s*:)\s+(.+)$", first_line)
+    if not match:
+        return normalized
+
+    remaining = lines[1:]
+    indent = None
+    for line in remaining:
+        stripped = line.lstrip()
+        if not stripped:
+            continue
+        indent = line[: len(line) - len(stripped)]
+        if indent:
+            break
+    if indent is None:
+        indent = "    "
+
+    rebuilt = "\n".join([match.group(1), f"{indent}{match.group(2)}", *remaining])
+    try:
+        ast.parse(rebuilt)
+        return rebuilt
+    except Exception:
+        return normalized
+
+
 # =========================
 # DETECT LANGUAGE (BASIC)
 # =========================
@@ -46,11 +91,23 @@ def detect_language(code):
     if "public class" in code_lower:
         return "java"
 
-    if "<html" in code_lower or "<div" in code_lower:
+    if any(token in code_lower for token in ("export default", "usestate", "useeffect", "return (", "jsx", "react.")):
+        return "react"
+
+    if "<html" in code_lower or ("<div" in code_lower and "return (" not in code_lower):
         return "html"
+
+    if any(token in code_lower for token in (".class", "#id", "@media", "{", "color:", "display:")) and "function " not in code_lower:
+        return "css"
 
     if "function " in code_lower or "const " in code_lower or "let " in code_lower or "=>" in code_lower:
         return "javascript"
+
+    if any(token in code_lower for token in ("select ", "insert ", "update ", "delete ", "create table", "from ")):
+        return "mysql"
+
+    if any(token in code_lower for token in ("db.", ".find(", ".aggregate(", ".insertone(", ".updateone(")):
+        return "mongodb"
 
     return "unknown"
 

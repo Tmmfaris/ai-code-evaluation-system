@@ -17,7 +17,8 @@ The evaluator combines:
 - rule-based analysis
 - execution-based checks for many Python and Java academy-style questions
 - syntax and structure checks
-- GGUF-based local LLM fallback for cases not covered by the deterministic path
+- GGUF-based local LLM evaluation
+- a second GGUF audit step that can correct score and feedback inside deterministic safety bounds
 
 ## API
 
@@ -69,6 +70,7 @@ Request fields:
 - `model_answer`: expected answer or sample answer
 - `student_answer`: submitted student answer
 - `language`: language of the answer, such as `python`, `java`, `html`, or `javascript`
+- supported values currently include `python`, `java`, `javascript`, `html`, `css`, `react`, `mongodb`, and `mysql`
 
 If the backend has already registered the question through the question-profile API, then `question`, `model_answer`, and `language` can also be resolved from the stored `question_id`.
 
@@ -158,8 +160,12 @@ For each submission, the evaluator uses the following strategy:
 4. use the exact-match fast path when student and model answers are the same
 5. run syntax and structure analysis
 6. try deterministic execution and rule-based evaluation
-7. fall back to the local GGUF LLM only when no deterministic path applies
-8. normalize and format the final score, concepts, and feedback
+7. classify the question and assign a risk profile
+8. run the local GGUF LLM to compare the model answer and student answer, check whether the student logic is correct, and allow valid alternative solutions
+9. merge LLM output with deterministic evidence and rule caps
+10. apply confidence-based score bounds
+11. run a second GGUF audit pass that can correct score and feedback inside the safe bounds
+12. normalize and format the final score, concepts, and feedback
 
 This hybrid flow makes the system much more stable than pure LLM scoring.
 
@@ -171,12 +177,23 @@ Configured language support includes:
 - `java`
 - `html`
 - `javascript`
+- `css`
+- `react`
+- `mongodb`
+- `mysql`
 
 Current behavior by language:
 
 - `python`: strongest deterministic coverage, including many common academy-style algorithm questions
 - `java`: deterministic coverage for many common method-based academy questions
-- `html` and `javascript`: still supported, with syntax/structure checks and LLM-assisted evaluation
+- `javascript` and `html`: supported with syntax/structure checks and LLM-assisted evaluation
+- `css`, `react`, `mongodb`, and `mysql`: supported through guarded syntax checks, question classification, and cautious LLM-assisted evaluation
+
+Important support note:
+
+- `python` and `java` currently have the strongest deterministic accuracy
+- `javascript` and `html` have moderate support
+- `css`, `react`, `mongodb`, and `mysql` are now recognized and evaluated, but they currently rely much more on guarded LLM evaluation than on deep deterministic coverage
 
 ## Accuracy Notes
 
@@ -195,6 +212,20 @@ Important limitation:
 - 100% accuracy is not realistic for unrestricted open-ended code evaluation
 
 If you need the highest possible accuracy for one academy, the best path is to expand deterministic execution coverage for that exact syllabus.
+
+Benchmark protection workflow:
+
+- benchmark cases live in `tests/benchmark_cases.json`
+- minimum acceptable benchmark accuracy lives in `tests/benchmark_thresholds.json`
+- `tests/test_benchmark.py` fails when a change lowers measured accuracy below those thresholds
+- this is the main regression guard against future accuracy drop
+
+Confidence protection workflow:
+
+- each evaluation is assigned an internal confidence tier: `high`, `medium`, or `low`
+- high-confidence cases are usually exact-match or strong deterministic-evidence cases
+- weaker-language or weaker-evidence cases are score-bounded more conservatively
+- this prevents new or risky question types from being over-scored too easily
 
 ## Performance Notes
 
@@ -439,38 +470,115 @@ Multiple students, multiple questions:
 
 ```text
 ai-intelligent-evaluation-model/
-|-- app.py
-|-- config.py
-|-- schemas.py
-|-- analysis/
-|   |-- line_analyzer.py
-|   |-- structure_analyzer.py
-|   `-- syntax_checker/
-|-- evaluator/
-|   |-- concept_evaluator.py
-|   |-- execution_engine.py
-|   |-- main_evaluator.py
-|   |-- rubric_engine.py
-|   |-- rule_engine.py
-|   `-- scoring_engine.py
-|-- llm/
-|   |-- llm_engine.py
-|   |-- prompt_builder.py
-|   `-- response_parser.py
-|-- models/
-|   `-- Phi-3-mini-4k-instruct-q4.gguf
-|-- tests/
-|-- utils/
-`-- logs/
+|-- Core
+|   |-- app.py
+|   |-- config.py
+|   |-- schemas.py
+|   `-- README.md
+|
+|-- Analysis
+|   `-- analysis/
+|       |-- line_analyzer.py
+|       |-- structure_analyzer.py
+|       `-- syntax_checker/
+|           |-- __init__.py
+|           |-- python_checker.py
+|           |-- java_checker.py
+|           |-- javascript_checker.py
+|           |-- html_checker.py
+|           |-- css_checker.py
+|           |-- react_checker.py
+|           |-- mysql_checker.py
+|           `-- mongodb_checker.py
+|
+|-- Evaluation Engine
+|   `-- evaluator/
+|       |-- concept_evaluator.py
+|       |-- evaluation_history_repository.py
+|       |-- evaluation_history_store.py
+|       |-- execution_engine.py
+|       |-- main_evaluator.py
+|       |-- question_classifier.py
+|       |-- question_profile_repository.py
+|       |-- question_profile_store.py
+|       |-- rubric_engine.py
+|       |-- rule_engine.py
+|       |-- scoring_engine.py
+|       |-- comparison/
+|       |   |-- __init__.py
+|       |   |-- answer_comparator.py
+|       |   |-- feedback_generator.py
+|       |   |-- llm_comparator.py
+|       |   |-- logic_checker.py
+|       |   `-- score_calibrator.py
+|       |-- execution/
+|       |   |-- __init__.py
+|       |   |-- python_execution.py
+|       |   |-- java_execution.py
+|       |   `-- shared.py
+|       |-- orchestration/
+|       |   |-- __init__.py
+|       |   |-- confidence.py
+|       |   `-- pipeline.py
+|       `-- rules/
+|           |-- __init__.py
+|           |-- generic_rules.py
+|           |-- python_rules.py
+|           |-- java_rules.py
+|           |-- css_rules.py
+|           |-- react_rules.py
+|           |-- mysql_rules.py
+|           |-- mongodb_rules.py
+|           `-- shared.py
+|
+|-- LLM Layer
+|   |-- llm/
+|   |   |-- llm_engine.py
+|   |   |-- prompt_builder.py
+|   |   `-- response_parser.py
+|   `-- models/
+|       `-- Phi-3-mini-4k-instruct-q4.gguf
+|
+|-- Storage
+|   |-- data/
+|   |   |-- question_profiles.json
+|   |   |-- question_profiles.db
+|   |   |-- evaluation_history.db
+|   |   |-- tmp_eval_test.db
+|   |   `-- tmp_eval_test.db-journal
+|   `-- logs/
+|       `-- app.log
+|
+|-- Tests
+|   `-- tests/
+|       |-- benchmark_cases.json
+|       |-- benchmark_thresholds.json
+|       |-- run_benchmark.py
+|       |-- test_benchmark.py
+|       |-- test_evaluator.py
+|       `-- test_language_support.py
+|
+|-- Utilities
+|   `-- utils/
+|       |-- formatter.py
+|       |-- helpers.py
+|       `-- logger.py
+|
+`-- Development Files
+    |-- .gitignore
+    |-- debug_llm.py
+    |-- debug_output.txt
+    `-- test_llm.py
 ```
 
 ## Recommended Next Improvements
 
-- add persistent evaluation storage
 - add async job processing for large academy batches
 - add exam metadata such as `exam_id`, `course_id`, `subject`, and `max_marks`
 - expand deterministic coverage for more syllabus-specific questions
 - add faculty review and manual override workflow
+- add SQLite/PostgreSQL-backed course, exam, and question-bank metadata beyond the current question-profile store
+- expand deterministic execution and rule coverage for `javascript`, `html`, `css`, `react`, `mongodb`, and `mysql`
 
 ## Question Profile Storage
 

@@ -63,7 +63,7 @@ def build_prompt(
         profile_text = "Category: general | Task: unknown | Risk: medium | Markers: none"
 
     prompt = f"""<|user|>
-You are a strict programming evaluator. Evaluate ONLY the STUDENT CODE. Do NOT give credit for the CORRECT SOLUTION.
+You are a strict programming evaluator. Compare the STUDENT CODE against the CORRECT SOLUTION for logic, but evaluate ONLY the STUDENT CODE. Do NOT give credit just because the reference answer is correct.
 
 Language: {language} | Syntax: {syntax_text}
 Question profile: {profile_text}
@@ -80,12 +80,14 @@ Line summary:
 {line_text}
 
 Evaluation rules:
+- First compare the student answer against the reference answer for intended logic and expected behavior.
 - Do not penalize alternative correct solutions just because they differ from the reference answer.
 - Do not suggest replacing working logic with a built-in function unless the current approach has a meaningful correctness, efficiency, or readability problem.
 - Do not ask the student to match the reference solution style for consistency alone.
 - If the student solution is correct, feedback should focus on real issues only, not preference-based rewrites.
 - If the question explicitly requires a technique or construct, such as recursion, streams, Set, Map, exception handling, abstract class design, or a specific safety requirement, treat missing that requirement as a real grading issue.
 - Use the question profile as routing context: respect the task category and risk level when deciding whether a solution is fully correct, partially correct, or unsafe to over-score.
+- For CSS, React, MongoDB, and MySQL submissions, prefer cautious grading unless the behavior/structure is clearly correct from the provided code.
 - Do not label valid standalone Java methods or valid Java statement snippets as syntax errors just because they are not wrapped in a full class.
 - Follow these rules strictly.
 - Score correctness first.
@@ -103,6 +105,131 @@ score = sum of rubric.
 
 Return ONLY this compact single-line JSON (no spaces/newlines):
 {{"score":<0-100>,"feedback":"<2-3 concise sentences with a clear explanation>","improvements":"<one short improvement sentence or empty string>","rubric":{{"correctness":<0-40>,"efficiency":<0-20>,"readability":<0-15>,"structure":<0-15>}}}}
+<|end|>
+<|assistant|>
+"""
+
+    return prompt
+
+
+def build_comparison_prompt(
+    question,
+    sample_answer,
+    student_answer,
+    language,
+    question_profile=None,
+    syntax_result=None,
+    structure_analysis=None,
+    line_analysis=None,
+    rag_context=None,
+):
+    """
+    Explicit alias for the mentor-preferred evaluation framing:
+    compare model answer and student answer, judge logic, then score and feedback.
+    """
+    return build_prompt(
+        question=question,
+        sample_answer=sample_answer,
+        student_answer=student_answer,
+        language=language,
+        question_profile=question_profile,
+        syntax_result=syntax_result,
+        structure_analysis=structure_analysis,
+        line_analysis=line_analysis,
+        rag_context=rag_context,
+    )
+
+
+def build_audit_prompt(
+    question,
+    sample_answer,
+    student_answer,
+    language,
+    initial_score,
+    initial_feedback,
+    initial_improvements,
+    initial_rubric,
+    question_profile=None,
+    syntax_result=None,
+    execution_finding=None,
+    rule_findings=None,
+    confidence=None,
+):
+    if syntax_result and isinstance(syntax_result, dict):
+        if syntax_result.get("valid"):
+            syntax_text = "No syntax errors detected"
+        else:
+            err = syntax_result.get("error", "Unknown error")
+            line_num = syntax_result.get("line")
+            syntax_text = f"SYNTAX ERROR: {err}" + (f" (line {line_num})" if line_num else "")
+    else:
+        syntax_text = "No syntax issues detected"
+
+    if isinstance(question_profile, dict):
+        category = question_profile.get("category", "general")
+        task_type = question_profile.get("task_type", "unknown")
+        risk = question_profile.get("risk", "medium")
+        markers = ", ".join(question_profile.get("markers", [])) or "none"
+        profile_text = f"Category: {category} | Task: {task_type} | Risk: {risk} | Markers: {markers}"
+    else:
+        profile_text = "Category: general | Task: unknown | Risk: medium | Markers: none"
+
+    execution_text = "None"
+    if isinstance(execution_finding, dict) and execution_finding:
+        execution_text = (
+            f"Type: {execution_finding.get('result_type', 'unknown')} | "
+            f"Feedback: {execution_finding.get('feedback', '')} | "
+            f"Suggestion: {execution_finding.get('suggestion', '')}"
+        )
+
+    rules_text = "None"
+    if isinstance(rule_findings, list) and rule_findings:
+        rendered = []
+        for item in rule_findings[:6]:
+            rendered.append(
+                f"{item.get('type', 'finding')} | "
+                f"correctness_max={item.get('correctness_max')} | "
+                f"feedback={item.get('feedback', '')}"
+            )
+        rules_text = " || ".join(rendered)
+
+    rubric = initial_rubric or {}
+
+    prompt = f"""<|user|>
+You are a strict evaluation auditor. Your job is to check whether an EXISTING evaluation is correct, and correct it if needed.
+
+Language: {language} | Syntax: {syntax_text}
+Question profile: {profile_text}
+Confidence: {confidence or "unknown"}
+Question: {question}
+
+CORRECT SOLUTION (reference only):
+{sample_answer}
+
+STUDENT CODE:
+{student_answer}
+
+Initial evaluation:
+- score: {initial_score}
+- feedback: {initial_feedback}
+- improvements: {initial_improvements}
+- rubric: {rubric}
+
+Deterministic evidence:
+- execution: {execution_text}
+- rule findings: {rules_text}
+
+Audit rules:
+- If the initial evaluation is correct, keep it close.
+- If the initial evaluation is wrong, correct both score and feedback.
+- Respect strong deterministic evidence such as syntax failure, hard fail, zero-pass, or full-pass behavior.
+- Do not over-score clearly wrong solutions.
+- Do not under-score clearly correct solutions.
+- Feedback must explain the real issue, not style preferences.
+- Return ONLY a compact single-line JSON.
+
+Return:
+{{"score":<0-100>,"feedback":"<corrected concise feedback>","improvements":"<short correction/improvement sentence or empty string>","rubric":{{"correctness":<0-40>,"efficiency":<0-20>,"readability":<0-15>,"structure":<0-15>}}}}
 <|end|>
 <|assistant|>
 """

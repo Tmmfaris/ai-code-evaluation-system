@@ -137,9 +137,13 @@ def _uses_modulus_comparison_zero(function_node):
 
 
 def _returns_constant_bool(function_node):
-    return any(
-        isinstance(node, ast.Return) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, bool)
-        for node in ast.walk(function_node)
+    if function_node is None:
+        return False
+
+    returns = [node for node in ast.walk(function_node) if isinstance(node, ast.Return)]
+    return bool(returns) and all(
+        isinstance(node.value, ast.Constant) and isinstance(node.value.value, bool)
+        for node in returns
     )
 
 
@@ -184,11 +188,13 @@ def _returns_sorted_index(function_node, index_value):
 
 
 def _returns_constant_true(function_node):
-    return any(
-        isinstance(node, ast.Return)
-        and isinstance(node.value, ast.Constant)
-        and node.value.value is True
-        for node in ast.walk(function_node)
+    if function_node is None:
+        return False
+
+    returns = [node for node in ast.walk(function_node) if isinstance(node, ast.Return)]
+    return bool(returns) and all(
+        isinstance(node.value, ast.Constant) and node.value.value is True
+        for node in returns
     )
 
 
@@ -201,12 +207,39 @@ def _returns_constant_string(function_node, value):
     )
 
 
+def _returns_name(function_node, *names):
+    wanted = {name for name in names if name}
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in wanted
+        for node in ast.walk(function_node)
+    )
+
+
 def _returns_string_key_index(function_node):
     return any(
         isinstance(node, ast.Return)
         and isinstance(node.value, ast.Subscript)
         and isinstance(node.value.value, ast.Name)
         and isinstance(node.value.slice, ast.Name)
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_dict_comp_count_split(function_node):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.DictComp)
+        and isinstance(node.value.key, ast.Name)
+        and isinstance(node.value.value, ast.Call)
+        and isinstance(node.value.value.func, ast.Attribute)
+        and node.value.value.func.attr == "count"
+        and isinstance(node.value.value.func.value, ast.Name)
+        and len(node.value.generators) == 1
+        and isinstance(node.value.generators[0].iter, ast.Call)
+        and isinstance(node.value.generators[0].iter.func, ast.Attribute)
+        and node.value.generators[0].iter.func.attr == "split"
         for node in ast.walk(function_node)
     )
 
@@ -235,6 +268,79 @@ def _returns_sorted_slice_without_set(function_node):
             continue
         slice_node = node.value.slice
         if isinstance(slice_node, ast.Slice) and isinstance(slice_node.lower, ast.UnaryOp) and isinstance(slice_node.lower.op, ast.USub) and isinstance(slice_node.lower.operand, ast.Constant) and slice_node.lower.operand.value == 2:
+            return True
+    return False
+
+
+def _returns_sorted_split_by_len_last(function_node):
+    for node in ast.walk(function_node):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Subscript):
+            continue
+        if not isinstance(node.value.value, ast.Call):
+            continue
+        outer_call = node.value.value
+        if not isinstance(outer_call.func, ast.Name) or outer_call.func.id != "sorted":
+            continue
+        if not outer_call.args:
+            continue
+        split_call = outer_call.args[0]
+        if not (
+            isinstance(split_call, ast.Call)
+            and isinstance(split_call.func, ast.Attribute)
+            and split_call.func.attr == "split"
+        ):
+            continue
+        if not any(
+            keyword.arg == "key"
+            and isinstance(keyword.value, ast.Name)
+            and keyword.value.id == "len"
+            for keyword in outer_call.keywords
+        ):
+            continue
+        slice_node = node.value.slice
+        if isinstance(slice_node, ast.UnaryOp) and isinstance(slice_node.op, ast.USub) and isinstance(slice_node.operand, ast.Constant) and slice_node.operand.value == 1:
+            return True
+    return False
+
+
+def _returns_reversed_list_slice(function_node):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Subscript)
+        and isinstance(node.value.value, ast.Name)
+        and isinstance(node.value.slice, ast.Slice)
+        and node.value.slice.lower is None
+        and node.value.slice.upper is None
+        and isinstance(node.value.slice.step, ast.UnaryOp)
+        and isinstance(node.value.slice.step.op, ast.USub)
+        and isinstance(node.value.slice.step.operand, ast.Constant)
+        and node.value.slice.step.operand.value == 1
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_common_elements_listcomp_without_dedup(function_node):
+    for node in ast.walk(function_node):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.ListComp):
+            continue
+        comp = node.value
+        if len(comp.generators) != 1:
+            continue
+        generator = comp.generators[0]
+        if not isinstance(generator.target, ast.Name) or not isinstance(generator.iter, ast.Name):
+            continue
+        if not isinstance(comp.elt, ast.Name) or comp.elt.id != generator.target.id:
+            continue
+        if len(generator.ifs) != 1:
+            continue
+        cond = generator.ifs[0]
+        if (
+            isinstance(cond, ast.Compare)
+            and isinstance(cond.left, ast.Name)
+            and cond.left.id == generator.target.id
+            and any(isinstance(op, ast.In) for op in cond.ops)
+            and any(isinstance(comp_item, ast.Name) for comp_item in cond.comparators)
+        ):
             return True
     return False
 
@@ -290,11 +396,160 @@ def _java_contains_any(code, *parts):
     return any(part in lowered for part in parts)
 
 
+def _requires_recursion(question):
+    lowered = (question or "").lower()
+    return "recursion" in lowered or "recursive" in lowered
+
+
 def _generic_requirement_findings(question, student_answer, language):
     question_text = (question or "").lower()
     code = (student_answer or "").lower()
     language = (language or "").lower()
     findings = []
+
+    if language == "css":
+        if "red" in question_text and "red" not in code:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 8,
+                "efficiency_max": 8,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The CSS does not apply the required red styling from the question.",
+                "suggestion": "Target the required selector and set its color to red."
+            })
+        if "red" in question_text and "color" in question_text and ("color" not in code or "red" not in code):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 8,
+                "efficiency_max": 8,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The CSS does not apply the required red color styling from the question.",
+                "suggestion": "Use the correct selector and set the color property to red."
+            })
+        if "h1" in question_text and "h1" not in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 20,
+                "efficiency_max": 12,
+                "feedback": "The CSS does not target the required h1 elements from the question.",
+                "suggestion": "Use an h1 selector if the question asks to style h1 elements."
+            })
+
+    if language == "html":
+        if "heading" in question_text and not any(tag in code for tag in ("<h1", "<h2", "<h3", "<h4", "<h5", "<h6")):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 10,
+                "efficiency_max": 10,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The HTML does not use a heading tag even though the question asks for a heading.",
+                "suggestion": "Use an h1-h6 heading tag that matches the requested output."
+            })
+        if "hello" in question_text and "hello" not in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 16,
+                "efficiency_max": 10,
+                "feedback": "The HTML does not include the required Hello text from the question.",
+                "suggestion": "Include the requested Hello text in the heading output."
+            })
+
+    if language == "react":
+        if ("react component" in question_text or "component" in question_text) and not (
+            "return" in code and "<" in code and ">" in code
+        ):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 10,
+                "efficiency_max": 10,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The answer does not look like a React component that returns JSX.",
+                "suggestion": "Define a component and return the required JSX output."
+            })
+        if "hello" in question_text and "hello" not in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 20,
+                "efficiency_max": 12,
+                "feedback": "The component does not render the required Hello content from the question.",
+                "suggestion": "Return JSX that includes the requested Hello text."
+            })
+
+    if language == "mysql":
+        if "students" in question_text and "students" not in code:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 10,
+                "efficiency_max": 10,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The SQL query does not use the required students table from the question.",
+                "suggestion": "Query the students table named in the question."
+            })
+        if "select" in question_text and "select" not in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 16,
+                "efficiency_max": 10,
+                "feedback": "The answer does not use the expected SELECT query form for this task.",
+                "suggestion": "Use a SELECT query that matches the requested result."
+            })
+
+    if language == "mongodb":
+        if "students" in question_text and "students" not in code:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 10,
+                "efficiency_max": 10,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The MongoDB query does not use the required students collection from the question.",
+                "suggestion": "Query the students collection named in the question."
+            })
+        if "active" in question_text and "active" not in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 16,
+                "efficiency_max": 10,
+                "feedback": "The MongoDB query does not include the required active filter from the question.",
+                "suggestion": "Include the active condition in the query filter."
+            })
+
+    if language == "javascript" and "add two numbers" in question_text:
+        if re.search(r"return\s+a\s*;", student_answer or "", re.IGNORECASE) or re.search(r"return\s+b\s*;", student_answer or "", re.IGNORECASE):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "The function returns only one input value instead of adding the two numbers.",
+                "suggestion": "Return the sum of both inputs, such as a + b."
+            })
+    if language == "javascript" and "even" in question_text and re.search(r"return\s+true\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function always returns true instead of checking whether the number is even.",
+            "suggestion": "Return the result of an even check such as n % 2 === 0."
+        })
+    if language == "python" and "positive" in question_text and (">=0" in code or ">= 0" in code):
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function checks for non-negative numbers instead of strictly positive numbers.",
+            "suggestion": "Return true only when the number is greater than zero."
+        })
 
     if "using set" in question_text and not any(token in code for token in ("set", "hashset", "treeset", "linkedhashset", "distinct()")):
         findings.append({
@@ -327,9 +582,9 @@ def _generic_requirement_findings(question, student_answer, language):
         "try" in code and ("catch" in code or "except" in code)
     ):
         findings.append({
-            "type": "correctness_cap",
-            "correctness_max": 14,
-            "efficiency_max": 10,
+            "type": "hard_fail",
+            "correctness_max": 8,
+            "efficiency_max": 8,
             "readability_max": 10,
             "structure_max": 12,
             "feedback": "The answer does not include the required safe error handling for this task.",
@@ -377,6 +632,22 @@ def _generic_requirement_findings(question, student_answer, language):
         })
 
     return findings
+
+
+def analyze_css_submission_rules(question, student_answer):
+    return _generic_requirement_findings(question, student_answer, "css")
+
+
+def analyze_react_submission_rules(question, student_answer):
+    return _generic_requirement_findings(question, student_answer, "react")
+
+
+def analyze_mysql_submission_rules(question, student_answer):
+    return _generic_requirement_findings(question, student_answer, "mysql")
+
+
+def analyze_mongodb_submission_rules(question, student_answer):
+    return _generic_requirement_findings(question, student_answer, "mongodb")
 
 
 def analyze_question_risk(question, language, question_profile=None):
@@ -481,15 +752,13 @@ def _analyze_java_submission_rules(question, student_answer):
     findings = []
     method_name = _java_method_name(code)
 
-    if "factorial" in question_text and method_name and f"{method_name}(" not in lowered.split("return", 1)[-1]:
+    if "factorial" in question_text and _requires_recursion(question_text) and method_name and f"{method_name}(" not in lowered.split("return", 1)[-1]:
         findings.append({
-            "type": "hard_fail",
-            "correctness_max": 2,
-            "efficiency_max": 2,
-            "readability_max": 5,
-            "structure_max": 8,
-            "feedback": "The method does not implement recursive factorial logic.",
-            "suggestion": "Use a base case and a recursive call to the same method."
+            "type": "correctness_cap",
+            "correctness_max": 24,
+            "efficiency_max": 15,
+            "feedback": "The method computes factorial values, but it does not use recursion as required by the question.",
+            "suggestion": "Use a base case and a recursive call to the same method if recursion is required."
         })
 
     if "palindrome" in question_text and re.search(r"return\s+true\s*;", lowered):
@@ -503,21 +772,59 @@ def _analyze_java_submission_rules(question, student_answer):
             "suggestion": "Compare the original string with its reversed form or equivalent mirrored logic."
         })
 
-    if ("only digits" in question_text or "digit" in question_text) and re.search(r"return\s+true\s*;", lowered):
+    if "armstrong" in question_text and re.search(r"return\s+true\s*;", lowered):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 2,
             "efficiency_max": 2,
             "readability_max": 5,
             "structure_max": 8,
-            "feedback": "The method always returns true instead of checking whether the string contains only digits.",
-            "suggestion": "Use matches(\"\\\\d+\") or an equivalent digit check."
+            "feedback": "The method always returns true instead of checking whether the number is an Armstrong number.",
+            "suggestion": "Compute the required digit-power sum and compare it with the original number."
         })
 
-    if "positive" in question_text and ">= 0" in code:
+    java_digit_char_check = (
+        ".tochararray()" in lowered
+        and (
+            re.search(r"c\s*<\s*'0'\s*\|\|\s*c\s*>\s*'9'", lowered)
+            or re.search(r"c\s*>\s*'9'\s*\|\|\s*c\s*<\s*'0'", lowered)
+        )
+        and "return false" in lowered
+        and "return true" in lowered
+    )
+
+    if ("only digits" in question_text or "digit" in question_text) and re.search(r"return\s+true\s*;", lowered):
+        if not (("integer.parseint" in lowered and "catch" in lowered) or java_digit_char_check):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 2,
+                "efficiency_max": 2,
+                "readability_max": 5,
+                "structure_max": 8,
+                "feedback": "The method always returns true instead of checking whether the string contains only digits.",
+                "suggestion": "Use matches(\"\\\\d+\") or an equivalent digit check."
+            })
+
+    if ("only digits" in question_text or "digit" in question_text) and (
+        ".length()>0" in lowered or ".length() > 0" in lowered
+    ):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Checking only whether the string is non-empty does not determine whether it contains only digits.",
+            "suggestion": "Use matches(\"\\\\d+\") or an equivalent digit-only check for every character."
+        })
+
+    if "positive" in question_text and (">= 0" in code or ">=0" in code):
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 22,
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
             "feedback": "The method checks for non-negative numbers instead of strictly positive numbers.",
             "suggestion": "Return true only when the number is greater than zero."
         })
@@ -567,10 +874,24 @@ def _analyze_java_submission_rules(question, student_answer):
             "feedback": "The method correctly converts the input string to lowercase.",
         })
 
-    if "remove spaces" in question_text and '.replace(" ", "")' in code:
+    if "remove spaces" in question_text and (
+        '.replace(" ", "")' in code
+        or (".replaceall(" in lowered and "\\s+" in lowered and '""' in lowered)
+    ):
         findings.append({
             "type": "feedback_only",
             "feedback": "The method correctly removes spaces from the input string.",
+        })
+
+    if "average of array" in question_text and re.search(r"return\s+[a-z_][a-z0-9_]*\s*/\s*arr\.length\s*;", lowered):
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 18,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The method divides by arr.length, but integer division loses the fractional part before returning the result.",
+            "suggestion": "Cast the sum or the divisor to double before division so the average keeps its decimal value."
         })
 
     if "using streams" in question_text and not _java_contains_any(lowered, ".stream()", ".filter("):
@@ -600,6 +921,25 @@ def _analyze_java_submission_rules(question, student_answer):
             "efficiency_max": 12,
             "feedback": "The answer does not implement the required abstract class structure.",
             "suggestion": "Declare the base class as abstract and implement the required method in the subclass."
+        })
+
+    if (
+        "abstract class" in question_text
+        and "shape" in question_text
+        and "circle" in question_text
+        and "area" in question_text
+        and "abstract class" not in lowered
+        and "r*r" in lowered
+        and "math.pi" not in lowered
+    ):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "The answer misses the required abstract Shape design and the Circle area formula is also incorrect.",
+            "suggestion": "Make Shape abstract and implement Circle.area() with Math.PI * r * r."
         })
 
     if (
@@ -637,15 +977,53 @@ def _analyze_java_submission_rules(question, student_answer):
             "suggestion": "Use a Set or a distinct-based approach to satisfy the required technique."
         })
 
-    if "intersection of two arrays" in question_text and "for(" in lowered and "for(" in lowered.split("for(", 1)[-1] and "res.add(" in lowered:
+    if (
+        "using set" in question_text
+        and re.search(r"return\s+l\s*;", student_answer or "", re.IGNORECASE)
+    ):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "The method returns the original list instead of removing duplicates with a Set-based approach.",
+            "suggestion": "Build and return a new list from a Set or distinct-based result."
+        })
+
+    if (
+        "intersection of two arrays" in question_text
+        and "for(" in lowered
+        and "for(" in lowered.split("for(", 1)[-1]
+        and "res.add(" in lowered
+        and "hashset" not in lowered
+        and "set<" not in lowered
+    ):
         findings.append({
             "type": "correctness_cap",
-            "correctness_max": 18,
+            "correctness_min": 20,
+            "correctness_max": 24,
             "efficiency_max": 10,
+            "readability_min": 8,
             "readability_max": 12,
+            "structure_min": 10,
             "structure_max": 12,
             "feedback": "The method can find shared values, but nested loops can add duplicates and do not control the intersection result carefully.",
             "suggestion": "Use a HashSet for membership checks and control duplicates in the intersection output."
+        })
+
+    if "add two numbers" in question_text and (
+        re.search(r"return\s+a\s*;", student_answer or "", re.IGNORECASE)
+        or re.search(r"return\s+b\s*;", student_answer or "", re.IGNORECASE)
+    ):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The method returns only one input value instead of adding the two numbers.",
+            "suggestion": "Return the sum of both inputs, such as a + b."
         })
 
     return findings
@@ -681,6 +1059,17 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Add conditions for the marks ranges so the method returns A, B, or C correctly."
         })
 
+    if "add two numbers" in question_text and _returns_name(function_node, "a", "b"):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function returns only one input value instead of adding the two numbers.",
+            "suggestion": "Return the sum of both inputs, such as a + b."
+        })
+
     if "parse" in question_text and "json" in question_text and "key" in question_text and _returns_string_key_index(function_node):
         findings.append({
             "type": "hard_fail",
@@ -701,6 +1090,17 @@ def analyze_submission_rules(question, student_answer, language):
             "structure_max": 12,
             "feedback": "Using a dict comprehension with len(w) as the key overwrites earlier words of the same length instead of grouping them together.",
             "suggestion": "Build a dictionary whose values are lists, then append each word to the list for its length."
+        })
+
+    if "count frequency" in question_text and "word" in question_text and _returns_dict_comp_count_split(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "Using s.count(w) on each split word does not build a proper word-frequency map and can miscount repeated tokens inefficiently.",
+            "suggestion": "Split the text once, then accumulate counts in a dictionary with d[w] = d.get(w, 0) + 1."
         })
 
     if "prime" in question_text:
@@ -732,9 +1132,11 @@ def analyze_submission_rules(question, student_answer, language):
 
     if "vowel" in question_text and _contains_lowercase_vowel_membership(function_node) and not _has_lower_or_casefold(function_node):
         findings.append({
-            "type": "correctness_cap",
-            "correctness_max": 34,
+            "type": "correct_solution_with_penalty",
+            "correctness_min": 34,
             "efficiency_max": 15,
+            "readability_min": 8,
+            "structure_min": 12,
             "feedback": "The code counts lowercase vowels only and misses uppercase vowel inputs.",
             "suggestion": "Normalize the string with lower() or casefold() before checking vowels."
         })
@@ -750,18 +1152,16 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Compare the original string with its reverse or an equivalent mirrored check."
         })
 
-    if "factorial" in question_text and not _has_self_recursive_call(function_node):
+    if "factorial" in question_text and _requires_recursion(question_text) and not _has_self_recursive_call(function_node):
         findings.append({
-            "type": "hard_fail",
-            "correctness_max": 2,
-            "efficiency_max": 2,
-            "readability_max": 5,
-            "structure_max": 8,
-            "feedback": "The function does not implement recursive factorial logic.",
-            "suggestion": "Use a base case and a recursive call to the same function."
+            "type": "correctness_cap",
+            "correctness_max": 24,
+            "efficiency_max": 15,
+            "feedback": "The function computes factorial values, but it does not use recursion as required by the question.",
+            "suggestion": "Use a base case and a recursive call to the same function if recursion is required."
         })
 
-    if "balanced parentheses" in question_text and _uses_count_equality(function_node):
+    if ("balanced parentheses" in question_text or ("parentheses" in question_text and "balanced" in question_text)) and _uses_count_equality(function_node):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 2,
@@ -843,7 +1243,18 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Use low, high, and mid pointers to implement binary search with logarithmic time complexity."
         })
 
-    if "duplicate" in question_text and not _uses_set_call(function_node):
+    if "longest word" in question_text and _returns_sorted_split_by_len_last(function_node):
+        findings.append({
+            "type": "correct_solution_with_penalty",
+            "correctness_min": 36,
+            "efficiency_max": 12,
+            "readability_min": 10,
+            "structure_min": 13,
+            "feedback": "The function correctly returns the longest word, but sorting all words is less efficient than selecting the maximum directly.",
+            "suggestion": "Use max(s.split(), key=len) to find the longest word without sorting the whole list."
+        })
+
+    if ("remove duplicate" in question_text or "remove duplicates" in question_text) and not _uses_set_call(function_node):
         findings.append({
             "type": "feedback_only",
             "feedback": "The solution correctly removes duplicates and also preserves input order, which a plain set-based approach would not.",
@@ -885,6 +1296,26 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Use a nested loop or list comprehension instead of repeatedly concatenating lists with sum."
         })
 
+    if "rotate" in question_text and "list" in question_text and _returns_reversed_list_slice(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 10,
+            "efficiency_max": 8,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "Reversing the list is not the same as rotating it by k steps.",
+            "suggestion": "Return the rotated list using slicing such as lst[k:] + lst[:k]."
+        })
+
+    if "common elements" in question_text and _returns_common_elements_listcomp_without_dedup(function_node):
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 22,
+            "efficiency_max": 10,
+            "feedback": "The function can find overlapping values, but it can repeat duplicates and does not behave like a proper distinct intersection.",
+            "suggestion": "Use sets or another deduping approach so common elements are returned without duplicate inflation."
+        })
+
     if "armstrong" in question_text and "**3" in (student_answer or "").replace(" ", ""):
         findings.append({
             "type": "correctness_cap",
@@ -903,6 +1334,39 @@ def analyze_submission_rules(question, student_answer, language):
             "structure_max": 8,
             "feedback": "The function always returns True instead of checking whether the string contains only digits.",
             "suggestion": "Use s.isdigit() or an equivalent character-by-character check."
+        })
+
+    if "email" in question_text and _returns_constant_true(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns True instead of checking whether the string satisfies the required basic email conditions.",
+            "suggestion": "Check for required markers such as '@' and '.' before returning True."
+        })
+
+    if ("csv" in question_text or "file" in question_text) and "average" in question_text and _returns_constant_string(function_node, 0):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function returns 0 instead of reading the file and calculating the requested average.",
+            "suggestion": "Read the CSV or file content, extract the target values, and compute the average before returning it."
+        })
+
+    if ("read a file" in question_text or "file" in question_text) and "word" in question_text and _returns_constant_string(function_node, 0):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function returns 0 instead of reading the file and counting its words.",
+            "suggestion": "Open the file, split each line into words, and accumulate the total word count before returning it."
         })
 
     return findings
@@ -934,7 +1398,19 @@ def apply_rule_adjustments(rubric_score, feedback, suggestions, findings):
     for key, value in maxes.items():
         adjusted[key] = min(adjusted.get(key, 0), value)
 
-    priority_feedback = next((item["feedback"] for item in findings if item.get("feedback")), updated_feedback)
-    priority_suggestion = next((item["suggestion"] for item in findings if item.get("suggestion")), updated_suggestions)
+    def _finding_priority(item):
+        finding_type = item.get("type")
+        if finding_type == "hard_fail":
+            return 3
+        if finding_type in {"correctness_cap", "efficiency_cap", "correct_solution_with_penalty"}:
+            return 2
+        if finding_type == "feedback_only":
+            return 1
+        return 0
+
+    ordered_findings = sorted(findings, key=_finding_priority, reverse=True)
+
+    priority_feedback = next((item["feedback"] for item in ordered_findings if item.get("feedback")), updated_feedback)
+    priority_suggestion = next((item["suggestion"] for item in ordered_findings if item.get("suggestion")), updated_suggestions)
 
     return adjusted, priority_feedback, priority_suggestion

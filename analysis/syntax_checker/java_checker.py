@@ -60,10 +60,19 @@ def check_java_syntax(code):
             "line": None,
         }
 
-    if ";" not in code:
+    if ";" not in code and not re.search(r"\{\s*\}", code):
         return {
             "valid": False,
             "error": "No semicolons found - invalid Java syntax",
+            "line": None,
+        }
+
+    # Catch malformed chained char comparisons such as:
+    # if(ch=='a'ch=='e'...)
+    if re.search(r"==\s*'[^']'\s*[A-Za-z_][A-Za-z0-9_]*\s*==", code or ""):
+        return {
+            "valid": False,
+            "error": "Malformed character comparison - missing logical operator between conditions",
             "line": None,
         }
 

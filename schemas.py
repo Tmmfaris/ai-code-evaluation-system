@@ -76,6 +76,10 @@ class ConceptEvaluation(BaseModel):
 class EvaluationResponse(BaseModel):
     score: int = Field(..., example=85)
     concepts: ConceptEvaluation
+    logic_evaluation: Optional[str] = Field(
+        None,
+        example="The student used a different approach, but the logic is correct.",
+    )
     feedback: str = Field(
         ...,
         example="Correct solution. The implementation matches the expected behavior and uses a clear structure.",

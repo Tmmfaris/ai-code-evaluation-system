@@ -44,16 +44,62 @@ def derive_concepts_from_rubric(rubric):
     }
 
 
+def derive_concepts_from_execution(execution_finding, rubric):
+    result_type = ((execution_finding or {}).get("result_type") or "").strip()
+    if not result_type:
+        return None
+
+    concepts = derive_concepts_from_rubric(rubric or {})
+
+    if result_type == "full_pass":
+        concepts["logic"] = "Strong"
+        concepts["edge_cases"] = "Good"
+        concepts["completeness"] = "High"
+        return concepts
+
+    if result_type == "correct_but_inefficient":
+        concepts["logic"] = "Strong"
+        concepts["edge_cases"] = "Good"
+        concepts["completeness"] = "High"
+        concepts["efficiency"] = "Average"
+        return concepts
+
+    if result_type == "mostly_correct":
+        concepts["logic"] = "Good"
+        if concepts["completeness"] == "Low":
+            concepts["completeness"] = "Medium"
+        return concepts
+
+    if result_type == "partial_pass":
+        pass_ratio = float((execution_finding or {}).get("pass_ratio") or 0.0)
+        if pass_ratio >= 0.5:
+            concepts["logic"] = "Good"
+            concepts["completeness"] = "Medium"
+        else:
+            concepts["logic"] = "Weak"
+        return concepts
+
+    if result_type in {"zero_pass", "execution_error"}:
+        concepts["logic"] = "Weak"
+        return concepts
+
+    return concepts
+
+
 # ==============================
 # 🧠 MAIN CONCEPT EVALUATOR
 # ==============================
-def evaluate_concepts(llm_output):
+def evaluate_concepts(llm_output, execution_finding=None):
     """
     Extracts concept-level evaluation from llm_output.
     If 'concepts' is absent (compact prompt), derives them from rubric scores.
     """
     if not isinstance(llm_output, dict):
-        return derive_concepts_from_rubric({})
+        return derive_concepts_from_execution(execution_finding, {}) or derive_concepts_from_rubric({})
 
     # Always derive from rubric — LLM concept labels are unreliable
-    return derive_concepts_from_rubric(llm_output.get("rubric", {}))
+    rubric = llm_output.get("rubric", {})
+    execution_concepts = derive_concepts_from_execution(execution_finding, rubric)
+    if execution_concepts:
+        return execution_concepts
+    return derive_concepts_from_rubric(rubric)
