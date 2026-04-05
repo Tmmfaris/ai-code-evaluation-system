@@ -1,6 +1,16 @@
 import ast
 import re
 
+from evaluator.rules.python_families import (
+    analyze_list_rules,
+    analyze_number_rules,
+    analyze_string_rules,
+)
+from evaluator.rules.javascript_families import (
+    analyze_list_rules as analyze_javascript_list_rules,
+    analyze_number_rules as analyze_javascript_number_rules,
+    analyze_string_rules as analyze_javascript_string_rules,
+)
 
 JAVA_METHOD_NAME_RE = re.compile(r"(?:public|private|protected)?\s*(?:static\s+)?[A-Za-z_<>\[\]]+\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
@@ -138,6 +148,13 @@ def _uses_modulus_comparison_zero(function_node):
 
 def _returns_constant_bool(function_node):
     if function_node is None:
+        return False
+
+    if any(
+        isinstance(node, (ast.If, ast.For, ast.While, ast.AsyncFor, ast.Try, ast.Match))
+        for node in ast.walk(function_node)
+        if node is not function_node
+    ):
         return False
 
     returns = [node for node in ast.walk(function_node) if isinstance(node, ast.Return)]
@@ -358,6 +375,23 @@ def _has_prime_lower_bound_guard(function_node):
     return False
 
 
+def _returns_name_gt_one(function_node):
+    for node in ast.walk(function_node):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Compare):
+            continue
+        compare = node.value
+        if not isinstance(compare.left, ast.Name):
+            continue
+        if len(compare.ops) != 1 or not isinstance(compare.ops[0], ast.Gt):
+            continue
+        if len(compare.comparators) != 1:
+            continue
+        comparator = compare.comparators[0]
+        if isinstance(comparator, ast.Constant) and comparator.value == 1:
+            return True
+    return False
+
+
 
 def _uses_sqrt_bound(function_node):
     for node in ast.walk(function_node):
@@ -408,6 +442,16 @@ def _generic_requirement_findings(question, student_answer, language):
     findings = []
 
     if language == "css":
+        if "center" in question_text and "div" in question_text and "text-align:center" in code.replace(" ", ""):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 8,
+                "efficiency_max": 8,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "Using text-align:center only centers inline content horizontally, not the div itself both horizontally and vertically.",
+                "suggestion": "Use a layout technique such as flexbox with justify-content and align-items to center the div in both directions."
+            })
         if "red" in question_text and "red" not in code:
             findings.append({
                 "type": "hard_fail",
@@ -438,6 +482,16 @@ def _generic_requirement_findings(question, student_answer, language):
             })
 
     if language == "html":
+        if "button" in question_text and "<button" not in code:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 8,
+                "efficiency_max": 8,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The HTML does not use a button element even though the question asks for one.",
+                "suggestion": "Use a <button> element instead of a generic container tag."
+            })
         if "heading" in question_text and not any(tag in code for tag in ("<h1", "<h2", "<h3", "<h4", "<h5", "<h6")):
             findings.append({
                 "type": "hard_fail",
@@ -470,6 +524,16 @@ def _generic_requirement_findings(question, student_answer, language):
                 "feedback": "The answer does not look like a React component that returns JSX.",
                 "suggestion": "Define a component and return the required JSX output."
             })
+        if "state hook" in question_text and "usestate" not in code:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 8,
+                "efficiency_max": 8,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The component does not use the required useState hook.",
+                "suggestion": "Initialize component state with useState(...) instead of a plain local variable."
+            })
         if "hello" in question_text and "hello" not in code:
             findings.append({
                 "type": "correctness_cap",
@@ -480,6 +544,16 @@ def _generic_requirement_findings(question, student_answer, language):
             })
 
     if language == "mysql":
+        if "select all rows" in question_text and "select *" not in code and "select" in code:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 8,
+                "efficiency_max": 8,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "The SQL query selects specific columns instead of selecting all columns from every row.",
+                "suggestion": "Use SELECT * FROM ... when the question asks for all rows and all columns."
+            })
         if "students" in question_text and "students" not in code:
             findings.append({
                 "type": "hard_fail",
@@ -500,6 +574,22 @@ def _generic_requirement_findings(question, student_answer, language):
             })
 
     if language == "mongodb":
+        if "find all documents" in question_text and "findone(" in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 20,
+                "efficiency_max": 12,
+                "feedback": "The MongoDB query retrieves only one document instead of returning all matching documents.",
+                "suggestion": "Use find(...) instead of findOne(...) when the task asks for all documents."
+            })
+        if "insert document" in question_text and "insert()" in code and "insertone(" not in code:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 20,
+                "efficiency_max": 12,
+                "feedback": "The MongoDB query does not use the expected single-document insert call for this task.",
+                "suggestion": "Use insertOne({...}) with the required document contents."
+            })
         if "students" in question_text and "students" not in code:
             findings.append({
                 "type": "hard_fail",
@@ -519,26 +609,418 @@ def _generic_requirement_findings(question, student_answer, language):
                 "suggestion": "Include the active condition in the query filter."
             })
 
-    if language == "javascript" and "add two numbers" in question_text:
-        if re.search(r"return\s+a\s*;", student_answer or "", re.IGNORECASE) or re.search(r"return\s+b\s*;", student_answer or "", re.IGNORECASE):
-            findings.append({
-                "type": "hard_fail",
-                "correctness_max": 5,
-                "efficiency_max": 5,
-                "readability_max": 8,
-                "structure_max": 10,
-                "feedback": "The function returns only one input value instead of adding the two numbers.",
-                "suggestion": "Return the sum of both inputs, such as a + b."
-            })
-    if language == "javascript" and "even" in question_text and re.search(r"return\s+true\s*;", student_answer or "", re.IGNORECASE):
+    if language == "javascript" and "object is empty" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns false instead of checking whether the object has any keys.",
+            "suggestion": "Check Object.keys(obj).length === 0 or use an equivalent emptiness check."
+        })
+    if language == "javascript" and "array is empty" in question_text and re.search(r"return\s*!arr\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 5,
             "efficiency_max": 5,
             "readability_max": 8,
             "structure_max": 10,
-            "feedback": "The function always returns true instead of checking whether the number is even.",
-            "suggestion": "Return the result of an even check such as n % 2 === 0."
+            "feedback": "Checking !arr does not tell you whether an array is empty, because empty arrays are still truthy in JavaScript.",
+            "suggestion": "Check arr.length === 0 to determine whether the array has no elements."
+        })
+    if language == "javascript" and "index as key" in question_text and "object" in question_text and re.search(r"return\s+\{\s*\}\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning an empty object does not convert the array into an object with index keys.",
+            "suggestion": "Build an object that maps each index to its corresponding array value."
+        })
+    if language == "javascript" and "null/undefined" in question_text and "filter(boolean)" in (student_answer or "").lower().replace(" ", ""):
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 40,
+            "correctness_max": 40,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "filter(Boolean) removes all falsy values, not just null and undefined, so values like 0 or an empty string would also be dropped.",
+            "suggestion": "Filter with x != null when the task is specifically to remove only null and undefined."
+        })
+    if language == "javascript" and "has property" in question_text and "object" in question_text and re.search(r"return\s+true\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns true instead of checking whether the object has the requested property.",
+            "suggestion": "Use hasOwnProperty(key) or an equivalent property-existence check."
+        })
+    if language == "javascript" and "delay execution" in question_text and "promise" in question_text and re.search(r"return\s+ms\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the delay value does not create a Promise-based delay.",
+            "suggestion": "Return a Promise that resolves after setTimeout finishes."
+        })
+    if language == "javascript" and "error handling" in question_text and "fetch" in (student_answer or "").lower() and "try" not in (student_answer or "").lower() and "catch" not in (student_answer or "").lower():
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 48,
+            "correctness_max": 48,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The request logic is present, but the answer does not include the required error handling around the fetch call.",
+            "suggestion": "Wrap the awaited fetch and JSON parsing in try/catch and return the required fallback on failure."
+        })
+    if language == "javascript" and "sorted ascending" in question_text and "arr[0]<=arr[arr.length-1]" in (student_answer or "").replace(" ", ""):
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 24,
+            "correctness_max": 24,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Comparing only the first and last elements does not determine whether the whole array is sorted in ascending order.",
+            "suggestion": "Check every adjacent pair and return false when a later value is smaller than the previous one."
+        })
+    if language == "javascript" and "deep clone" in question_text and "object" in question_text and re.search(r"return\s+obj\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original object does not create a deep clone.",
+            "suggestion": "Create a new independent object copy instead of returning the same reference."
+        })
+    if language == "javascript" and "memoize" in question_text and re.search(r"return\s+fn\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original function does not implement memoization.",
+            "suggestion": "Wrap the function with a cache so repeated inputs reuse stored results."
+        })
+    if language == "javascript" and "custom map function" in question_text and re.search(r"return\s+this\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original array does not apply the callback to build a mapped result.",
+            "suggestion": "Create a new array and push the callback result for each element."
+        })
+    if language == "javascript" and "promise chain execution" in question_text and re.search(r"return\s+1\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning a plain value does not implement the required Promise chain.",
+            "suggestion": "Return a chained Promise sequence that performs the required steps with then(...)."
+        })
+    if language == "javascript" and "retry api call" in question_text and re.search(r"return\s+fn\(\)\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 20,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Calling the function once is a start, but this does not implement the required retry behavior.",
+            "suggestion": "Retry the call up to the required number of attempts and stop only when one succeeds."
+        })
+    if language == "javascript" and "event loop order" in question_text and "settimeout" in question_text and "promise" in question_text and all(
+        snippet in (student_answer or "").replace(" ", "")
+        for snippet in ("console.log(1);", "console.log(2);", "console.log(3);", "console.log(4);")
+    ) and "setTimeout" not in (student_answer or "") and "Promise.resolve" not in (student_answer or ""):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The answer logs values directly but does not demonstrate the event-loop order between setTimeout and Promise microtasks.",
+            "suggestion": "Include both setTimeout(...) and Promise.resolve().then(...) so the output order reflects the event loop behavior."
+        })
+    if language == "javascript" and "debounce" in question_text and "immediate" in question_text and re.search(r"return\s+fn\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original function does not implement debouncing or the immediate-execution option.",
+            "suggestion": "Wrap the function in a debounce closure and handle the immediate flag when deciding whether to call it right away."
+        })
+    if language == "javascript" and "flatten nested object" in question_text and re.search(r"return\s+obj\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original object does not flatten nested keys into a flat result.",
+            "suggestion": "Traverse nested properties and build flattened keys in the output object."
+        })
+    if language == "javascript" and "currying function" in question_text and re.search(r"return\s+fn\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original function does not transform it into a curried function.",
+            "suggestion": "Return nested functions that collect arguments before calling the original function."
+        })
+    if language == "javascript" and "lru cache" in question_text and "class" in (student_answer or "").lower() and "constructor" in (student_answer or "").lower() and "get(" not in (student_answer or "").lower() and "put(" not in (student_answer or "").lower():
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The class only stores the capacity and does not implement the required LRU cache operations.",
+            "suggestion": "Implement both get and put behavior with eviction of the least recently used entry."
+        })
+    if language == "javascript" and "function is async" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns false instead of checking whether the target function is async.",
+            "suggestion": "Inspect the function metadata, such as its constructor name, before returning the result."
+        })
+    if language == "javascript" and ("once()" in question_text or "once function" in question_text or "implement once" in question_text) and re.search(r"return\s+fn\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original function does not limit execution to a single call.",
+            "suggestion": "Wrap the function so it runs only the first time and ignores later calls."
+        })
+    if language == "javascript" and "unique characters" in question_text and "string" in question_text and re.search(r"return\s+s\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original string does not remove duplicate characters.",
+            "suggestion": "Keep only unique characters and return the deduplicated string."
+        })
+    if language == "javascript" and "contains duplicates" in question_text and "array" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns false instead of checking whether the array contains duplicate values.",
+            "suggestion": "Compare the Set size with the array length or track seen values and return true when a duplicate appears."
+        })
+    if language == "javascript" and "duplicates" in question_text and "array" in question_text and "newset(arr).length" in (student_answer or "").lower().replace(" ", ""):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Set objects use .size, not .length, so this duplicate check does not work as intended.",
+            "suggestion": "Compare new Set(arr).size with arr.length to detect duplicates."
+        })
+    if language == "javascript" and "capitalize first letter" in question_text and "string" in question_text and re.search(r"return\s+s\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original string does not capitalize its first letter.",
+            "suggestion": "Uppercase the first character and concatenate the rest of the string."
+        })
+    if language == "javascript" and "flatten nested array" in question_text and re.search(r"return\s+arr\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original array does not flatten nested arrays into a single-level result.",
+            "suggestion": "Flatten the nested structure, for example with arr.flat(Infinity) or an equivalent recursive approach."
+        })
+    if language == "javascript" and "flatten nested array" in question_text and ".flat()" in (student_answer or "").lower() and "infinity" not in (student_answer or "").lower():
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 48,
+            "correctness_max": 48,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Using flat() without Infinity only flattens one level, so deeper nesting is still left in the result.",
+            "suggestion": "Use arr.flat(Infinity) or a recursive approach when the task expects fully nested arrays to be flattened."
+        })
+    if language == "javascript" and "contains substring" in question_text and "string" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns false instead of checking whether the string contains the substring.",
+            "suggestion": "Use includes(sub) or an equivalent substring search."
+        })
+    if language == "javascript" and "group array elements by value" in question_text and re.search(r"return\s+\{\s*\}\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning an empty object does not group the array elements by value.",
+            "suggestion": "Build an object whose keys are the values and whose entries collect the matching elements."
+        })
+    if language == "javascript" and "first non-repeating character" in question_text and re.search(r"return\s+s\s*\[\s*0\s*\]\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning only the first character does not find the first non-repeating character.",
+            "suggestion": "Check character frequencies or compare first and last positions before returning the first unique character."
+        })
+    if language == "javascript" and "first unique character" in question_text and re.search(r"return\s+null\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning null immediately does not search for the first unique character.",
+            "suggestion": "Scan the string and return the first character whose first and last positions are the same."
+        })
+    if language == "javascript" and "two arrays are equal" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns false instead of comparing whether the two arrays are equal.",
+            "suggestion": "Compare the arrays element by element or use an equivalent full-array equality check."
+        })
+    if language == "javascript" and ("async function" in question_text or "fetch data" in question_text) and re.search(r"return\s+fetch\s*\(", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 24,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Calling fetch is a start, but this answer does not await the request or return the parsed response data as the task expects.",
+            "suggestion": "Make the function async, await fetch(...), and return the parsed response body."
+        })
+    if language == "javascript" and "fetch json" in question_text and re.search(r"return\s+fetch\s*\(", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 24,
+            "correctness_max": 24,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Calling fetch is a start, but this answer does not parse and return the JSON response.",
+            "suggestion": "Await fetch(...), then await res.json() and return the parsed data."
+        })
+    if language == "javascript" and "throttle" in question_text and re.search(r"return\s+fn\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original function does not implement throttling behavior.",
+            "suggestion": "Wrap the function in a rate-limiting closure that blocks repeated calls until the throttle interval passes."
+        })
+    if language == "javascript" and "frequency" in question_text and re.search(r"return\s+\{\s*\}\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning an empty object does not count the frequency of the array elements.",
+            "suggestion": "Count how many times each value appears and return those counts in an object."
+        })
+    if language == "javascript" and "fetch api" in question_text and "get request" in question_text and re.search(r"return\s+fetch\s*\(", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "correctness_cap",
+            "correctness_max": 24,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Calling fetch is a start, but this answer does not handle the response body as the task expects.",
+            "suggestion": "Await the fetch call and return the parsed response data, for example with res.json()."
+        })
+    if language == "javascript" and "key exists" in question_text and "object" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "The function always returns false instead of checking whether the key exists in the object.",
+            "suggestion": "Use key in obj or an equivalent property-existence check."
+        })
+    if language == "javascript" and "debounce" in question_text and re.search(r"return\s+fn\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the original function does not implement debouncing behavior.",
+            "suggestion": "Wrap the function in a timer-based closure that delays execution and clears the previous timeout."
+        })
+    if language == "javascript" and "debounce" in question_text and "settimeout" in (student_answer or "").lower() and "cleartimeout" not in (student_answer or "").lower():
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 32,
+            "correctness_max": 32,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Using setTimeout alone delays calls, but without clearTimeout it does not actually debounce repeated invocations.",
+            "suggestion": "Store the timeout id and clear the previous timeout before scheduling a new one."
+        })
+    if language == "javascript" and "remove duplicates" in question_text and "array" in question_text and "indexof" in (student_answer or "").lower() and "===i" in (student_answer or "").replace(" ", "").lower():
+        findings.append({
+            "type": "correct_solution_with_penalty",
+            "rule_score": 85,
+            "feedback": "The function correctly removes duplicates from the array, though this approach is less efficient than using a Set for larger inputs.",
+            "suggestion": "Consider using a Set when you want a shorter and typically more efficient uniqueness check."
+        })
+    if language == "javascript" and "object is empty" in question_text and "object.keys(obj).length==0" in (student_answer or "").replace(" ", "").lower():
+        findings.append({
+            "type": "correct_solution_with_penalty",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the object is empty.",
+            "suggestion": ""
         })
     if language == "python" and "positive" in question_text and (">=0" in code or ">= 0" in code):
         findings.append({
@@ -752,7 +1234,13 @@ def _analyze_java_submission_rules(question, student_answer):
     findings = []
     method_name = _java_method_name(code)
 
-    if "factorial" in question_text and _requires_recursion(question_text) and method_name and f"{method_name}(" not in lowered.split("return", 1)[-1]:
+    if (
+        "factorial" in question_text
+        and _requires_recursion(question_text)
+        and method_name
+        and f"{method_name}(" not in lowered.split("return", 1)[-1]
+        and ("for(" in lowered or "while(" in lowered or "*=" in lowered or re.search(r"return\s+[a-z_][a-z0-9_]*\s*\*\s*[a-z_][a-z0-9_]*", lowered))
+    ):
         findings.append({
             "type": "correctness_cap",
             "correctness_max": 24,
@@ -1033,9 +1521,17 @@ def _analyze_java_submission_rules(question, student_answer):
 def analyze_submission_rules(question, student_answer, language):
     language = (language or "").lower()
     generic_findings = _generic_requirement_findings(question, student_answer, language)
+    question_text = (question or "").lower()
 
     if language == "java":
         return generic_findings + _analyze_java_submission_rules(question, student_answer)
+    if language == "javascript":
+        lowered_student = (student_answer or "").lower()
+        findings = list(generic_findings)
+        findings.extend(analyze_javascript_string_rules(question_text, student_answer, lowered_student))
+        findings.extend(analyze_javascript_list_rules(question_text, student_answer, lowered_student))
+        findings.extend(analyze_javascript_number_rules(question_text, student_answer, lowered_student))
+        return findings
     if language != "python":
         return generic_findings
 
@@ -1045,9 +1541,22 @@ def analyze_submission_rules(question, student_answer, language):
     if function_node is None:
         return generic_findings
 
-    question_text = (question or "").lower()
     findings = list(generic_findings)
-
+    helper_map = {
+        "_contains_lowercase_vowel_membership": _contains_lowercase_vowel_membership,
+        "_has_lower_or_casefold": _has_lower_or_casefold,
+        "_returns_constant_bool": _returns_constant_bool,
+        "_uses_sorted_call": _uses_sorted_call,
+        "_returns_sorted_index": _returns_sorted_index,
+        "_uses_set_call": _uses_set_call,
+        "_returns_list_set_call": _returns_list_set_call,
+        "_returns_common_elements_listcomp_without_dedup": _returns_common_elements_listcomp_without_dedup,
+        "_returns_modulus_without_comparison": _returns_modulus_without_comparison,
+        "_uses_modulus_comparison_zero": _uses_modulus_comparison_zero,
+    }
+    findings.extend(analyze_string_rules(question_text, function_node, student_answer, helper_map))
+    findings.extend(analyze_list_rules(question_text, function_node, student_answer, helper_map))
+    findings.extend(analyze_number_rules(question_text, function_node, student_answer, helper_map))
     if "grade" in question_text and "student" in question_text and _returns_constant_string(function_node, "A"):
         findings.append({
             "type": "hard_fail",
@@ -1103,7 +1612,7 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Split the text once, then accumulate counts in a dictionary with d[w] = d.get(w, 0) + 1."
         })
 
-    if "prime" in question_text:
+    if "prime" in question_text and "prime numbers up to" not in question_text:
         if _returns_constant_true(function_node):
             findings.append({
                 "type": "hard_fail",
@@ -1114,11 +1623,21 @@ def analyze_submission_rules(question, student_answer, language):
                 "feedback": "The function always returns True instead of checking whether the number is prime.",
                 "suggestion": "Test divisibility and return False for non-prime values."
             })
+        elif _returns_name_gt_one(function_node):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "Checking only whether n is greater than 1 does not determine whether the number is prime.",
+                "suggestion": "Test divisibility by integers up to the square root of n and return False when a divisor is found."
+            })
         elif not _has_prime_lower_bound_guard(function_node):
             findings.append({
                 "type": "correctness_cap",
-                "correctness_max": 28,
-                "efficiency_max": 12,
+                "correctness_max": 30,
+                "efficiency_max": 15,
                 "feedback": "Missing an explicit n < 2 guard, so some non-prime edge cases are handled incorrectly.",
                 "suggestion": "Add an early return for values below 2 before checking divisibility."
             })
@@ -1129,28 +1648,6 @@ def analyze_submission_rules(question, student_answer, language):
                 "feedback": "The logic is acceptable, but the loop checks more numbers than necessary.",
                 "suggestion": "Check divisors only up to the square root of n for better efficiency."
             })
-
-    if "vowel" in question_text and _contains_lowercase_vowel_membership(function_node) and not _has_lower_or_casefold(function_node):
-        findings.append({
-            "type": "correct_solution_with_penalty",
-            "correctness_min": 34,
-            "efficiency_max": 15,
-            "readability_min": 8,
-            "structure_min": 12,
-            "feedback": "The code counts lowercase vowels only and misses uppercase vowel inputs.",
-            "suggestion": "Normalize the string with lower() or casefold() before checking vowels."
-        })
-
-    if "palindrome" in question_text and _returns_constant_bool(function_node):
-        findings.append({
-            "type": "hard_fail",
-            "correctness_max": 2,
-            "efficiency_max": 2,
-            "readability_max": 5,
-            "structure_max": 8,
-            "feedback": "The function returns a constant boolean instead of checking whether the string is a palindrome.",
-            "suggestion": "Compare the original string with its reverse or an equivalent mirrored check."
-        })
 
     if "factorial" in question_text and _requires_recursion(question_text) and not _has_self_recursive_call(function_node):
         findings.append({
@@ -1170,55 +1667,6 @@ def analyze_submission_rules(question, student_answer, language):
             "structure_max": 8,
             "feedback": "Counting opening and closing parentheses alone does not correctly detect balanced parentheses.",
             "suggestion": "Track the order of parentheses with a stack or a balance counter that never goes negative."
-        })
-
-    if ("even" in question_text or "divisible by" in question_text) and _returns_modulus_without_comparison(function_node):
-        findings.append({
-            "type": "correctness_cap",
-            "correctness_max": 12,
-            "feedback": "Returning only the remainder does not directly implement the required boolean divisibility check.",
-            "suggestion": "Compare the remainder to 0 so the function explicitly returns True or False."
-        })
-
-    if ("power of 2" in question_text or "power of two" in question_text) and (
-        _returns_modulus_without_comparison(function_node) or _uses_modulus_comparison_zero(function_node)
-    ):
-        findings.append({
-            "type": "hard_fail",
-            "correctness_max": 2,
-            "efficiency_max": 2,
-            "readability_max": 5,
-            "structure_max": 8,
-            "feedback": "Checking whether a number is even is not the same as checking whether it is a power of two.",
-            "suggestion": "Use a true power-of-two check such as n > 0 and (n & (n - 1)) == 0."
-        })
-
-    if ("maximum" in question_text or "max" in question_text) and _uses_sorted_call(function_node):
-        findings.append({
-            "type": "efficiency_cap",
-            "efficiency_max": 12,
-            "feedback": "The result is correct, but sorting the full list is less efficient than a direct maximum scan.",
-            "suggestion": "Use max(lst) or a single-pass comparison instead of sorting the entire list."
-        })
-
-    if ("minimum" in question_text or "min" in question_text) and (_uses_sorted_call(function_node) or _returns_sorted_index(function_node, 0)):
-        findings.append({
-            "type": "correct_solution_with_penalty",
-            "correctness_min": 34,
-            "efficiency_max": 12,
-            "readability_min": 5,
-            "structure_min": 12,
-            "feedback": "The result is correct, but sorting the full list is less efficient than finding the minimum directly.",
-            "suggestion": "Use min(lst) or a single-pass comparison instead of sorting the entire list."
-        })
-
-    if "second largest" in question_text and _uses_sorted_call(function_node) and not _uses_set_call(function_node):
-        findings.append({
-            "type": "correctness_cap",
-            "correctness_max": 28,
-            "efficiency_max": 12,
-            "feedback": "Sorting without removing duplicates can return the largest value again instead of the second distinct largest element.",
-            "suggestion": "Remove duplicates first, or track the two largest distinct values explicitly."
         })
 
     if "top 2 largest" in question_text and _returns_sorted_slice_without_set(function_node):
@@ -1254,24 +1702,6 @@ def analyze_submission_rules(question, student_answer, language):
             "suggestion": "Use max(s.split(), key=len) to find the longest word without sorting the whole list."
         })
 
-    if ("remove duplicate" in question_text or "remove duplicates" in question_text) and not _uses_set_call(function_node):
-        findings.append({
-            "type": "feedback_only",
-            "feedback": "The solution correctly removes duplicates and also preserves input order, which a plain set-based approach would not.",
-            "suggestion": "Keep this ordered approach if preserving the original sequence matters."
-        })
-
-    if "duplicate" in question_text and "preserving order" in question_text and _returns_list_set_call(function_node):
-        findings.append({
-            "type": "hard_fail",
-            "correctness_max": 8,
-            "efficiency_max": 8,
-            "readability_max": 10,
-            "structure_max": 12,
-            "feedback": "Using set removes duplicates but does not preserve the original order of the list.",
-            "suggestion": "Use an ordered approach such as dict.fromkeys(...) or a loop with a seen set."
-        })
-
     if "uppercase" in question_text and _returns_upper_comparison(function_node):
         findings.append({
             "type": "feedback_only",
@@ -1305,15 +1735,6 @@ def analyze_submission_rules(question, student_answer, language):
             "structure_max": 12,
             "feedback": "Reversing the list is not the same as rotating it by k steps.",
             "suggestion": "Return the rotated list using slicing such as lst[k:] + lst[:k]."
-        })
-
-    if "common elements" in question_text and _returns_common_elements_listcomp_without_dedup(function_node):
-        findings.append({
-            "type": "correctness_cap",
-            "correctness_max": 22,
-            "efficiency_max": 10,
-            "feedback": "The function can find overlapping values, but it can repeat duplicates and does not behave like a proper distinct intersection.",
-            "suggestion": "Use sets or another deduping approach so common elements are returned without duplicate inflation."
         })
 
     if "armstrong" in question_text and "**3" in (student_answer or "").replace(" ", ""):
@@ -1402,7 +1823,7 @@ def apply_rule_adjustments(rubric_score, feedback, suggestions, findings):
         finding_type = item.get("type")
         if finding_type == "hard_fail":
             return 3
-        if finding_type in {"correctness_cap", "efficiency_cap", "correct_solution_with_penalty"}:
+        if finding_type in {"correctness_cap", "efficiency_cap", "correct_solution_with_penalty", "equivalent_solution"}:
             return 2
         if finding_type == "feedback_only":
             return 1

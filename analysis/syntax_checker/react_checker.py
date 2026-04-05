@@ -24,17 +24,6 @@ def check_react_syntax(code):
         return base
 
     lowered = stripped.lower()
-    has_component_shape = any(
-        token in lowered for token in ("return (", "return<", "jsx", "usestate", "useeffect", "export default")
-    ) or "<" in stripped
-
-    if not has_component_shape:
-        return {
-            "valid": False,
-            "error": "Submission does not look like a React component or JSX snippet",
-            "line": None,
-        }
-
     if "<" in stripped and ">" in stripped and not _balanced_angle_brackets(stripped):
         return {
             "valid": False,

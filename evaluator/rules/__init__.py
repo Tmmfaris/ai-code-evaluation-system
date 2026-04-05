@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 
 from .generic_rules import analyze_generic_requirements, analyze_question_risk as _analyze_question_risk, apply_rule_adjustments
+from .javascript_rules import analyze_javascript_submission_rules
 from .java_rules import analyze_java_submission_rules
 from .python_rules import analyze_python_submission_rules
 from .css_rules import analyze_css_submission_rules
@@ -24,9 +25,18 @@ def _build_rules_cache_version():
     fingerprint_paths = [
         base_dir / "__init__.py",
         base_dir / "shared.py",
+        base_dir / "javascript_rules.py",
         base_dir / "java_rules.py",
         base_dir / "python_rules.py",
         base_dir / "generic_rules.py",
+        base_dir / "javascript_families" / "__init__.py",
+        base_dir / "javascript_families" / "strings.py",
+        base_dir / "javascript_families" / "lists.py",
+        base_dir / "javascript_families" / "numbers.py",
+        base_dir / "python_families" / "__init__.py",
+        base_dir / "python_families" / "strings.py",
+        base_dir / "python_families" / "lists.py",
+        base_dir / "python_families" / "numbers.py",
     ]
     digest = hashlib.sha256()
     for path in fingerprint_paths:
@@ -43,6 +53,8 @@ def _analyze_submission_rules_cached(cache_version, question, student_answer, la
 
     if language == "java":
         return tuple(analyze_java_submission_rules(question, student_answer))
+    if language == "javascript":
+        return tuple(analyze_javascript_submission_rules(question, student_answer))
     if language == "python":
         return tuple(analyze_python_submission_rules(question, student_answer))
     if language == "css":

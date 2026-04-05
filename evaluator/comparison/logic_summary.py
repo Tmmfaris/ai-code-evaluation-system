@@ -20,6 +20,8 @@ def build_logic_evaluation(
         for item in findings:
             if item.get("type") == "hard_fail":
                 return "The student logic does not correctly solve the problem yet."
+            if item.get("type") == "equivalent_solution":
+                return "The student used a different approach, but the logic is correct."
 
     if result_type == "full_pass":
         return "The student used a different approach, but the logic is correct."
@@ -39,6 +41,8 @@ def build_logic_evaluation(
         for item in findings:
             if item.get("type") == "correct_solution_with_penalty":
                 return "The student logic is correct, but the approach is less efficient than the model answer."
+            if item.get("type") == "equivalent_solution":
+                return "The student used a different approach, but the logic is correct."
             if item.get("type") in {"correctness_cap", "efficiency_cap"}:
                 return "The student logic is mostly correct, but it misses an important requirement or edge case."
 

@@ -69,6 +69,29 @@ def should_use_deterministic_shortcut(language, syntax_result, execution_finding
             "correctness_cap",
             "efficiency_cap",
             "correct_solution_with_penalty",
+            "equivalent_solution",
+        }
+        for item in (rule_findings or [])
+    )
+
+
+def should_use_rule_only_shortcut(language, syntax_result, execution_finding, rule_findings=None):
+    if language in {"python", "java"}:
+        return False
+
+    if not syntax_result.get("valid", True):
+        return False
+
+    if execution_finding:
+        return False
+
+    return any(
+        (item or {}).get("type") in {
+            "hard_fail",
+            "correctness_cap",
+            "efficiency_cap",
+            "correct_solution_with_penalty",
+            "equivalent_solution",
         }
         for item in (rule_findings or [])
     )
@@ -263,6 +286,18 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 structure_analysis=structure_analysis,
             )
             rubric_score = dict(parsed_llm["rubric"])
+        elif should_use_rule_only_shortcut(
+            language,
+            syntax_result,
+            execution_finding,
+            rule_findings=rule_findings,
+        ):
+            log_info(
+                f"Evaluation path | Student: {student_id} | Language: {language} | "
+                f"Mode: deterministic_rule_shortcut"
+            )
+            parsed_llm = logic_checker.build_rule_only_result(rule_findings)
+            rubric_score = dict(parsed_llm["rubric"])
         else:
             mode = "hybrid"
             if execution_finding:
@@ -333,6 +368,10 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             syntax_result=syntax_result,
             language=language,
         )
+        has_equivalent_rule_solution = any(
+            (item or {}).get("type") == "equivalent_solution"
+            for item in (rule_findings or [])
+        )
         confidence = infer_evaluation_confidence(
             language=language,
             syntax_result=syntax_result,
@@ -340,6 +379,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             question_profile=question_profile,
             exact_match=False,
         )
+        if has_equivalent_rule_solution and not execution_finding:
+            confidence = "high"
         final_score = apply_confidence_bounds(
             score=final_score,
             confidence=confidence,
@@ -420,6 +461,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             question_profile=question_profile,
             exact_match=False,
         )
+        if has_equivalent_rule_solution and not execution_finding:
+            result["confidence"] = 0.96
 
         log_result(student_id, final_score)
         return result

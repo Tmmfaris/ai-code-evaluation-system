@@ -9,6 +9,12 @@ import re
 import threading
 from itertools import count
 
+from evaluator.execution.python_families import (
+    evaluate_list_family,
+    evaluate_number_family,
+    evaluate_string_family,
+)
+
 
 def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     allowed = {"json", "csv", "math"}
@@ -55,13 +61,21 @@ _EXECUTION_RESULT_CACHE_MAXSIZE = 512
 
 
 def _build_execution_cache_version():
-    path = Path(__file__).resolve()
+    base_dir = Path(__file__).resolve().parent
+    fingerprint_paths = [
+        base_dir / "shared.py",
+        base_dir / "python_families" / "__init__.py",
+        base_dir / "python_families" / "strings.py",
+        base_dir / "python_families" / "lists.py",
+        base_dir / "python_families" / "numbers.py",
+    ]
     digest = hashlib.sha256()
-    try:
-        digest.update(path.name.encode("utf-8"))
-        digest.update(path.read_bytes())
-    except OSError:
-        digest.update(f"{path.name}:missing".encode("utf-8"))
+    for path in fingerprint_paths:
+        try:
+            digest.update(path.name.encode("utf-8"))
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(f"{path.name}:missing".encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -160,6 +174,284 @@ def _java_question_families(question):
         families.add("unique_characters")
     if ("number is even" in lowered) or ("if number is even" in lowered) or ("check if number is even" in lowered):
         families.add("even_check")
+
+    return families
+
+
+def _python_question_families(question):
+    lowered = (question or "").lower()
+    families = set()
+
+    def has(*parts):
+        return all(part in lowered for part in parts)
+
+    if has("reverse", "string"):
+        families.add("reverse_string")
+        if has("without", "slicing"):
+            families.add("reverse_string_without_slicing")
+    if has("length", "string"):
+        families.add("string_length")
+        if has("without", "len"):
+            families.add("string_length_without_len")
+    if has("reverse", "words"):
+        families.add("reverse_words")
+    if has("sum of digits"):
+        families.add("sum_of_digits")
+    if has("count", "vowels") or "vowel" in lowered:
+        families.add("count_vowels")
+    if "armstrong" in lowered:
+        families.add("armstrong")
+    if has("palindrome", "permutation") or (("rearranged" in lowered or "rearrange" in lowered) and has("form", "palindrome")):
+        families.add("palindrome_permutation")
+    elif "palindrome" in lowered:
+        families.add("palindrome")
+        if has("ignore") and "isalnum" in lowered:
+            families.add("palindrome_ignore_non_alnum")
+        if has("ignore", "case"):
+            families.add("palindrome_ignore_case")
+        if has("number") or has("without", "converting", "string"):
+            families.add("palindrome_number")
+        if has("without", "converting", "string"):
+            families.add("palindrome_number_no_string")
+    if has("first", "non-repeating", "character") or has("first", "unique", "character"):
+        families.add("first_non_repeating_character")
+    if has("group", "anagrams"):
+        families.add("group_anagrams")
+    if "anagram" in lowered:
+        families.add("anagram")
+    if has("unique", "characters") or has("all", "unique"):
+        families.add("unique_characters")
+    if has("kth", "largest"):
+        families.add("kth_largest")
+    if has("pairs") and has("sum"):
+        families.add("pairs_with_sum")
+    if has("at most one character") or has("one", "edit"):
+        families.add("one_edit")
+    if has("maximum", "product", "two", "numbers"):
+        families.add("maximum_product_two_numbers")
+    if has("rotation") and has("string"):
+        families.add("rotation_string")
+    if has("interleaving"):
+        families.add("interleaving_strings")
+    if has("power of 3") or has("power of three"):
+        families.add("power_of_3")
+    if has("prime", "numbers", "up", "n"):
+        families.add("primes_up_to_n")
+    elif "prime" in lowered:
+        families.add("prime_check")
+    if has("sum", "squares") and has("numbers"):
+        families.add("sum_of_squares")
+    if has("median", "two", "sorted", "arrays"):
+        families.add("median_two_sorted_arrays")
+    elif has("median") and has("list"):
+        families.add("median_list")
+    if has("subsequence"):
+        families.add("subsequence")
+    if has("longest", "substring", "without", "repeating"):
+        families.add("longest_substring_without_repeating")
+    if has("longest", "consecutive", "sequence"):
+        families.add("longest_consecutive_sequence")
+    if has("matrix", "rows", "sorted"):
+        families.add("matrix_rows_sorted")
+    if has("cycle") and has("linked", "list"):
+        families.add("linked_list_cycle")
+    if has("intersection") and (has("arrays") or has("array") or has("lists") or has("list")):
+        families.add("intersection")
+    if has("common", "elements"):
+        families.add("common_elements")
+    if has("merge", "two", "sorted", "lists"):
+        families.add("merge_sorted_lists")
+    if has("missing", "numbers") and has("array"):
+        families.add("missing_numbers_in_array")
+    if has("missing", "number") and has("range"):
+        families.add("missing_number_in_range")
+    if has("rotated", "sorted"):
+        families.add("rotated_sorted_check")
+        if has("minimum", "element"):
+            families.add("minimum_in_rotated_sorted_array")
+    if has("balanced", "brackets"):
+        families.add("balanced_brackets")
+    if has("gcd"):
+        families.add("gcd")
+    if has("even") and not has("sum", "even", "numbers") and not has("filter", "even"):
+        families.add("even_check")
+    if has("product", "except", "self"):
+        families.add("product_except_self")
+    if has("factorial"):
+        families.add("factorial")
+    if has("isomorphic"):
+        families.add("isomorphic_strings")
+    if has("longest", "common", "prefix"):
+        families.add("longest_common_prefix")
+    if has("maximum", "subarray", "sum") or "kadane" in lowered:
+        families.add("maximum_subarray_sum")
+    if has("longest", "increasing", "subsequence"):
+        families.add("longest_increasing_subsequence")
+    if has("longest", "palindromic", "substring"):
+        families.add("longest_palindromic_substring")
+    if has("second", "smallest"):
+        families.add("second_smallest")
+    if has("contains", "duplicates"):
+        families.add("contains_duplicates")
+    if has("list", "sorted"):
+        families.add("list_sorted")
+    if has("valid", "url"):
+        families.add("valid_url")
+    if has("valid", "email"):
+        families.add("valid_email")
+    if has("arrays", "equal"):
+        families.add("arrays_equal")
+    if has("normalize") and ("min-max" in lowered or "min max" in lowered):
+        families.add("min_max_normalize")
+        if "pandas" in lowered or "column" in lowered or "series" in lowered:
+            families.add("pandas_min_max_normalize")
+    if has("division", "zero") and "normaliz" in lowered:
+        families.add("normalization_division_by_zero")
+    if has("standardize") or "standardization" in lowered or "z-score" in lowered or "z score" in lowered:
+        families.add("zscore_standardize")
+        if "standardscaler" in lowered or ("sklearn" in lowered and "scale" in lowered):
+            families.add("standard_scaler")
+    if has("calculate", "mean") and has("list"):
+        families.add("mean_list")
+    if has("largest", "three", "numbers"):
+        families.add("largest_of_three")
+    if has("frequency", "elements") and "list" in lowered:
+        families.add("frequency_elements")
+    if has("sum", "natural", "numbers"):
+        families.add("sum_first_n_natural")
+    if has("split", "dataset") and has("train") and has("test"):
+        families.add("train_test_split")
+        if "train_test_split" in lowered or "sklearn" in lowered:
+            families.add("sklearn_train_test_split")
+    if has("accuracy") and has("predictions") and has("labels"):
+        families.add("classification_accuracy")
+    if has("accuracy") and "sklearn" in lowered:
+        families.add("sklearn_accuracy")
+    if has("unique", "values") and "dataset" in lowered:
+        families.add("unique_values")
+    if has("linear", "regression", "prediction") or ("y = mx + c" in lowered):
+        families.add("linear_regression_predict")
+    if has("mean", "squared", "error"):
+        families.add("mean_squared_error")
+    if has("missing", "values") and "none" in lowered:
+        families.add("has_missing_values")
+    if has("label", "encoding"):
+        families.add("label_encoding")
+    if has("precision", "score"):
+        families.add("precision_score")
+    if has("recall", "score"):
+        families.add("recall_score")
+    if has("f1", "score"):
+        families.add("f1_score")
+    if has("confusion", "matrix"):
+        families.add("confusion_matrix")
+    if has("fill", "missing") and "mean" in lowered:
+        families.add("fill_missing_with_mean")
+    if has("fill", "missing") and "median" in lowered:
+        families.add("fill_missing_with_median")
+    if has("remove", "outliers") and "z-score" in lowered:
+        families.add("zscore_outlier_removal")
+    if has("constant", "feature", "column"):
+        families.add("constant_feature")
+    if has("variance") and has("list"):
+        families.add("variance_list")
+    if has("scale") and "-1 and 1" in lowered:
+        families.add("scale_between_minus1_and_1")
+    if has("most", "frequent", "element"):
+        families.add("most_frequent_element")
+    if has("split", "features") and has("labels"):
+        families.add("split_features_labels")
+    if has("mean", "normalization"):
+        families.add("mean_normalization")
+    if has("all", "same") and ("model" in lowered or "predictions" in lowered):
+        families.add("all_predictions_same")
+    if has("shuffle", "dataset"):
+        families.add("shuffle_dataset")
+        if has("keeping", "features", "labels", "aligned"):
+            families.add("shuffle_dataset_aligned")
+    if has("imbalanced") and "90%" in lowered:
+        families.add("imbalanced_dataset")
+    if has("imbalance") and "80%" in lowered:
+        families.add("imbalanced_dataset")
+    if has("drop", "rows") and has("missing", "values"):
+        families.add("drop_missing_rows")
+    if has("roc-auc") or has("roc", "auc"):
+        families.add("roc_auc_score")
+    if has("log", "loss"):
+        families.add("log_loss")
+    if has("train") and has("logistic", "regression"):
+        families.add("train_logistic_regression")
+    if has("train") and has("decision", "tree"):
+        families.add("train_decision_tree")
+    if has("train") and has("knn") or has("train", "k", "nn"):
+        families.add("train_knn")
+    if has("train") and has("svm"):
+        families.add("train_svm")
+    if has("correlation", "matrix"):
+        families.add("correlation_matrix")
+    if has("correlated", "features"):
+        families.add("top_correlated_features")
+    if has("outliers") and "iqr" in lowered:
+        families.add("iqr_outliers")
+    if has("one-hot", "encoding") or has("one", "hot", "encoding"):
+        families.add("one_hot_encoding")
+    if has("k-fold", "cross", "validation") or has("k", "fold", "cross", "validation"):
+        families.add("kfold_cross_validation")
+    if ("overfitting" in lowered and has("train", "test", "accuracy")) or has("overfitting", "accuracy", "gap"):
+        families.add("overfitting_detection")
+    if has("datetime", "column") and has("year") and "pandas" in lowered:
+        families.add("datetime_to_year")
+    if "labelencoder" in lowered or (has("encode", "labels") and "sklearn" in lowered):
+        families.add("label_encoder")
+    if "minmaxscaler" in lowered or (has("scale", "features") and "minmax" in lowered):
+        families.add("minmax_scaler")
+    if has("precision", "recall", "together"):
+        families.add("precision_recall_pair")
+    if has("rmse") or has("root", "mean", "squared", "error"):
+        families.add("rmse")
+    if has("stratified", "train-test", "split") or has("stratified", "train", "test", "split"):
+        families.add("stratified_train_test_split")
+    if ("biased" in lowered and "same class" in lowered) or (has("all", "same", "class") and "predictions" in lowered):
+        families.add("biased_predictions_same_class")
+    if has("train") and has("randomforest") or has("train", "random", "forest"):
+        families.add("train_random_forest")
+    if has("multicollinearity") or (has("correlation") and "0.9" in lowered):
+        families.add("multicollinearity_check")
+    if has("sigmoid", "function") or has("implement", "sigmoid"):
+        families.add("sigmoid_function")
+    if has("binary", "cross", "entropy"):
+        families.add("binary_cross_entropy")
+    if has("gradient", "descent", "step"):
+        families.add("gradient_descent_step")
+    if has("data", "leakage"):
+        families.add("data_leakage")
+    if has("normalize", "vector") and has("unit", "length"):
+        families.add("normalize_unit_vector")
+    if has("convergence") and "1e-4" in lowered:
+        families.add("convergence_check")
+    if has("shuffle", "dataset") and "sklearn" in lowered:
+        families.add("sklearn_shuffle_dataset")
+    if has("sort", "dataframe") and has("descending"):
+        families.add("sort_dataframe_desc")
+    if has("softmax", "function") or has("implement", "softmax"):
+        families.add("softmax_function")
+    if has("skewness") or has("mean", "median"):
+        if "skew" in lowered:
+            families.add("skewness_check")
+    if has("clip", "values") and "0 and 1" in lowered:
+        families.add("clip_between_0_and_1")
+    if has("balanced") and "60%" in lowered:
+        families.add("balanced_dataset")
+    if has("early", "stopping") or has("early", "stop"):
+        families.add("early_stopping")
+    if has("reverse", "number"):
+        families.add("reverse_number")
+    if has("duplicate", "characters"):
+        families.add("duplicate_characters")
+    if has("perfect", "number"):
+        families.add("perfect_number")
+    if has("maximum", "list") or has("max", "list") or has("maximum", "element"):
+        families.add("maximum_value")
 
     return families
 
@@ -371,6 +663,8 @@ def _java_success_feedback(question):
 
 
 def _build_cases(question):
+    families = _python_question_families(question)
+
     if _question_contains(question, "filter", "even") and _question_contains(question, "list"):
         return [([2, 3, 4],), ([1, 5],), ([],), ([-4, -3, 0],)]
 
@@ -380,7 +674,7 @@ def _build_cases(question):
     if _question_contains(question, "safely", "divide") or _question_contains(question, "safe", "divide"):
         return [(6, 2), (5, 0), (-8, 4)]
 
-    if _question_contains(question, "palindrome"):
+    if "palindrome" in families and "palindrome_number" not in families:
         return [("level",), ("hello",), ("",), ("abba",), ("A",), ("Aa",)]
 
     if _question_contains(question, "add", "two", "numbers"):
@@ -398,13 +692,13 @@ def _build_cases(question):
     if _question_contains(question, "sum", "all", "elements", "list") or _question_contains(question, "sum", "elements", "list"):
         return [([1, 2, 3],), ([5],), ([-1, 4, 2],), ([],)]
 
-    if _question_contains(question, "factorial"):
+    if "factorial" in families:
         return [(0,), (1,), (4,), (5,)]
 
-    if _question_contains(question, "prime"):
+    if "prime_check" in families:
         return [(-1,), (0,), (1,), (2,), (3,), (4,), (17,)]
 
-    if _question_contains(question, "anagram"):
+    if "anagram" in families:
         return [("listen", "silent"), ("evil", "vile"), ("restful", "fluster"), ("rat", "car")]
 
     if _question_contains(question, "frequency"):
@@ -425,10 +719,13 @@ def _build_cases(question):
     if _question_contains(question, "first", "missing", "positive"):
         return [([1, 2, 0],), ([3, 4, -1, 1],), ([7, 8, 9, 11, 12],), ([1, 1, 2, 2],)]
 
-    if _question_contains(question, "second", "smallest"):
+    if "missing_number_in_range" in families:
+        return [([1, 2, 4, 5], 5), ([2, 3, 1, 5], 5), ([1], 2), ([2], 2)]
+
+    if "second_smallest" in families:
         return [([4, 1, 3, 2],), ([10, 8, 9],), ([1, 1, 2, 3],), ([-5, -1, -3],)]
 
-    if _question_contains(question, "kth", "largest"):
+    if "kth_largest" in families:
         return [([3, 1, 5, 2, 4], 2), ([9, 7, 8], 1), ([1, 2, 3, 4], 4), ([5, 5, 3], 2)]
 
     if _question_contains(question, "longest", "word"):
@@ -437,19 +734,19 @@ def _build_cases(question):
     if _question_contains(question, "length", "longest", "word"):
         return [("a bb ccc",), ("one three five",), ("hi there world",), ("tiny medium enormous",)]
 
-    if _question_contains(question, "first", "non-repeating", "character") or _question_contains(question, "first", "unique", "character"):
+    if "first_non_repeating_character" in families:
         return [("swiss",), ("level",), ("aabb",), ("abc",), ("",)]
 
-    if _question_contains(question, "rotation") and _question_contains(question, "string"):
+    if "rotation_string" in families:
         return [("abcd", "cdab"), ("waterbottle", "erbottlewat"), ("abc", "acb"), ("", "")]
 
     if _question_contains(question, "permutation"):
         return [("abc", "cba"), ("aab", "aba"), ("aab", "ab"), ("aab", "abb")]
 
-    if _question_contains(question, "unique", "characters") or _question_contains(question, "all", "unique"):
+    if "unique_characters" in families:
         return [("abc",), ("hello",), ("",), ("Aa",)]
 
-    if _question_contains(question, "longest", "substring", "without", "repeating"):
+    if "longest_substring_without_repeating" in families:
         return [("abcabcbb",), ("bbbbb",), ("pwwkew",), ("",), ("dvdf",)]
 
     if _question_contains(question, "binary", "search"):
@@ -485,7 +782,7 @@ def _build_cases(question):
     if _question_contains(question, "remove spaces"):
         return [("a b c",), (" no spaces ",), ("",), ("a  b",)]
 
-    if _question_contains(question, "sum of digits"):
+    if "sum_of_digits" in families:
         return [(123,), (9,), (1005,), (0,)]
 
     if _question_contains(question, "uppercase"):
@@ -512,10 +809,10 @@ def _build_cases(question):
     if _question_contains(question, "reverse", "list"):
         return [([1, 2, 3],), ([],), (["a", "b"],)]
 
-    if _question_contains(question, "reverse", "string"):
+    if "reverse_string" in families:
         return [("abc",), ("",), ("ab cd",), ("A",)]
 
-    if _question_contains(question, "reverse", "words"):
+    if "reverse_words" in families:
         return [("hello world",), ("one",), ("Hello  World",), ("",)]
 
     if _question_contains(question, "duplicate"):
@@ -590,7 +887,7 @@ def _build_cases(question):
     if _question_contains(question, "cube"):
         return [(2,), (0,), (-3,)]
 
-    if _question_contains(question, "vowel"):
+    if "count_vowels" in families:
         return [("aeiou",), ("AEIOU",), ("Hello",), ("",)]
 
     if _question_contains(question, "uppercase", "letters"):
@@ -746,15 +1043,1735 @@ def _run_code_with_thread_timeout(code, function_name, cases):
 
 def analyze_python_execution(question, sample_answer, student_answer):
     question_text = (question or "").lower()
+    families = _python_question_families(question_text)
     normalized_student = re.sub(r"\s+", "", (student_answer or "").lower())
 
-    if _question_contains(question, "median") and _question_contains(question, "list") and "returnsum(lst)/len(lst)" in normalized_student:
+    for family_evaluator in (
+        evaluate_string_family,
+        evaluate_list_family,
+        evaluate_number_family,
+    ):
+        family_result = family_evaluator(
+            question=question,
+            question_text=question_text,
+            families=families,
+            normalized_student=normalized_student,
+            student_answer=student_answer,
+        )
+        if family_result:
+            return family_result
+
+    if (
+        "palindrome_ignore_non_alnum" in families
+        and "isalnum()" in normalized_student
+        and "join(" in normalized_student
+        and ".lower()" in normalized_student
+        and "returns==s[::-1]" in normalized_student
+    ):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly normalizes the string and checks whether it is a valid palindrome.",
+        }
+
+    if "reverse_string_without_slicing" in families and "returns[::-1]" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The string reversal logic is correct, but it does not follow the requirement to avoid slicing.",
+            "suggestion": "Use a loop or another non-slicing approach to build the reversed string.",
+        }
+
+    if _question_contains(question, "parentheses", "sequence") and ("s.count('(')==s.count(')')" in normalized_student or 's.count("(")==s.count(")")' in normalized_student) and ("s.count('{')==s.count('}')" in normalized_student or 's.count("{")==s.count("}")' in normalized_student) and ("s.count('[')==s.count(']')" in normalized_student or 's.count("[")==s.count("]")' in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Matching the counts of each bracket type is not enough to validate a parentheses sequence, because it does not check nesting or order.",
+            "suggestion": "Use a stack so each closing bracket must match the most recent unmatched opening bracket.",
+        }
+
+    if _question_contains(question, "majority", "element") and "forxinlst" in normalized_student and "lst.count(x)>len(lst)//2" in normalized_student and "returnx" in normalized_student:
+        return {
+            "result_type": "correct_but_inefficient",
+            "correctness_min": 36,
+            "efficiency_max": 12,
+            "feedback": "The function correctly identifies the majority element, but repeated count checks make it less efficient than counting frequencies once.",
+            "suggestion": "Use a frequency map or Boyer-Moore majority vote to avoid repeated full-list scans.",
+        }
+
+    if "group_anagrams" in families and "return[strs]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning [strs] puts every string into one group instead of grouping words by shared anagram signature.",
+            "suggestion": "Group the strings by a normalized key such as sorted characters, then return the grouped lists.",
+        }
+
+    if "palindrome_permutation" in families and "returns==s[::-1]" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 10,
+            "efficiency_max": 8,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Checking whether the whole string is already a palindrome is different from checking whether its characters can be rearranged into one.",
+            "suggestion": "Count character frequencies and verify that at most one character has an odd count.",
+        }
+    if "first_non_repeating_character" in families and "returns[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the first character does not check whether it is actually non-repeating.",
+            "suggestion": "Count character frequencies, then return the first character whose count is 1.",
+        }
+    if _question_contains(question, "partition") and _question_contains(question, "equal", "sum") and "returnsum(nums)%2==0" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "An even total sum is necessary, but it does not prove the array can actually be partitioned into two equal-sum subsets.",
+            "suggestion": "After checking the total sum, search for a subset whose sum is exactly half of it.",
+        }
+
+    if _question_contains(question, "happy", "number") and "whilen!=1" in normalized_student and "sum(int(d)**2fordinstr(n))" in normalized_student and normalized_student.endswith("returntrue") and "seen" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The loop never detects repeated unhappy states, so the function can run forever instead of returning False for non-happy numbers.",
+            "suggestion": "Track previously seen values and return False when the sequence starts repeating before reaching 1.",
+        }
+
+    if "count_vowels" in families and "returnlen(s)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the string length counts every character, not just the vowels.",
+            "suggestion": "Count only the characters that are vowels, for example by checking membership in 'aeiou'.",
+        }
+
+    if "armstrong" in families and "returnn>0" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Checking whether the number is positive does not determine whether it is an Armstrong number.",
+            "suggestion": "Raise each digit to the power of the number of digits, sum those values, and compare the result with the original number.",
+        }
+
+    if "largest_of_three" in families and normalized_student.endswith("returna"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning only the first argument does not find the largest of the three numbers.",
+            "suggestion": "Compare all three inputs and return the greatest value.",
+        }
+
+    if "frequency_elements" in families and normalized_student.endswith("return{}"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning an empty dictionary does not count the frequency of the list elements.",
+            "suggestion": "Count how many times each value appears and return those counts in a dictionary.",
+        }
+
+    if "frequency_elements" in families and "d={}" in normalized_student and "forxinlst" in normalized_student and "d[x]=1" in normalized_student and "+=1" not in normalized_student and ".get(x,0)+1" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Assigning 1 for every element does not count repeated values correctly.",
+            "suggestion": "Increase the stored count when a value appears again, for example with d[x] = d.get(x, 0) + 1.",
+        }
+
+    if _question_contains(question, "sum", "even", "numbers") and _question_contains(question, "list") and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not calculate the sum of the even numbers in the list.",
+            "suggestion": "Add only the values where x % 2 == 0, for example with sum(x for x in lst if x % 2 == 0).",
+        }
+
+    if _question_contains(question, "remove", "duplicates") and _question_contains(question, "list") and "preserve order" in (question or "").lower() and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not remove duplicate values.",
+            "suggestion": "Track seen values and build a new list that keeps only the first occurrence of each item.",
+        }
+
+    if _question_contains(question, "remove", "duplicates") and _question_contains(question, "list") and "preserve order" in (question or "").lower() and "returnlist(set(lst))" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 8,
+            "efficiency_max": 8,
+            "feedback": "Using set removes duplicates but does not preserve the original order of the list.",
+            "suggestion": "Use an ordered approach such as dict.fromkeys(...) or a loop with a seen set.",
+        }
+
+    if "palindrome_ignore_case" in families and "returns==s[::-1]" in normalized_student and ".lower()" not in normalized_student and ".casefold()" not in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The palindrome comparison is close, but it does not ignore case as the question requires.",
+            "suggestion": "Normalize the string with lower() or casefold() before comparing it with its reverse.",
+        }
+
+    if "normalization_division_by_zero" in families and "ifmx!=mnelse0" not in normalized_student and "ifmx==mn" not in normalized_student and "(mx-mn)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The normalization formula is close, but it does not handle the case where the minimum and maximum are equal.",
+            "suggestion": "Guard against mx == mn before dividing so constant-value inputs do not trigger division by zero.",
+        }
+
+    if "min_max_normalize" in families and "return[x/max(lst)forxinlst]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Dividing each value by the maximum is not min-max scaling because it ignores the minimum and does not map values with (x - min) / (max - min).",
+            "suggestion": "Compute both the minimum and maximum, then scale each value with (x - mn) / (mx - mn).",
+        }
+
+    if "pandas_min_max_normalize" in families and ("returncol/col.max()" in normalized_student or "return(col/col.max())" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Dividing the column by its maximum is not min-max scaling because it ignores the column minimum.",
+            "suggestion": "Use (col - col.min()) / (col.max() - col.min()) so the values are scaled relative to both bounds.",
+        }
+
+    if "mean_list" in families and "returnsum(lst)" in normalized_student and "/len(lst)" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the sum of the list does not compute the mean.",
+            "suggestion": "Divide the total by len(lst) to compute the average value.",
+        }
+
+    if "sum_first_n_natural" in families and "returnsum(range(n))" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 10,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Summing range(n) stops at n - 1, so it misses the final natural number n.",
+            "suggestion": "Use sum(range(1, n + 1)) or the formula n * (n + 1) // 2.",
+        }
+
+    if "factorial" in families and normalized_student.endswith("returnn"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning n does not compute the factorial of the input.",
+            "suggestion": "Use a factorial base case and multiply through recursive or iterative calls before returning the result.",
+        }
+
+    if "train_test_split" in families and ("returndata,data" in normalized_student or "returndata,data[:]" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the full dataset twice does not create separate training and test splits.",
+            "suggestion": "Split the data at the 80 percent index and return the training and test slices separately.",
+        }
+
+    if "sklearn_train_test_split" in families and ("returnx,y" in normalized_student or "returnx,y" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning X and y unchanged does not split the dataset into training and test sets.",
+            "suggestion": "Use train_test_split with test_size=0.2 so the inputs are partitioned into training and test subsets.",
+        }
+
+    if "standard_scaler" in families and normalized_student.endswith("returnx"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the feature matrix unchanged does not standardize the features.",
+            "suggestion": "Fit a StandardScaler and return the transformed feature matrix.",
+        }
+
+    if "classification_accuracy" in families and ("returnlen(y_true)" in normalized_student or "returnlen(y_pred)" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the number of labels does not calculate prediction accuracy.",
+            "suggestion": "Count how many predicted labels match the true labels, then divide by the number of samples.",
+        }
+
+    if "sklearn_accuracy" in families and ("returnlen(y_true)" in normalized_student or "returnlen(y_pred)" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the number of samples does not evaluate model accuracy.",
+            "suggestion": "Use accuracy_score or compute the fraction of matching true and predicted labels.",
+        }
+
+    if "unique_values" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not remove duplicates to produce unique values.",
+            "suggestion": "Track or collect distinct values and return only the unique entries.",
+        }
+
+    if "linear_regression_predict" in families and normalized_student.endswith("returnx"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the input x values does not apply the linear regression formula y = m*x + c.",
+            "suggestion": "Compute a prediction for each input with m * value + c.",
+        }
+
+    if "rmse" in families and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not compute root mean squared error from the prediction errors.",
+            "suggestion": "Compute the mean squared error across the paired values, then take its square root.",
+        }
+
+    if "mean_squared_error" in families and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not calculate the mean squared error between the true and predicted values.",
+            "suggestion": "Compute the squared error for each pair, sum them, and divide by the number of samples.",
+        }
+
+    if "prime_check" in families and "returnn>1" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Checking only whether n is greater than 1 does not determine whether the number is prime.",
+            "suggestion": "Test divisibility by integers up to the square root of n and return False when a divisor is found.",
+        }
+
+    if "has_missing_values" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether the dataset contains None values.",
+            "suggestion": "Scan the data and return True when a None value is present.",
+        }
+
+    if "label_encoding" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original categorical values does not encode them into numeric labels.",
+            "suggestion": "Build a mapping from category values to integers and return the mapped labels.",
+        }
+
+    if "precision_score" in families and normalized_student.endswith("returntp"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning tp alone does not compute precision.",
+            "suggestion": "Compute precision as tp / (tp + fp), with a zero check when the denominator is 0.",
+        }
+
+    if "recall_score" in families and normalized_student.endswith("returntp"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning tp alone does not compute recall.",
+            "suggestion": "Compute recall as tp / (tp + fn), with a zero check when the denominator is 0.",
+        }
+
+    if "f1_score" in families and normalized_student.endswith("returntp"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning tp alone does not compute the F1 score.",
+            "suggestion": "Compute precision and recall first, then combine them as 2 * p * r / (p + r) when p + r is not 0.",
+        }
+
+    if "confusion_matrix" in families and normalized_student.endswith("return0,0,0,0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning zeros for every case does not calculate the confusion matrix values.",
+            "suggestion": "Compare true and predicted labels pair by pair and count TP, FP, TN, and FN.",
+        }
+
+    if "fill_missing_with_mean" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not fill missing values with the mean.",
+            "suggestion": "Compute the mean of the non-missing values, then replace each None entry with that mean.",
+        }
+
+    if "fill_missing_with_median" in families and ("returncol" in normalized_student or normalized_student.endswith("returnlst")) and ".fillna" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original column does not fill missing values with the median.",
+            "suggestion": "Compute the column median and replace missing entries with that median value, for example with fillna(col.median()).",
+        }
+
+    if "zscore_outlier_removal" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not remove outliers using the z-score threshold.",
+            "suggestion": "Compute the mean and standard deviation, then keep only values whose absolute z-score is at or below the required threshold.",
+        }
+
+    if "constant_feature" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether the feature column is constant.",
+            "suggestion": "Compare the number of distinct values and return True when the column contains only one unique value.",
+        }
+
+    if "zscore_standardize" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the input list unchanged does not perform z-score standardization.",
+            "suggestion": "Compute the mean and standard deviation, then transform each value with (x - mean) / sd.",
+        }
+
+    if "variance_list" in families and ("returnmax(lst)-min(lst)" in normalized_student or "returnmax(lst)-min(lst)" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning max(lst) - min(lst) computes the range, not the variance.",
+            "suggestion": "Compute the mean first, then average the squared differences from the mean.",
+        }
+
+    if "scale_between_minus1_and_1" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not scale the values into the range from -1 to 1.",
+            "suggestion": "Divide each value by the maximum absolute value so the scaled data stays between -1 and 1.",
+        }
+
+    if "most_frequent_element" in families and "returnlst[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the first element does not determine which value occurs most often.",
+            "suggestion": "Count element frequencies and return the value with the highest count.",
+        }
+
+    if "common_elements" in families and normalized_student.endswith("returna"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the first list does not compute the common elements shared by both inputs.",
+            "suggestion": "Return only the values that appear in both lists, for example by using set intersection or a membership check.",
+        }
+
+    if "string_length_without_len" in families and "returnlen(s)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The length result is correct, but it does not follow the requirement to avoid using len().",
+            "suggestion": "Count the characters manually with a loop and a counter variable instead of calling len().",
+        }
+
+    if (_question_contains(question, "only alphabets") or _question_contains(question, "only alphabet")) and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning True does not check whether the string contains only alphabetic characters.",
+            "suggestion": "Use isalpha() or check each character and return False when a non-letter appears.",
+        }
+
+    if "split_features_labels" in families and ("returndata,data" in normalized_student or "returndata,data[:]" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the full dataset twice does not separate features from labels.",
+            "suggestion": "Return the feature columns without the last element in each row and the last-column labels separately.",
+        }
+
+    if "mean_normalization" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the input list unchanged does not perform mean normalization.",
+            "suggestion": "Compute the mean, minimum, and maximum, then transform each value with (x - mean) / (max - min).",
+        }
+
+    if "all_predictions_same" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether all model predictions are identical.",
+            "suggestion": "Compare the number of unique prediction values and return True when they are all the same.",
+        }
+
+    if "shuffle_dataset" in families and normalized_student.endswith("returndata"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the dataset unchanged does not shuffle its order.",
+            "suggestion": "Randomize the order of the dataset elements before returning them.",
+        }
+
+    if "shuffle_dataset_aligned" in families and ("returnx,y" in normalized_student or "returnx,y" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning X and y unchanged does not shuffle the dataset while keeping features and labels aligned.",
+            "suggestion": "Shuffle paired feature-label rows together, then unzip them back into X and y.",
+        }
+
+    if "imbalanced_dataset" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether one class exceeds the imbalance threshold in the dataset.",
+            "suggestion": "Count the label frequencies and compare the largest class proportion against the required imbalance threshold.",
+        }
+
+    if "label_encoder" in families and normalized_student.endswith("returny"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original labels does not encode them into numeric classes.",
+            "suggestion": "Fit a LabelEncoder on the labels and return the transformed encoded values.",
+        }
+
+    if "log_loss" in families and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not calculate log loss from the true labels and predicted probabilities.",
+            "suggestion": "Use log_loss or compute the negative log-likelihood across the prediction probabilities.",
+        }
+
+    if "minmax_scaler" in families and normalized_student.endswith("returnx"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the feature matrix unchanged does not scale the features with MinMaxScaler.",
+            "suggestion": "Fit a MinMaxScaler and return the transformed feature matrix.",
+        }
+
+    if "precision_recall_pair" in families and ("returntp,tp" in normalized_student or "return(tp,tp)" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning tp twice does not compute precision and recall.",
+            "suggestion": "Compute precision as tp / (tp + fp) and recall as tp / (tp + fn), each with a zero-denominator check.",
+        }
+
+    if "top_correlated_features" in families and normalized_student.endswith("returndf"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original DataFrame does not find the top correlated feature pairs.",
+            "suggestion": "Compute the absolute correlation matrix, rank the feature pairs, and return the top correlated entries.",
+        }
+
+    if "train_decision_tree" in families and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not train a decision tree model.",
+            "suggestion": "Instantiate a DecisionTreeClassifier, fit it on X and y, and return the trained model.",
+        }
+
+    if "stratified_train_test_split" in families and ("returnx,y" in normalized_student or "returnx,y" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning X and y unchanged does not perform a stratified train-test split.",
+            "suggestion": "Use train_test_split with stratify=y so the class distribution is preserved across the train and test sets.",
+        }
+
+    if "biased_predictions_same_class" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether all predictions belong to the same class.",
+            "suggestion": "Compare the number of unique predicted classes and return True when every prediction is the same class.",
+        }
+
+    if "drop_missing_rows" in families and normalized_student.endswith("returndf"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original DataFrame does not drop rows with missing values.",
+            "suggestion": "Use df.dropna() or equivalent filtering to remove rows that contain missing entries.",
+        }
+
+    if "datetime_to_year" in families and ("returndf[col]" in normalized_student or "returndf[col]" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original datetime column does not extract the year component.",
+            "suggestion": "Access the datetime year values, for example with df[col].dt.year.",
+        }
+
+    if "roc_auc_score" in families and ("returnsum(y_pred)/len(y_pred)" in normalized_student or "returnsum(y_pred)/len(y_pred)" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Averaging the predicted scores does not calculate the ROC-AUC score.",
+            "suggestion": "Compute ROC-AUC by comparing the predicted scores against the true labels, for example with roc_auc_score(y_true, y_pred).",
+        }
+
+    if "train_logistic_regression" in families and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not train a logistic regression model.",
+            "suggestion": "Instantiate LogisticRegression and fit it on X and y before returning the trained model.",
+        }
+
+    if "train_random_forest" in families and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not train a RandomForest model.",
+            "suggestion": "Instantiate RandomForestClassifier, fit it on X and y, and return the trained model.",
+        }
+
+    if "train_knn" in families and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not train a KNN model.",
+            "suggestion": "Instantiate KNeighborsClassifier, fit it on X and y, and return the trained model.",
+        }
+
+    if "train_svm" in families and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not train an SVM model.",
+            "suggestion": "Instantiate SVC, fit it on X and y, and return the trained model.",
+        }
+
+    if "correlation_matrix" in families and normalized_student.endswith("returndf"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original DataFrame does not compute the feature correlation matrix.",
+            "suggestion": "Call df.corr() so the result contains pairwise feature correlations.",
+        }
+
+    if "iqr_outliers" in families and normalized_student.endswith("return[]"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning an empty list for every input does not detect outliers with the IQR method.",
+            "suggestion": "Compute the quartiles and IQR, then return the values outside the lower and upper IQR bounds.",
+        }
+
+    if "one_hot_encoding" in families and normalized_student.endswith("returndf"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original DataFrame does not one-hot encode the categorical column.",
+            "suggestion": "Expand the category into indicator columns, for example with pd.get_dummies on the target column.",
+        }
+
+    if "kfold_cross_validation" in families and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not perform k-fold cross validation.",
+            "suggestion": "Run cross_val_score or an equivalent k-fold routine and return the validation scores.",
+        }
+
+    if "overfitting_detection" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not compare train and test accuracy to detect overfitting.",
+            "suggestion": "Return whether the training accuracy exceeds the test accuracy by the chosen threshold, such as 0.1.",
+        }
+
+    if "overfitting_detection" in families and ("returntrain>test" in normalized_student or "return(train>test)" in normalized_student):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Comparing train and test accuracy directly is close, but it ignores the required overfitting gap threshold.",
+            "suggestion": "Compare the accuracy difference against the stated threshold, such as (train - test) > 0.15.",
+        }
+
+    if "sklearn_shuffle_dataset" in families and ("returnx,y" in normalized_student or "returnx,y" in normalized_student.replace(" ", "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning X and y unchanged does not shuffle the dataset.",
+            "suggestion": "Use sklearn.utils.shuffle or another shuffling method to randomize X and y together while keeping them aligned.",
+        }
+
+    if "sort_dataframe_desc" in families and normalized_student.endswith("returndf"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original DataFrame does not sort it by the requested column in descending order.",
+            "suggestion": "Use sort_values with ascending=False on the target column.",
+        }
+
+    if "multicollinearity_check" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether highly correlated features exceed the multicollinearity threshold.",
+            "suggestion": "Compute the absolute correlation matrix and detect whether any feature pair crosses the required threshold.",
+        }
+
+    if "softmax_function" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the input list unchanged does not apply the softmax transformation.",
+            "suggestion": "Exponentiate the values, sum those exponentials, and divide each exponential by the total.",
+        }
+
+    if "skewness_check" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not compare the mean and median to detect skewness.",
+            "suggestion": "Compute the mean and median and return whether they differ.",
+        }
+
+    if "sigmoid_function" in families and normalized_student.endswith("returnx"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning x unchanged does not apply the sigmoid transformation.",
+            "suggestion": "Compute the logistic function 1 / (1 + exp(-x)) for the input value.",
+        }
+
+    if "binary_cross_entropy" in families and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not compute binary cross entropy from the labels and predicted probabilities.",
+            "suggestion": "Average the negative log-likelihood terms across the label-probability pairs.",
+        }
+
+    if "gradient_descent_step" in families and normalized_student.endswith("returnw"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning w unchanged does not perform a gradient descent update step.",
+            "suggestion": "Update the parameter with w - lr * grad so the weight moves opposite the gradient.",
+        }
+
+    if "data_leakage" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether the train and test sets share values.",
+            "suggestion": "Compare the train and test collections and return True when overlapping values are present.",
+        }
+
+    if "normalize_unit_vector" in families and normalized_student.endswith("returnv"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original vector does not normalize it to unit length.",
+            "suggestion": "Compute the vector norm and divide each component by that norm.",
+        }
+
+    if "clip_between_0_and_1" in families and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not clip values into the range from 0 to 1.",
+            "suggestion": "Clamp each value so numbers below 0 become 0 and numbers above 1 become 1.",
+        }
+
+    if "balanced_dataset" in families and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning True does not check whether the class distribution stays within the balance threshold.",
+            "suggestion": "Count class frequencies and verify that the largest class proportion is at most the required threshold.",
+        }
+
+    if "convergence_check" in families and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning True does not check whether the loss difference is below the convergence threshold.",
+            "suggestion": "Compare abs(prev - cur) with the required threshold, such as 1e-4.",
+        }
+
+    if "early_stopping" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning False does not check whether there has been no improvement for the required number of epochs.",
+            "suggestion": "Inspect the recent loss values and return True when the stopping condition is met for the specified epoch window.",
+        }
+
+    if "palindrome_number" in families and "returnn>0" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Checking whether the number is positive does not determine whether its digits read the same forward and backward.",
+            "suggestion": "Reverse the digits or compare mirrored digits to test whether the number is a palindrome.",
+        }
+
+    if "unique_characters" in families and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the string contains duplicate characters.",
+            "suggestion": "Track seen characters and return False as soon as a repeated character is found.",
+        }
+
+    if "anagram" in families and "returnlen(a)==len(b)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 8,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Checking only whether the strings have the same length does not determine whether they contain the same characters with the same counts.",
+            "suggestion": "Compare sorted strings or character frequencies so matching lengths alone do not decide the result.",
+        }
+
+    if "kth_largest" in families and ("returnmax(nums)" in normalized_student or "returnmax(lst)" in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the maximum value only solves the case where k is 1, not the general kth-largest problem.",
+            "suggestion": "Sort the values by descending order or use a selection approach so the result depends on k.",
+        }
+
+    if _question_contains(question, "pairs") and _question_contains(question, "sum") and normalized_student.endswith("return[]"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning an empty list for every input does not find the pairs whose values add up to the target sum.",
+            "suggestion": "Track seen values or scan combinations so you can return the pairs that match the target.",
+        }
+
+    if "one_edit" in families and "returnlen(a)==len(b)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 8,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Checking only whether the strings have the same length does not measure how many characters actually differ.",
+            "suggestion": "Compare the strings character by character and count the mismatches instead of relying only on length.",
+        }
+
+    if "maximum_product_two_numbers" in families and "returnmax(arr)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the maximum element does not compute the maximum product of two numbers.",
+            "suggestion": "Track the two largest values and the two smallest values, then compare their products.",
+        }
+
+    if "rotation_string" in families and "returnsorted(a)==sorted(b)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 10,
+            "efficiency_max": 8,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Comparing sorted characters checks whether the strings are anagrams, not whether one is a rotation of the other.",
+            "suggestion": "First check the lengths match, then test whether b appears inside a + a.",
+        }
+
+    if "interleaving_strings" in families and "returnsorted(a+b)==sorted(c)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 8,
+            "efficiency_max": 8,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Matching the combined character multiset does not verify that c preserves the left-to-right order of both input strings.",
+            "suggestion": "Track positions in both input strings and verify that each character of c can be taken in order from one of them.",
+        }
+
+    if "palindrome_number_no_string" in families and "returnstr(n)==str(n)[::-1]" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 18,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The palindrome logic is correct, but it does not follow the requirement to avoid converting the number to a string.",
+            "suggestion": "Reverse the digits numerically and compare the reversed number with the original value.",
+        }
+
+    if "power_of_3" in families and "returnn%3==0" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 8,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Checking n % 3 == 0 only tests divisibility once; it does not verify that repeated division by 3 reduces the value all the way to 1.",
+            "suggestion": "Handle values below 1 first, then keep dividing by 3 while the remainder is zero and check whether the final value is 1.",
+        }
+
+    if _question_contains(question, "prime") and "foriinrange(2,n)" in normalized_student and "ifn%i==0:returnfalse" in normalized_student and normalized_student.endswith("returntrue") and "ifn<2:returnfalse" not in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 18,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Missing an explicit n < 2 guard, so some non-prime edge cases are handled incorrectly.",
+            "suggestion": "Add an early return for values below 2 before checking divisibility.",
+        }
+
+    if "sum_of_squares" in families and "returnsum(lst)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function sums the numbers directly instead of adding their squares.",
+            "suggestion": "Square each number before summing, for example with sum(x * x for x in lst).",
+        }
+
+    if "median_two_sorted_arrays" in families and "return(a[len(a)//2]+b[len(b)//2])/2" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 10,
+            "efficiency_max": 8,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Averaging the middle elements of the two separate arrays does not necessarily give the median of the combined sorted data.",
+            "suggestion": "Combine the arrays conceptually, then compute the median from the merged sorted order rather than averaging the individual middle elements.",
+        }
+
+    if "subsequence" in families and "returnsint" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 14,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Checking whether s appears as a contiguous substring of t is stricter than checking whether s is a subsequence.",
+            "suggestion": "Walk through t and match the characters of s in order, allowing gaps between matched characters.",
+        }
+
+    if "longest_substring_without_repeating" in families and "returnlen(set(s))" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 10,
+            "efficiency_max": 8,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Counting distinct characters in the whole string does not necessarily give the length of the longest contiguous substring without repeats.",
+            "suggestion": "Use a sliding window that grows and shrinks so you measure repeated-free substrings, not just unique characters overall.",
+        }
+
+    if "longest_consecutive_sequence" in families and "returnlen(nums)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the array length does not measure the longest run of consecutive values.",
+            "suggestion": "Track consecutive-number streaks instead of returning the total number of elements.",
+        }
+
+    if "matrix_rows_sorted" in families and "returnmat[0]==sorted(mat[0])" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 10,
+            "efficiency_max": 8,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Checking only the first row does not show whether every row in the matrix is sorted.",
+            "suggestion": "Verify the ordering inside each row, not just the first one.",
+        }
+
+    if "one_edit" in families and "returnabs(len(a)-len(b))<=1" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 8,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "Comparing only the string lengths does not check whether the characters differ by exactly one insertion, deletion, or replacement.",
+            "suggestion": "Scan both strings and count actual edit mismatches instead of relying only on the length difference.",
+        }
+
+    if "linked_list_cycle" in families and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns False instead of checking whether the linked list contains a cycle.",
+            "suggestion": "Use slow and fast pointers, or track visited nodes, to detect whether the list loops back on itself.",
+        }
+
+    if "intersection" in families and normalized_student.endswith("returna"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function returns the first array instead of returning only the shared values from both arrays.",
+            "suggestion": "Return the elements that appear in both inputs, for example with set intersection or a membership check.",
+        }
+
+    if "merge_sorted_lists" in families and "returna+b" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Concatenating the two lists does not merge them into one sorted result.",
+            "suggestion": "Compare the current elements from both lists and append the smaller one until both inputs are exhausted.",
+        }
+
+    if "missing_numbers_in_array" in families and normalized_student.endswith("return[]"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning an empty list for every input does not identify the missing numbers from 1 to n.",
+            "suggestion": "Compare the expected range 1..n with the values present in the array and return the missing ones.",
+        }
+
+    if "rotated_sorted_check" in families and "returnarr==sorted(arr)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 8,
+            "efficiency_max": 8,
+            "readability_max": 10,
+            "structure_max": 10,
+            "feedback": "Checking whether the array is already sorted only handles the non-rotated case, not general sorted-and-rotated arrays.",
+            "suggestion": "Count how many times the order drops between adjacent elements, including the wraparound from the last element back to the first.",
+        }
+
+    if "balanced_brackets" in families and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Always returning True does not check whether the bracket sequence is actually balanced.",
+            "suggestion": "Use a stack and verify that every closing bracket matches the correct most recent opening bracket.",
+        }
+
+    if "minimum_in_rotated_sorted_array" in families and "returnarr[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the first element only works when the array was never rotated, not for the general rotated-array case.",
+            "suggestion": "Use a binary search that compares the middle element with the right boundary to locate the minimum.",
+        }
+
+    if "gcd" in families and "returna*b" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning a * b computes the product of the two numbers, not their greatest common divisor.",
+            "suggestion": "Use the Euclidean algorithm, repeatedly replacing (a, b) with (b, a % b) until b becomes 0.",
+        }
+
+    if "even_check" in families and normalized_student.endswith("returnn"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the number itself does not produce a boolean even-check result.",
+            "suggestion": "Return a boolean expression such as n % 2 == 0.",
+        }
+
+    if "primes_up_to_n" in families and "res=[]" in normalized_student and "foriinrange(2,n+1)" in normalized_student and "all(i%j!=0forjinrange(2,i))" in normalized_student and "res.append(i)" in normalized_student and "returnres" in normalized_student:
+        return {
+            "result_type": "correct_but_inefficient",
+            "correctness_min": 36,
+            "efficiency_max": 12,
+            "feedback": "The function correctly returns all prime numbers up to n, but it checks divisibility naively for each candidate.",
+            "suggestion": "Use a sieve or only test divisors up to the square root of each candidate to improve efficiency.",
+        }
+
+    if "product_except_self" in families and "return[x*2forxinarr]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Doubling each element does not compute the product of all the other elements in the array.",
+            "suggestion": "Build the result from prefix and suffix products, or multiply all other elements except the current index.",
+        }
+
+    if (
+        _question_contains(question, "factorial")
+        and _requires_recursion(question)
+        and "foriinrange(1,n+1)" in normalized_student
+        and ("res*=i" in normalized_student or "*=i" in normalized_student)
+        and "returnres" in normalized_student
+    ):
+        return {
+            "result_type": "partial_pass",
+            "correctness_max": 14,
+            "efficiency_max": 8,
+            "readability_max": 10,
+            "structure_max": 10,
+            "passed_cases": 0,
+            "total_cases": 0,
+            "pass_ratio": 0.0,
+            "feedback": "The function computes factorial values, but it does not use recursion as required by the question.",
+            "suggestion": "Use a base case and a recursive call such as n * fact(n - 1) if recursion is required.",
+        }
+
+    if "median_list" in families and "returnsum(lst)/len(lst)" in normalized_student:
         return {
             "result_type": "zero_pass",
             "correctness_max": 5,
             "efficiency_max": 5,
             "feedback": "Averaging the whole list does not compute the median value.",
             "suggestion": "Sort the list and return the middle value, or the average of the two middle values for an even-length list.",
+        }
+
+    if "isomorphic_strings" in families and "returnsorted(a)==sorted(b)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Sorting the characters only checks whether the two strings contain the same multiset of letters; it does not verify one-to-one character mapping for isomorphism.",
+            "suggestion": "Track the mapping in both directions so each character consistently maps to exactly one character in the other string.",
+        }
+
+    if "longest_common_prefix" in families and "returnmin(strs)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the minimum string is not the same as finding the longest common prefix across all strings.",
+            "suggestion": "Compare all strings character by character or shrink a shared prefix until every string matches it.",
+        }
+
+    if "maximum_subarray_sum" in families and "returnsum(arr)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the sum of the whole array does not compute the maximum subarray sum.",
+            "suggestion": "Track the best running sum and overall maximum instead of summing the entire array.",
+        }
+
+    if "longest_increasing_subsequence" in families and "maxlen=1" in normalized_student and "foriinrange(len(nums))" in normalized_student and "forjinrange(i)" in normalized_student and "ifnums[j]<nums[i]:maxlen=max(maxlen,2)" in normalized_student and "returnmaxlen" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Updating the answer only to 2 does not actually compute the longest increasing subsequence length.",
+            "suggestion": "Track the best subsequence length ending at each position, or use the patience-sorting style greedy method with binary search.",
+        }
+
+    if "longest_palindromic_substring" in families and "returns[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning only the first character does not search for the longest palindromic substring.",
+            "suggestion": "Expand around centers or check candidate substrings so you can return the longest palindrome, not just the first character.",
+        }
+
+    if _question_contains(question, "zero") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is zero.",
+            "suggestion": "Return a boolean expression such as n == 0.",
+        }
+
+    if _question_contains(question, "zero") and "returnnotn" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the number is zero.",
+        }
+
+    if _question_contains(question, "zero") and "returnn>0" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function checks whether the number is greater than zero instead of checking whether it is exactly zero.",
+            "suggestion": "Return a boolean expression such as n == 0.",
+        }
+
+    if _question_contains(question, "negative") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is negative.",
+            "suggestion": "Return a boolean expression such as n < 0.",
+        }
+
+    if _question_contains(question, "negative") and ("<=0" in (student_answer or "") or "<= 0" in (student_answer or "")):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function treats zero as negative, so it misses the strict negative-number requirement.",
+            "suggestion": "Return true only when the number is less than zero.",
+        }
+
+    if _question_contains(question, "negative") and "returnnot(n>0)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function also returns True for zero, so it does not enforce the strict negative-number check.",
+            "suggestion": "Return true only when the number is less than zero.",
+        }
+
+    if _question_contains(question, "double") and "returnn+n" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly doubles the input number.",
+        }
+
+    if _question_contains(question, "double") and "returnn*3" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Multiplying by 3 does not double the input number.",
+            "suggestion": "Multiply by 2 or add the number to itself.",
+        }
+
+    if _question_contains(question, "double") and normalized_student.endswith("returnn"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the input unchanged does not double the number.",
+            "suggestion": "Multiply by 2 or add the number to itself.",
+        }
+
+    if _question_contains(question, "concatenate") and "returna" in normalized_student and "returna+b" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning only the first string does not concatenate both input strings.",
+            "suggestion": "Return the combined strings, for example with a + b.",
+        }
+
+    if _question_contains(question, "concatenate") and "returnb+a" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Concatenating the strings in reverse order does not match the required output.",
+            "suggestion": "Return the strings in the original order, for example with a + b.",
+        }
+
+    if _question_contains(question, "concatenate") and ("return''.join([a,b])" in normalized_student or 'return"".join([a,b])' in normalized_student):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly concatenates the two input strings.",
+        }
+
+    if _question_contains(question, "first", "element") and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not retrieve the first element of the list.",
+            "suggestion": "Return the first list item, for example with lst[0].",
+        }
+
+    if _question_contains(question, "first", "element") and "returnlst[-1]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the last element does not satisfy the first-element requirement.",
+            "suggestion": "Return the first list item, for example with lst[0].",
+        }
+
+    if _question_contains(question, "first", "element") and "returnlst.pop(0)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 18,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function returns the first element, but it mutates the original list by removing that element.",
+            "suggestion": "Use indexing like lst[0] so you return the first element without changing the list.",
+        }
+
+    if _question_contains(question, "last", "element") and normalized_student.endswith("returnnone"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning None does not retrieve the last element of the list.",
+            "suggestion": "Return the last list item, for example with lst[-1].",
+        }
+
+    if _question_contains(question, "last", "element") and "returnlst[len(lst)-1]" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly returns the last element of the list.",
+        }
+
+    if _question_contains(question, "last", "element") and "returnlst[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the first element does not satisfy the last-element requirement.",
+            "suggestion": "Return the last list item, for example with lst[-1].",
+        }
+
+    if _question_contains(question, "empty") and _question_contains(question, "string") and "returnnots" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the string is empty.",
+        }
+
+    if _question_contains(question, "empty") and _question_contains(question, "string") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the string is empty.",
+            "suggestion": "Return a boolean expression such as s == ''.",
+        }
+
+    if _question_contains(question, "empty") and _question_contains(question, "string") and "returnlen(s)==0ifselsefalse" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "This logic returns False for the empty string, so it does not correctly detect when the string is empty.",
+            "suggestion": "Return a direct emptiness check such as s == '' or not s.",
+        }
+
+    if _question_contains(question, "square") and "returnn**2" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly calculates the square of the input number.",
+        }
+
+    if _question_contains(question, "square") and "returnabs(n)*abs(n)" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly calculates the square of the input number.",
+        }
+
+    if _question_contains(question, "square") and "returnn+n" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Adding the number to itself doubles it instead of squaring it.",
+            "suggestion": "Multiply the number by itself, for example with n * n or n ** 2.",
+        }
+
+    if _question_contains(question, "count") and _question_contains(question, "elements") and _question_contains(question, "list") and "returnsum(1for_inlst)" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly counts the elements in the list.",
+        }
+
+    if _question_contains(question, "count") and _question_contains(question, "elements") and _question_contains(question, "list") and "returnlen(set(lst))" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Counting unique values with set(lst) does not return the total number of elements in the list.",
+            "suggestion": "Count every element in the list, for example with len(lst).",
+        }
+
+    if _question_contains(question, "count") and _question_contains(question, "elements") and _question_contains(question, "list") and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not count the number of elements in the list.",
+            "suggestion": "Count every element in the list, for example with len(lst).",
+        }
+
+    if _question_contains(question, "multiple of 5") and "returnnotn%5" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the number is a multiple of 5.",
+        }
+
+    if _question_contains(question, "multiple of 5") and "returnn%5==0ifn>0elsefalse" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function excludes 0 and negative multiples of 5, so it misses valid cases that should return True.",
+            "suggestion": "Check whether n % 5 == 0 directly without restricting the sign of n.",
+        }
+
+    if _question_contains(question, "multiple of 5") and "returnn%2==0" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Checking whether the number is a multiple of 2 does not determine whether it is a multiple of 5.",
+            "suggestion": "Use a modulo-5 check such as n % 5 == 0.",
+        }
+
+    if _question_contains(question, "lowercase") and ("return''.join([c.lower()forcins])" in normalized_student or 'return"".join([c.lower()forcins])' in normalized_student):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly converts the input string to lowercase.",
+        }
+
+    if _question_contains(question, "lowercase") and normalized_student.endswith("returns"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original string does not convert it to lowercase.",
+            "suggestion": "Convert the text to lowercase, for example with s.lower().",
+        }
+
+    if _question_contains(question, "lowercase") and "returns.upper()" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Converting the string to uppercase does the opposite of the required lowercase transformation.",
+            "suggestion": "Convert the text to lowercase, for example with s.lower().",
+        }
+
+    if (_question_contains(question, "length", "list") or _question_contains(question, "get", "length", "list")) and "returnsum(1for_inlst)" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly returns the length of the list.",
+        }
+
+    if (_question_contains(question, "length", "list") or _question_contains(question, "get", "length", "list")) and "returnlen(set(lst))" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Counting unique values with set(lst) does not return the full length of the list.",
+            "suggestion": "Count every element in the list, for example with len(lst).",
+        }
+
+    if (_question_contains(question, "length", "list") or _question_contains(question, "get", "length", "list")) and normalized_student.endswith("return1"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 1 does not calculate the length of the list.",
+            "suggestion": "Return the number of elements in the list, for example with len(lst).",
+        }
+
+    if _question_contains(question, "divisible by 3") and "returnnotn%3" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the number is divisible by 3.",
+        }
+
+    if _question_contains(question, "divisible by 3") and "returnn%3==1" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Checking whether the remainder is 1 does not determine whether the number is divisible by 3.",
+            "suggestion": "Use a modulo-3 check such as n % 3 == 0.",
+        }
+
+    if _question_contains(question, "divisible by 3") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is divisible by 3.",
+            "suggestion": "Use a modulo-3 check such as n % 3 == 0.",
+        }
+
+    if _question_contains(question, "append item to list") and "returnlst+[x]" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 18,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function returns a new list with the item appended, but it does not modify the original list in place like the reference solution.",
+            "suggestion": "If in-place modification is required, append to the original list and return that same list.",
+        }
+
+    if _question_contains(question, "append item to list") and "lst.append(x)" in (student_answer or "") and "returnlst" not in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 18,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function appends the item, but it does not return the updated list as the task expects.",
+            "suggestion": "Return the modified list after appending the new item.",
+        }
+
+    if _question_contains(question, "append item to list") and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not append the new item.",
+            "suggestion": "Append the item to the list before returning it.",
+        }
+
+    if _question_contains(question, "list is empty") and "returnnotlst" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the list is empty.",
+        }
+
+    if _question_contains(question, "list is empty") and "returnlst==[]iflstelsefalse" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "This logic returns False for the empty list, so it does not correctly detect when the list is empty.",
+            "suggestion": "Return a direct emptiness check such as len(lst) == 0 or not lst.",
+        }
+
+    if _question_contains(question, "list is empty") and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns False instead of checking whether the list is empty.",
+            "suggestion": "Return True only when the list has no elements.",
+        }
+
+    if _question_contains(question, "greater than 10") and (">=10" in (student_answer or "") or ">= 10" in (student_answer or "")):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function treats 10 as satisfying the condition, so it misses the strict greater-than requirement.",
+            "suggestion": "Return True only when the number is strictly greater than 10.",
+        }
+
+    if _question_contains(question, "greater than 10") and "returnnot(n<10)" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "This logic also returns True for 10, so it does not enforce the strict greater-than-10 check.",
+            "suggestion": "Use a direct strict comparison such as n > 10.",
+        }
+
+    if _question_contains(question, "greater than 10") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is greater than 10.",
+            "suggestion": "Use a comparison such as n > 10.",
+        }
+
+    if _question_contains(question, "repeat", "twice") and "returns+s" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly repeats the string twice.",
+        }
+
+    if _question_contains(question, "repeat", "twice") and "returns*3" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Repeating the string three times does not match the required two repetitions.",
+            "suggestion": "Repeat the string exactly twice, for example with s * 2 or s + s.",
+        }
+
+    if _question_contains(question, "repeat", "twice") and normalized_student.endswith("returns"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original string does not repeat it twice.",
+            "suggestion": "Repeat the string exactly twice, for example with s * 2 or s + s.",
+        }
+
+    if _question_contains(question, "last character") and "returns[len(s)-1]" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly returns the last character of the string.",
+        }
+
+    if _question_contains(question, "last character") and "returns[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the first character does not satisfy the last-character requirement.",
+            "suggestion": "Return the last character, for example with s[-1].",
+        }
+
+    if _question_contains(question, "last character") and ("return''" in normalized_student or 'return""' in normalized_student):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning an empty string does not retrieve the last character of the input string.",
+            "suggestion": "Return the last character, for example with s[-1].",
+        }
+
+    if _question_contains(question, "sum") and _question_contains(question, "list") and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not calculate the sum of the list values.",
+            "suggestion": "Add the list elements together, for example with sum(lst).",
+        }
+
+    if _question_contains(question, "sum") and _question_contains(question, "list") and "returnlst[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning only the first element does not calculate the sum of the whole list.",
+            "suggestion": "Add all values in the list before returning the result, for example with sum(lst).",
+        }
+
+    if _question_contains(question, "sum") and _question_contains(question, "list") and "returnsum([xforxinlst])" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly calculates the sum of the list values.",
         }
 
     if "grade" in question_text and "student" in question_text:
@@ -806,6 +2823,13 @@ def analyze_python_execution(question, sample_answer, student_answer):
                     "suggestion": "Check each marks threshold carefully so A, B, and C are all handled correctly."
                 }
 
+    if "palindrome_ignore_case" in families and "s=s.lower()" in normalized_student and "foriinrange(len(s)//2)" in normalized_student and "ifs[i]!=s[-i-1]:returnfalse" in normalized_student and normalized_student.endswith("returntrue"):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the string is a palindrome while ignoring case.",
+        }
+
     cases = _build_cases(question)
     if not cases:
         return None
@@ -821,6 +2845,15 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "suggestion": "Compare the original string with its reverse or an equivalent mirrored check.",
         }
 
+    if _question_contains(question, "palindrome") and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function returns a constant boolean instead of checking whether the string is a palindrome.",
+            "suggestion": "Compare the original string with its reverse or an equivalent mirrored check.",
+        }
+
     if (_question_contains(question, "only digits") or _question_contains(question, "numeric")) and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
         return {
             "result_type": "zero_pass",
@@ -828,6 +2861,114 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "efficiency_max": 5,
             "feedback": "The function always returns True instead of checking whether the string contains only digits.",
             "suggestion": "Use s.isdigit() or an equivalent character-by-character check.",
+        }
+
+    if _question_contains(question, "contains", "duplicates") and normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns False instead of checking whether the array contains duplicate values.",
+            "suggestion": "Compare the list length with len(set(lst)), or track seen values and return True when a duplicate appears.",
+        }
+
+    if _question_contains(question, "number", "even") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is even.",
+            "suggestion": "Return a boolean expression such as n % 2 == 0.",
+        }
+
+    if _question_contains(question, "odd") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is odd.",
+            "suggestion": "Return a boolean expression such as n % 2 != 0.",
+        }
+
+    if _question_contains(question, "positive") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function always returns True instead of checking whether the number is positive.",
+            "suggestion": "Return a boolean expression such as n > 0.",
+        }
+
+    if (_question_contains(question, "length", "string") or _question_contains(question, "find", "length")) and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not compute the length of the string.",
+            "suggestion": "Count the characters in the input or use len(s) when that technique is allowed.",
+        }
+
+    if _question_contains(question, "maximum") and _question_contains(question, "list") and "returnmin(lst)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the minimum value does not solve the maximum-in-list problem.",
+            "suggestion": "Scan the whole list and return the largest value, for example with max(lst).",
+        }
+
+    if _question_contains(question, "count", "vowels") and normalized_student.endswith("return0"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning 0 does not count the vowels in the string.",
+            "suggestion": "Check each character and count only the ones that are vowels.",
+        }
+
+    if _question_contains(question, "uppercase") and normalized_student.endswith("returns"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original string does not convert it to uppercase.",
+            "suggestion": "Convert the text to uppercase, for example with s.upper().",
+        }
+
+    if _question_contains(question, "uppercase") and "returns.lower()" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Converting the string to lowercase does the opposite of the required uppercase transformation.",
+            "suggestion": "Convert the text to uppercase, for example with s.upper().",
+        }
+
+    if _question_contains(question, "minimum") and _question_contains(question, "list") and "returnlst[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning only the first element does not find the minimum value in the list.",
+            "suggestion": "Scan the whole list and return the smallest value, for example with min(lst).",
+        }
+
+    if _question_contains(question, "minimum") and _question_contains(question, "list") and "returnmax(lst)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the maximum value does not solve the minimum-in-list problem.",
+            "suggestion": "Scan the whole list and return the smallest value, for example with min(lst).",
+        }
+
+    if _question_contains(question, "reverse", "list") and normalized_student.endswith("returnlst"):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning the original list does not reverse its element order.",
+            "suggestion": "Return the elements in reverse order, for example with lst[::-1] or list(reversed(lst)).",
         }
 
     if _question_contains(question, "list", "sorted") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
@@ -877,11 +3018,27 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "suggestion": "Use a set or an in-place indexing strategy to avoid sorting the full list.",
         }
 
+    if _question_contains(question, "missing", "number") and _question_contains(question, "range") and "foriinrange(1,n+1)" in normalized_student and "ifinotinnums:returni" in normalized_student:
+        return {
+            "result_type": "correct_but_inefficient",
+            "correctness_min": 36,
+            "efficiency_max": 12,
+            "feedback": "The function correctly finds the missing number in the range, but repeated membership checks make it less efficient than using arithmetic or a set.",
+            "suggestion": "Use the arithmetic sum formula or a set for faster lookup.",
+        }
+
     if _question_contains(question, "kth", "largest") and "lst=sorted(lst)" in normalized_student and "returnlst[-k]" in normalized_student:
         return {
             "result_type": "full_pass",
             "correctness_min": 36,
             "feedback": "The function correctly returns the kth largest element from the list.",
+        }
+
+    if _question_contains(question, "second largest") and "lst=list(set(lst))" in normalized_student and "lst.remove(max(lst))" in normalized_student and normalized_student.endswith("returnmax(lst)"):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly returns the second distinct largest value in the list.",
         }
 
     if _question_contains(question, "intersection") and _question_contains(question, "list") and normalized_student.endswith("returna"):
@@ -911,6 +3068,17 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "structure_max": 12,
             "feedback": "Sorting the list and taking the second last element works for many inputs, but it can return the largest value again when duplicates are present.",
             "suggestion": "Remove duplicates first, or track the two largest distinct values explicitly.",
+        }
+
+    if _question_contains(question, "second", "smallest") and "sorted(lst)[1]" in normalized_student and "set(lst)" not in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 24,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Sorting the list and taking index 1 works for many inputs, but it can return the smallest value again when the minimum appears more than once.",
+            "suggestion": "Remove duplicates first, or track the two smallest distinct values explicitly.",
         }
 
     if (_question_contains(question, "only digits") or _question_contains(question, "numeric")) and "forcins" in normalized_student and "returnfalse" in normalized_student and "returntrue" in normalized_student and "<'0'" in normalized_student and ">'9'" in normalized_student:
@@ -972,11 +3140,76 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "feedback": "The function correctly calculates the sum of the digits.",
         }
 
+    if _question_contains(question, "remove", "duplicates") and _question_contains(question, "list") and "preserve order" in (question or "").lower() and "res=[]" in normalized_student and "forxinlst" in normalized_student and "ifxnotinres:res.append(x)" in normalized_student and "returnres" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly removes duplicates from the list while preserving the original order.",
+        }
+
+    if _question_contains(question, "remove", "duplicates") and _question_contains(question, "list") and "preserve order" in (question or "").lower() and "seen=set()" in normalized_student and "res=[]" in normalized_student and "forxinlst" in normalized_student and "ifxnotinseen:" in normalized_student and "seen.add(x)" in normalized_student and "res.append(x)" in normalized_student and "returnres" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly removes duplicates from the list while preserving the original order.",
+        }
+
+    if "palindrome_ignore_case" in families and "s=s.lower()" in normalized_student and "foriinrange(len(s)//2)" in normalized_student and "ifs[i]!=s[-i-1]:returnfalse" in normalized_student and normalized_student.endswith("returntrue"):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the string is a palindrome while ignoring case.",
+        }
+
+    if "frequency_elements" in families and "d={}" in normalized_student and "forxinlst" in normalized_student and "ifxind" in normalized_student and "d[x]+=1" in normalized_student and "else:d[x]=1" in normalized_student and "returnd" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly counts the frequency of each element in the list.",
+        }
+
+    if "frequency_elements" in families and "return{x:lst.count(x)forxinlst}" in normalized_student:
+        return {
+            "result_type": "correct_but_inefficient",
+            "correctness_min": 36,
+            "efficiency_max": 12,
+            "feedback": "The function correctly counts the frequency of each element, but repeatedly calling lst.count(x) scans the list many times.",
+            "suggestion": "Build the counts in one pass with a dictionary so repeated full-list scans are avoided.",
+        }
+
     if _question_contains(question, "frequency", "characters") and "d={}" in normalized_student and "forcins" in normalized_student and "d.get(c,0)+1" in normalized_student and "returnd" in normalized_student:
         return {
             "result_type": "full_pass",
             "correctness_min": 36,
             "feedback": "The function correctly counts the frequency of each character in the string.",
+        }
+
+    if "unique_characters" in families and "seen=set()" in normalized_student and "forcins" in normalized_student and "ifcinseen:returnfalse" in normalized_student and "seen.add(c)" in normalized_student and normalized_student.endswith("returntrue"):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the string has all unique characters.",
+        }
+
+    if "unique_characters" in families and ("returnlen(s)==len(set(s))" in normalized_student or "returnlen(set(s))==len(s)" in normalized_student):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks whether the string has all unique characters.",
+        }
+
+    if _question_contains(question, "sum", "even", "numbers") and _question_contains(question, "list") and "total=0" in normalized_student and "forxinlst" in normalized_student and "ifx%2==0" in normalized_student and "total+=x" in normalized_student and normalized_student.endswith("returntotal"):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly calculates the sum of the even numbers in the list.",
+        }
+
+    if _question_contains(question, "sum", "even", "numbers") and _question_contains(question, "list") and "returnsum([xforxinlstifx%2==0])" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly calculates the sum of the even numbers in the list.",
         }
 
     if _question_contains(question, "contains", "duplicates") and "seen=set()" in normalized_student and "ifxinseen:returntrue" in normalized_student and "seen.add(x)" in normalized_student and normalized_student.endswith("returnfalse"):
@@ -1159,6 +3392,15 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "suggestion": "Return true only when the number is greater than zero.",
         }
 
+    if _question_contains(question, "positive") and "returnn<0" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The function checks whether the number is negative instead of checking whether it is positive.",
+            "suggestion": "Return true only when the number is greater than zero.",
+        }
+
     if _question_contains(question, "prime") and "foriinrange(2,n)" in normalized_student and "ifn<2:returnfalse" in normalized_student:
         return {
             "result_type": "correct_but_inefficient",
@@ -1215,6 +3457,22 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "result_type": "full_pass",
             "correctness_min": 36,
             "feedback": "The function correctly reverses the number.",
+        }
+
+    if _question_contains(question, "reverse", "list") and "returnsorted(lst)" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Sorting the list does not reverse its original element order.",
+            "suggestion": "Return the list in reverse order, for example with lst[::-1] or list(reversed(lst)).",
+        }
+
+    if _question_contains(question, "reverse", "list") and "returnlist(reversed(lst))" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly reverses the input list.",
         }
 
     if _question_contains(question, "uppercase", "letters") and "returns==s.upper()" in normalized_student:
@@ -1405,8 +3663,10 @@ def analyze_java_execution(question, sample_answer, student_answer):
         if re.search(r"for\s*\([^)]*i\s*=\s*2[^)]*i\s*<\s*n", code) and "return true" in code:
             return {
                 "result_type": "mostly_correct",
-                "correctness_max": 34,
-                "efficiency_max": 14,
+                "correctness_max": 12,
+                "efficiency_max": 10,
+                "readability_max": 12,
+                "structure_max": 10,
                 "feedback": "The method handles many prime cases, but it misses values below 2 and uses a wider divisor loop than necessary.",
                 "suggestion": "Return false for values below 2 and check divisors only up to the square root of n.",
             }
@@ -1498,11 +3758,47 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "even" in question_text:
+        if re.search(r"return\s+[^;]*%\s*2\s*==\s*0\s*\?\s*true\s*:\s*false\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
         if re.search(r"return\s+[^;]*%\s*2\s*==\s*0\s*;", code):
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if re.search(r"return\s+[^;]*%\s*2\s*!=\s*1\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+        if re.search(r"return\s+[^;]*%\s*2\s*==\s*1\s*;", code) or re.search(r"return\s+[^;]*%\s*2\s*==\s*2\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method does not correctly implement the even-number check.",
+                "suggestion": "Return a boolean expression such as n % 2 == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is even.",
+                "suggestion": "Return a boolean expression such as n % 2 == 0.",
+            }
+        if re.search(r"return\s+n\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the number itself does not produce a boolean even-check result.",
+                "suggestion": "Return a boolean comparison such as n % 2 == 0.",
             }
         if re.search(r"return\s+[^;]*%\s*2\s*;", code) and "==" not in code:
             return {
@@ -1514,6 +3810,16 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "reverse" in question_text and "string" in question_text:
+        if "without using reverse()" in question_text and "stringbuilder" in code and ".reverse()" in code and ".tostring()" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 18,
+                "efficiency_max": 15,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The string reversal logic is correct, but it uses reverse() even though the question forbids that technique.",
+                "suggestion": "Build the reversed string manually with a loop or another non-reverse approach.",
+            }
         if "stringbuilder" in code and ".reverse()" in code and ".tostring()" in code:
             return {
                 "result_type": "full_pass",
@@ -1525,6 +3831,22 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if re.search(r'return\s*""\s*;', code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning an empty string does not reverse the input string.",
+                "suggestion": "Build and return the characters in reverse order, for example with StringBuilder(s).reverse().toString().",
+            }
+        if "stringbuilder" in code and ".tostring()" in code and ".reverse()" not in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Converting the string to a StringBuilder and back without reversing it does not reverse the input string.",
+                "suggestion": "Call reverse() before converting the builder back to a string.",
             }
         if re.search(r"return\s+[a-z_][a-z0-9_]*\s*;", code):
             return {
@@ -1588,6 +3910,14 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "factorial" in question_text:
+        if re.search(r"return\s+n\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning n does not compute the factorial of the input.",
+                "suggestion": "Use a factorial base case and multiply through recursive or iterative calls before returning the result.",
+            }
         if re.search(r"return\s+n\s*\*\s*n\s*;", code):
             return {
                 "result_type": "zero_pass",
@@ -1644,6 +3974,14 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "efficiency_max": 5,
                 "feedback": "The method always returns true instead of checking whether the string is a palindrome.",
                 "suggestion": "Compare the original string with its reversed form or equivalent mirrored logic.",
+            }
+        if ".equals(s)" in code and "reverse()" not in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Comparing the string to itself always returns true, so it does not actually test whether the string is a palindrome.",
+                "suggestion": "Compare the string with its reverse, for example by using StringBuilder(s).reverse().toString().",
             }
         if "equals" in code and "reverse()" in code:
             return {
@@ -1807,6 +4145,14 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "stack using array" in question_text:
+        if "push(" in code and "pop(" in code and "top" in code and ("a[top]=x" in code or "return a[top]" in code) and ("++top" not in code and "top++" not in code and "--top" not in code and "top--" not in code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The stack methods use the top index incorrectly, so push and pop do not update the stack position as required.",
+                "suggestion": "Increment top before storing on push and decrement top after returning the value on pop.",
+            }
         if "push(" in code and "pop(" in code and "top" in code:
             return {
                 "result_type": "full_pass",
@@ -1876,6 +4222,16 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if "while(l<r)" in code or "while (l<r)" in code or "while(l < r)" in code or "while (l < r)" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method is close to binary search, but the loop bounds and pointer updates can miss valid targets or fail to shrink the search space correctly.",
+                "suggestion": "Use a standard binary-search loop such as while (l <= r) with l = m + 1 and r = m - 1.",
             }
         if "for(" in code and "return -1" in code:
             return {
@@ -2130,6 +4486,14 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
             }
+        if ("new hashmap<>()" in code or "new java.util.hashmap<>()" in code) and ("return new hashmap<>()" in code or "return new java.util.hashmap<>()" in code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning an empty HashMap does not count the frequency of the characters in the string.",
+                "suggestion": "Loop through the characters and update the map counts before returning it.",
+            }
 
     if "first non-repeating character" in question_text:
         if "indexof(" in code and "lastindexof(" in code and "charat(i)" in code and "return '_'" in code:
@@ -2142,6 +4506,18 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "array is sorted" in question_text:
+        if "for(" in code and ("arr[i]<arr[i-1]" in code or "a[i]<a[i-1]" in code) and "return false" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+        if "for(" in code and ("arr[i]>arr[i+1]" in code or "a[i]>a[i+1]" in code) and "return false" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
         if re.search(r"return\s+true\s*;", code):
             return {
                 "result_type": "zero_pass",
@@ -2150,11 +4526,37 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "feedback": "The method always returns true instead of checking whether the array is sorted.",
                 "suggestion": "Compare each element with the previous one and return false when the order decreases.",
             }
-        if "for(" in code and "arr[i]<arr[i-1]" in code and "return false" in code:
+
+    if "count vowels" in question_text:
+        if ".tolowercase()" in code and ".tochararray()" in code and "indexof(" in code and "return c" in code:
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if ".length()" in code and "indexof(" not in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the string length counts every character instead of counting only the vowels.",
+                "suggestion": "Check each character against the vowels and count only matches.",
+            }
+
+    if "remove duplicates from array" in question_text:
+        if ".distinct()" in code and ".toarray()" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": _java_success_feedback(question),
+            }
+        if re.search(r"return\s+a\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the original array does not remove duplicate values.",
+                "suggestion": "Build and return a result that keeps only distinct values from the input array.",
             }
 
     if "sum of even numbers" in question_text:
@@ -2403,6 +4805,72 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "suggestion": "Build and return a new string that keeps each character only once.",
             }
 
+    if "nullpointerexception" in question_text:
+        if ("s==null" in code or "s == null" in code) and ("return 0" in code) and ".length()" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly guards against null input before reading the string length.",
+            }
+        if ".length()" in code and "null" not in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method still reads s.length() without a null check, so the NullPointerException is not fixed.",
+                "suggestion": "Check for null before accessing s.length(), and return a safe default such as 0.",
+            }
+        if re.search(r"return\s+0\s*;", code) and ".length()" not in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 0 for every input avoids the exception, but it no longer returns the actual string length for valid inputs.",
+                "suggestion": "Return 0 only for null input, and otherwise return s.length().",
+            }
+
+    if "array index out of bounds" in question_text:
+        if "arr[arr.length-1]" in code or "arr[arr.length - 1]" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly returns the last array element without indexing past the end.",
+            }
+        if re.search(r"return\s+arr\s*\[\s*0\s*\]\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the first element does not fix the last-element indexing bug.",
+                "suggestion": "Return the last valid element, for example with arr[arr.length - 1].",
+            }
+        if "arr[arr.length]" in code or "arr[ arr.length ]" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method still indexes at arr.length, which is outside the valid range.",
+                "suggestion": "Use arr[arr.length - 1] to access the last valid element.",
+            }
+
+    if "division by zero" in question_text:
+        if ("b==0" in code or "b == 0" in code) and "return -1" in code and ("return a/b" in code or "return a / b" in code):
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method correctly guards against division by zero, but it returns a different fallback value than the expected fix.",
+                "suggestion": "If the task requires the same behavior as the reference fix, return 0 when b == 0.",
+            }
+        if ("b==0" in code or "b == 0" in code) and "return 0" in code and ("return a/b" in code or "return a / b" in code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly guards against division by zero before performing the division.",
+            }
+
     if "valid email" in question_text:
         if ".contains(\"@\")" in code and ".contains(\".\")" in code:
             return {
@@ -2434,6 +4902,12 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if ("maximum" in question_text or "max" in question_text) and "array" in question_text:
+        if "arrays.stream(arr).max().getasint()" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly finds the maximum value in the array.",
+            }
         if "arrays.sort" in code and "arr[arr.length-1]" in code:
             return {
                 "result_type": "correct_but_inefficient",
@@ -2448,12 +4922,46 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "correctness_min": 36,
                 "feedback": "The method correctly finds the maximum value in the array.",
             }
+        if ("m=0" in code or "m = 0" in code) and ("if(x>m)" in code or "if (x>m)" in code or "if(x > m)" in code or "if (x > m)" in code):
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method can find the maximum for many arrays, but initializing the maximum to 0 breaks cases where all values are negative.",
+                "suggestion": "Initialize the maximum from the first array element instead of 0.",
+            }
         if re.search(r"return\s+arr\s*\[\s*0\s*\]\s*;", code):
             return {
                 "result_type": "zero_pass",
                 "correctness_max": 5,
                 "efficiency_max": 5,
                 "feedback": "Returning only the first element does not correctly find the maximum value in the array.",
+                "suggestion": "Loop through the array and keep track of the largest value before returning it.",
+            }
+        if "arr[arr.length-1]" in code or "arr[arr.length - 1]" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning only the last element does not correctly find the maximum value in the array.",
+                "suggestion": "Loop through the array and keep track of the largest value before returning it.",
+            }
+        if "if(x<m)" in code or "if (x<m)" in code or "if(x < m)" in code or "if (x < m)" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method updates toward smaller values, so it finds the minimum instead of the maximum.",
+                "suggestion": "Update the stored value only when the current element is larger than the current maximum.",
+            }
+        if re.search(r"return\s+0\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 0 does not correctly find the maximum value in the array.",
                 "suggestion": "Loop through the array and keep track of the largest value before returning it.",
             }
 
@@ -2471,6 +4979,32 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if ("m=0" in code or "m = 0" in code) and ("if(x<m)" in code or "if (x<m)" in code or "if(x < m)" in code or "if (x < m)" in code):
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method can find the minimum for many arrays, but initializing the minimum to 0 breaks cases where all values are positive.",
+                "suggestion": "Initialize the minimum from the first array element instead of 0.",
+            }
+        if "arr[arr.length-1]" in code or "arr[arr.length - 1]" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning only the last element does not correctly find the minimum value in the array.",
+                "suggestion": "Loop through the array and keep track of the smallest value before returning it.",
+            }
+        if "if(x>m)" in code or "if (x>m)" in code or "if(x > m)" in code or "if (x > m)" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method updates toward larger values, so it finds the maximum instead of the minimum.",
+                "suggestion": "Update the stored value only when the current element is smaller than the current minimum.",
             }
 
     if "positive" in question_text:
@@ -2490,6 +5024,288 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "feedback": "The method treats zero as positive, so it misses the strict positive-number requirement.",
                 "suggestion": "Return true only when the number is greater than zero.",
             }
+        if "< 0" in code or "<0" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method checks whether the number is negative instead of checking whether it is positive.",
+                "suggestion": "Return true only when the number is greater than zero.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is positive.",
+                "suggestion": "Return a boolean expression such as n > 0.",
+            }
+
+    if "greater than 100" in question_text:
+        if "> 100" in code or ">100" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is greater than 100.",
+            }
+        if ">= 100" in code or ">=100" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats 100 as satisfying the condition, so it misses the strict greater-than requirement.",
+                "suggestion": "Return true only when the number is strictly greater than 100.",
+            }
+        if "< 100" in code or "<100" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method checks whether the number is less than 100 instead of checking whether it is greater than 100.",
+                "suggestion": "Return true only when the number is strictly greater than 100.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is greater than 100.",
+                "suggestion": "Return a boolean expression such as n > 100.",
+            }
+
+    if "less than 50" in question_text:
+        if "< 50" in code or "<50" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is less than 50.",
+            }
+        if "<= 50" in code or "<=50" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats 50 as satisfying the condition, so it misses the strict less-than requirement.",
+                "suggestion": "Return true only when the number is strictly less than 50.",
+            }
+        if "> 50" in code or ">50" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method checks whether the number is greater than 50 instead of checking whether it is less than 50.",
+                "suggestion": "Return true only when the number is strictly less than 50.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is less than 50.",
+                "suggestion": "Return a boolean expression such as n < 50.",
+            }
+
+    if "negative" in question_text:
+        if "< 0" in code or "<0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks for strictly negative numbers.",
+            }
+        if "<= 0" in code or "<=0" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats zero as negative, so it misses the strict negative-number requirement.",
+                "suggestion": "Return true only when the number is less than zero.",
+            }
+        if "> 0" in code or ">0" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method checks whether the number is positive instead of checking whether it is negative.",
+                "suggestion": "Return true only when the number is less than zero.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is negative.",
+                "suggestion": "Return a boolean expression such as n < 0.",
+            }
+
+    if "zero" in question_text:
+        if "== 0" in code or "==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is zero.",
+            }
+        if "<= 0" in code or "<=0" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats negative numbers as zero, so it misses the exact-zero requirement.",
+                "suggestion": "Return true only when the number is exactly zero.",
+            }
+        if "== 1" in code or "==1" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the number equals 1 does not implement the zero-check requirement.",
+                "suggestion": "Return a boolean expression such as n == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is zero.",
+                "suggestion": "Return a boolean expression such as n == 0.",
+            }
+
+    if "equal to 20" in question_text:
+        if "== 20" in code or "==20" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is equal to 20.",
+            }
+        if ">= 20" in code or ">=20" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats values greater than 20 as satisfying the condition, so it misses the exact-equality requirement.",
+                "suggestion": "Return true only when the number is exactly 20.",
+            }
+        if "!= 20" in code or "!=20" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the number is not equal to 20 does the opposite of the required equality check.",
+                "suggestion": "Return a boolean expression such as n == 20.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is equal to 20.",
+                "suggestion": "Return a boolean expression such as n == 20.",
+            }
+
+    if "odd" in question_text:
+        if "% 2 != 0" in code or "%2!=0" in code or "% 2 == 1" in code or "%2==1" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is odd.",
+            }
+        if "% 2 == 0" in code or "%2==0" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method checks for even numbers instead of returning true for odd numbers.",
+                "suggestion": "Return a boolean expression such as n % 2 != 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is odd.",
+                "suggestion": "Return a boolean expression such as n % 2 != 0.",
+            }
+
+    if "add two numbers" in question_text:
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*\+\s*[a-z_][a-z0-9_]*\s*\+\s*0\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly adds the two input numbers and matches the expected behavior.",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*-\s*[a-z_][a-z0-9_]*\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method subtracts the second number from the first instead of adding the two inputs.",
+                "suggestion": "Return the sum of both inputs, such as a + b.",
+            }
+        if re.search(r"return\s+0\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 0 does not add the two input numbers.",
+                "suggestion": "Return the sum of both inputs, such as a + b.",
+            }
+
+    if "multiply two numbers" in question_text:
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*\*\s*[a-z_][a-z0-9_]*\s*\*\s*1\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly multiplies the two input numbers.",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*\+\s*[a-z_][a-z0-9_]*\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method adds the two numbers instead of multiplying them.",
+                "suggestion": "Return the product of the two input values, such as a * b.",
+            }
+        if re.search(r"return\s+1\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 1 does not multiply the two input numbers.",
+                "suggestion": "Return the product of the two input values, such as a * b.",
+            }
+
+    if "square" in question_text:
+        if "math.pow" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly calculates the square of the input number.",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*\+\s*[a-z_][a-z0-9_]*\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Adding the number to itself doubles it instead of squaring it.",
+                "suggestion": "Multiply the number by itself, for example with n * n.",
+            }
+        if re.search(r"return\s+0\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 0 does not calculate the square of the input number.",
+                "suggestion": "Multiply the number by itself, for example with n * n.",
+            }
 
     if "sum of array" in question_text:
         if "for(" in code and "+=" in code and "return s" in code:
@@ -2507,12 +5323,62 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "suggestion": "Loop through the array and accumulate the total before returning it.",
             }
 
+    if "count even numbers in array" in question_text:
+        if ("c=0" in code or "c = 0" in code) and ("if(x%2==0)" in code or "if (x%2==0)" in code or "if(x % 2 == 0)" in code or "if (x % 2 == 0)" in code) and "c++" in code:
+            if re.search(r"return\s+0\s*;", code):
+                return {
+                    "result_type": "zero_pass",
+                    "correctness_max": 5,
+                    "efficiency_max": 5,
+                    "feedback": "The method counts even numbers but returns 0 instead of the count.",
+                    "suggestion": "Return the counter after the loop instead of returning 0.",
+                }
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly counts the even numbers in the array.",
+            }
+        if ("c=0" in code or "c = 0" in code) and ("if(x%2==1)" in code or "if (x%2==1)" in code or "if(x % 2 == 1)" in code or "if (x % 2 == 1)" in code) and "c++" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method counts odd numbers instead of even numbers.",
+                "suggestion": "Increment the counter only when the current value is even.",
+            }
+        if "arr.length" in code and "return" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the array length does not count only the even numbers.",
+                "suggestion": "Loop through the array and increment a counter only for even values.",
+            }
+
     if "second largest" in question_text:
         if "distinct()" in code and "sorted()" in code:
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": "The method correctly finds the second distinct largest element.",
+            }
+        if "x>sec" in code and "x!=max" not in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method is close, but without excluding the largest value it can return the maximum again when duplicates are present.",
+                "suggestion": "Only update the second-largest value when the current value is larger than sec and different from max.",
+            }
+        if re.search(r"return\s+arr\s*\[\s*0\s*\]\s*;", code) or re.search(r"return\s+a\s*\[\s*0\s*\]\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning only the first element does not solve the second-largest-element problem.",
+                "suggestion": "Track the two largest distinct values, or sort after removing duplicates before returning the second largest.",
             }
         if "arrays.sort" in code and "a[a.length-2]" in code:
             return {
@@ -2581,6 +5447,96 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "feedback": _java_success_feedback(question),
             }
 
+    if "divisible by 5" in question_text:
+        if re.search(r"return\s+[^;]*%\s*5\s*==\s*0\s*\?\s*true\s*:\s*false\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 5.",
+            }
+        if "% 5 == 0" in code or "%5==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 5.",
+            }
+        if "% 5 == 1" in code or "%5==1" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the remainder is 1 does not implement the divisibility-by-5 requirement.",
+                "suggestion": "Return a boolean expression such as n % 5 == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is divisible by 5.",
+                "suggestion": "Return a boolean expression such as n % 5 == 0.",
+            }
+
+    if "divisible by 3" in question_text:
+        if re.search(r"return\s+[^;]*%\s*3\s*==\s*0\s*\?\s*true\s*:\s*false\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 3.",
+            }
+        if "% 3 == 0" in code or "%3==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 3.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the number is divisible by 3.",
+                "suggestion": "Return a boolean expression such as n % 3 == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is divisible by 3.",
+                "suggestion": "Return a boolean expression such as n % 3 == 0.",
+            }
+
+    if "divisible by 2" in question_text:
+        if re.search(r"return\s+[^;]*%\s*2\s*==\s*0\s*\?\s*true\s*:\s*false\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 2.",
+            }
+        if "% 2 == 0" in code or "%2==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 2.",
+            }
+        if "% 2 == 1" in code or "%2==1" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the remainder is 1 does not implement the divisibility-by-2 requirement.",
+                "suggestion": "Return a boolean expression such as n % 2 == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is divisible by 2.",
+                "suggestion": "Return a boolean expression such as n % 2 == 0.",
+            }
+
     if "square" in question_text:
         if re.search(r"return\s+[a-z_][a-z0-9_]*\s*\*\s*[a-z_][a-z0-9_]*\s*;", code):
             return {
@@ -2621,12 +5577,406 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "suggestion": "Convert the string to lowercase before checking vowel membership.",
             }
 
+    if "uppercase" in question_text:
+        if ".touppercase(locale.root)" in code or ".touppercase()" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly converts the input string to uppercase.",
+            }
+        if re.search(r'return\s+""\s*;', code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning an empty string does not convert the input to uppercase.",
+                "suggestion": "Convert the text to uppercase, for example with s.toUpperCase().",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the original string does not convert it to uppercase.",
+                "suggestion": "Convert the text to uppercase, for example with s.toUpperCase().",
+            }
+
+    if "concatenate two strings" in question_text:
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*\+\s*[a-z_][a-z0-9_]*\s*;", code) or ".concat(" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly concatenates the two input strings.",
+            }
+        if re.search(r'return\s+""\s*;', code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning an empty string does not concatenate the two input strings.",
+                "suggestion": "Return the combined strings, for example with a + b.",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning only one input string does not concatenate both inputs.",
+                "suggestion": "Return the combined strings, for example with a + b.",
+            }
+
     if "string is empty" in question_text:
-        if ".isempty()" in code or ".length()==0" in code or ".length() == 0" in code:
+        if ".isempty()" in code or ".length()==0" in code or ".length() == 0" in code or '.equals("")' in code:
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": _java_success_feedback(question),
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the string is empty.",
+                "suggestion": "Return true only when the string has length 0 or equals the empty string.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the string is empty.",
+                "suggestion": "Return true only when the string has length 0 or equals the empty string.",
+            }
+
+    if "length of string" in question_text or "find length of string" in question_text:
+        if ".length()" in code or ".tochararray().length" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly returns the length of the string.",
+            }
+        if re.search(r"return\s+0\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 0 does not calculate the length of the string.",
+                "suggestion": "Return the number of characters in the string, for example with s.length().",
+            }
+        if re.search(r"return\s*-\s*1\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning -1 does not calculate the length of the string.",
+                "suggestion": "Return the number of characters in the string, for example with s.length().",
+            }
+
+    if "first two characters" in question_text:
+        if ".substring(0,2)" in code or ".substring(0, 2)" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly returns the first two characters of the string.",
+            }
+        if ".substring(0,1)" in code or ".substring(0, 1)" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method returns only the first character instead of the first two characters.",
+                "suggestion": "Return the first two characters, for example with s.substring(0, 2).",
+            }
+        if re.search(r"return\s+[a-z_][a-z0-9_]*\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the original string does not return only the first two characters.",
+                "suggestion": "Return the first two characters, for example with s.substring(0, 2).",
+            }
+        if re.search(r'return\s*"[^"]*"\s*;', code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning a constant string does not retrieve the first two characters of the input.",
+                "suggestion": "Return the first two characters, for example with s.substring(0, 2).",
+            }
+
+    if "first character" in question_text:
+        if ".charat(0)" in code or ".substring(0,1).charat(0)" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly returns the first character of the string.",
+            }
+        if ".charat(s.length()-1)" in code or ".charat( s.length()-1)" in code or ".charat(s.length() - 1)" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the last character does not satisfy the first-character requirement.",
+                "suggestion": "Return the first character, for example with s.charAt(0).",
+            }
+        if re.search(r"return\s*'[^']'\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning a constant character does not retrieve the first character of the input string.",
+                "suggestion": "Return the first character, for example with s.charAt(0).",
+            }
+
+    if "last character" in question_text:
+        if ".charat(s.length()-1)" in code or ".charat(s.length() - 1)" in code or ".substring(s.length()-1).charat(0)" in code or ".substring(s.length() - 1).charat(0)" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly returns the last character of the string.",
+            }
+        if ".charat(0)" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the first character does not satisfy the last-character requirement.",
+                "suggestion": "Return the last character, for example with s.charAt(s.length() - 1).",
+            }
+        if re.search(r"return\s*'[^']'\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning a constant character does not retrieve the last character of the input string.",
+                "suggestion": "Return the last character, for example with s.charAt(s.length() - 1).",
+            }
+
+    if "starts with" in question_text and "'a'" in question_text:
+        if '.startswith("a")' in code or ".charat(0)=='a'" in code or ".charat(0) == 'a'" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the string starts with 'A'.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the string starts with 'A'.",
+                "suggestion": "Return a boolean expression such as s.startsWith(\"A\").",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the string starts with 'A'.",
+                "suggestion": "Return a boolean expression such as s.startsWith(\"A\").",
+            }
+
+    if "divisible by 10" in question_text:
+        if "% 10 == 0" in code or "%10==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is divisible by 10.",
+            }
+        if "% 5 == 0" in code or "%5==0" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method checks divisibility by 5, which includes extra cases that are not necessarily divisible by 10.",
+                "suggestion": "Use a modulo-10 check such as n % 10 == 0.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the number is divisible by 10.",
+                "suggestion": "Return a boolean expression such as n % 10 == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is divisible by 10.",
+                "suggestion": "Return a boolean expression such as n % 10 == 0.",
+            }
+
+    if "array length is less than 5" in question_text or "length is less than 5" in question_text:
+        if ".length < 5" in code or ".length<5" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the array length is less than 5.",
+            }
+        if ".length <= 5" in code or ".length<=5" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats length 5 as satisfying the condition, so it misses the strict less-than requirement.",
+                "suggestion": "Return true only when the array length is strictly less than 5.",
+            }
+        if ".length == 5" in code or ".length==5" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the array length equals 5 does not implement the less-than-5 requirement.",
+                "suggestion": "Return true only when the array length is strictly less than 5.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the array length is less than 5.",
+                "suggestion": "Return a boolean expression such as arr.length < 5.",
+            }
+
+    if "string length > 5" in question_text or "string length >5" in question_text:
+        if ".length() > 5" in code or ".length()>5" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the string length is greater than 5.",
+            }
+        if ".length() >= 5" in code or ".length()>=5" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats length 5 as satisfying the condition, so it misses the strict greater-than requirement.",
+                "suggestion": "Return true only when the string length is strictly greater than 5.",
+            }
+        if ".length() == 5" in code or ".length()==5" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the string length equals 5 does not implement the greater-than-5 requirement.",
+                "suggestion": "Return true only when the string length is strictly greater than 5.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the string length is greater than 5.",
+                "suggestion": "Return a boolean expression such as s.length() > 5.",
+            }
+
+    if "array length > 3" in question_text or "length > 3" in question_text:
+        if ".length > 3" in code or ".length>3" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the array length is greater than 3.",
+            }
+        if ".length >= 3" in code or ".length>=3" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method treats length 3 as satisfying the condition, so it misses the strict greater-than requirement.",
+                "suggestion": "Return true only when the array length is strictly greater than 3.",
+            }
+        if ".length == 3" in code or ".length==3" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the array length equals 3 does not implement the greater-than-3 requirement.",
+                "suggestion": "Return true only when the array length is strictly greater than 3.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the array length is greater than 3.",
+                "suggestion": "Return a boolean expression such as arr.length > 3.",
+            }
+
+    if "array is empty" in question_text:
+        if ".length == 0" in code or ".length==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the array is empty.",
+            }
+        if ".length <= 0" in code or ".length<=0" in code:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The method is mostly correct, but the direct empty-array check should use equality with 0.",
+                "suggestion": "Return true only when the array length is exactly 0.",
+            }
+        if ".length == 1" in code or ".length==1" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the array length equals 1 does not implement the empty-array requirement.",
+                "suggestion": "Return true only when the array length is exactly 0.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the array is empty.",
+                "suggestion": "Return a boolean expression such as arr.length == 0.",
+            }
+
+    if "string length is even" in question_text or "length is even" in question_text:
+        if re.search(r"return\s*\(?\s*[^;]*length\(\)\s*%\s*2\s*\)?\s*==\s*0\s*\?\s*true\s*:\s*false\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the string length is even.",
+            }
+        if ".length() % 2 == 0" in code or ".length()%2==0" in code:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the string length is even.",
+            }
+        if ".length() % 2 == 1" in code or ".length()%2==1" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the string length is odd does not implement the even-length requirement.",
+                "suggestion": "Return a boolean expression such as s.length() % 2 == 0.",
+            }
+        if re.search(r"return\s+false\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns false instead of checking whether the string length is even.",
+                "suggestion": "Return a boolean expression such as s.length() % 2 == 0.",
             }
 
     if "longest substring without repeating characters" in question_text:
@@ -2787,11 +6137,33 @@ def analyze_java_execution(question, sample_answer, student_answer):
             }
 
     if "even_check" in families:
+        if re.search(r"return\s+[^;]*%\s*2\s*==\s*0\s*\?\s*true\s*:\s*false\s*;", code):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The method correctly checks whether the number is even.",
+            }
         if "(n&1)==0" in code or "( n & 1 ) == 0" in code:
             return {
                 "result_type": "full_pass",
                 "correctness_min": 36,
                 "feedback": "The method correctly checks whether the number is even using a bitwise operation.",
+            }
+        if "%2==1" in code or "% 2 == 1" in code:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Checking whether the remainder is 1 does not correctly implement the required even-number check.",
+                "suggestion": "Return a boolean expression such as n % 2 == 0.",
+            }
+        if re.search(r"return\s+true\s*;", code):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The method always returns true instead of checking whether the number is even.",
+                "suggestion": "Return a boolean expression such as n % 2 == 0.",
             }
 
     return None

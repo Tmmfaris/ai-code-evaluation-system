@@ -99,6 +99,7 @@ def audit_evaluation_with_llm(
             "correctness_cap",
             "efficiency_cap",
             "correct_solution_with_penalty",
+            "equivalent_solution",
         }
         for item in (rule_findings or [])
     )
@@ -121,11 +122,17 @@ def should_audit_with_llm(confidence, execution_finding, rule_findings, feedback
     result_type = (execution_finding or {}).get("result_type")
     has_hard_fail = any((item or {}).get("type") == "hard_fail" for item in (rule_findings or []))
     has_strict_rule_cap = any(
-        (item or {}).get("type") in {"hard_fail", "correctness_cap", "efficiency_cap", "correct_solution_with_penalty"}
+        (item or {}).get("type") in {"hard_fail", "correctness_cap", "efficiency_cap", "correct_solution_with_penalty", "equivalent_solution"}
         for item in (rule_findings or [])
     )
     clean_feedback = is_clean_llm_text(feedback)
     clean_improvements = not improvements or is_clean_llm_text(improvements)
+
+    if not execution_finding and has_strict_rule_cap:
+        return False
+
+    if has_strict_rule_cap and clean_feedback and clean_improvements:
+        return False
 
     if confidence != "high":
         return True

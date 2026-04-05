@@ -56,6 +56,79 @@ def build_deterministic_result(execution_finding, structure_analysis):
     }
 
 
+def build_rule_only_result(findings):
+    findings = list(findings or [])
+    if not findings:
+        return {
+            "score": 0,
+            "feedback": "",
+            "improvements": "",
+            "rubric": {
+                "correctness": 5,
+                "efficiency": 5,
+                "readability": 8,
+                "structure": 10,
+            },
+        }
+
+    def _priority(item):
+        finding_type = (item or {}).get("type")
+        if finding_type == "hard_fail":
+            return 3
+        if finding_type in {"correctness_cap", "efficiency_cap", "correct_solution_with_penalty", "equivalent_solution"}:
+            return 2
+        if finding_type == "feedback_only":
+            return 1
+        return 0
+
+    top = sorted(findings, key=_priority, reverse=True)[0]
+    finding_type = top.get("type")
+    explicit_score = top.get("rule_score")
+
+    if finding_type == "hard_fail":
+        rubric = {
+            "correctness": 5,
+            "efficiency": 5,
+            "readability": 8,
+            "structure": 10,
+        }
+    elif finding_type in {"correctness_cap", "efficiency_cap"}:
+        rubric = {
+            "correctness": 20,
+            "efficiency": 15,
+            "readability": 12,
+            "structure": 12,
+        }
+    elif finding_type == "equivalent_solution":
+        rubric = {
+            "correctness": 40,
+            "efficiency": 20,
+            "readability": 15,
+            "structure": 15,
+        }
+    elif finding_type == "correct_solution_with_penalty":
+        rubric = {
+            "correctness": 34,
+            "efficiency": 12,
+            "readability": 12,
+            "structure": 12,
+        }
+    else:
+        rubric = {
+            "correctness": 5,
+            "efficiency": 5,
+            "readability": 8,
+            "structure": 10,
+        }
+
+    return {
+        "score": explicit_score if explicit_score is not None else 0,
+        "feedback": top.get("feedback", ""),
+        "improvements": top.get("suggestion", ""),
+        "rubric": rubric,
+    }
+
+
 def merge_hybrid_rubric(llm_rubric, execution_finding, structure_analysis):
     if not isinstance(llm_rubric, dict):
         llm_rubric = {}
