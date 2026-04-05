@@ -151,14 +151,93 @@ Legacy JSON profile seed:
 ## Project Structure
 
 ```text
-app.py
-config.py
-analysis/
-evaluator/
-llm/
-data/
-tests/
-utils/
+ai-intelligent-evaluation-model/
+|-- app.py
+|-- config.py
+|-- schemas.py
+|-- README.md
+|
+|-- analysis/
+|   |-- line_analyzer.py
+|   |-- structure_analyzer.py
+|   `-- syntax_checker/
+|       |-- __init__.py
+|       |-- python_checker.py
+|       |-- java_checker.py
+|       |-- javascript_checker.py
+|       |-- html_checker.py
+|       |-- css_checker.py
+|       |-- react_checker.py
+|       |-- mysql_checker.py
+|       `-- mongodb_checker.py
+|
+|-- evaluator/
+|   |-- concept_evaluator.py
+|   |-- evaluation_history_repository.py
+|   |-- evaluation_history_store.py
+|   |-- execution_engine.py
+|   |-- main_evaluator.py
+|   |-- question_classifier.py
+|   |-- question_profile_repository.py
+|   |-- question_profile_store.py
+|   |-- rubric_engine.py
+|   |-- rule_engine.py
+|   |-- scoring_engine.py
+|   |-- comparison/
+|   |   |-- answer_comparator.py
+|   |   |-- feedback_generator.py
+|   |   |-- llm_comparator.py
+|   |   |-- logic_checker.py
+|   |   |-- logic_summary.py
+|   |   `-- score_calibrator.py
+|   |-- execution/
+|   |   |-- __init__.py
+|   |   |-- shared.py
+|   |   `-- python_families/
+|   |       |-- __init__.py
+|   |       |-- strings.py
+|   |       |-- lists.py
+|   |       `-- numbers.py
+|   |-- orchestration/
+|   |   |-- __init__.py
+|   |   |-- confidence.py
+|   |   `-- pipeline.py
+|   `-- rules/
+|       |-- __init__.py
+|       |-- shared.py
+|       |-- javascript_rules.py
+|       |-- javascript_families/
+|       |   |-- __init__.py
+|       |   |-- strings.py
+|       |   |-- lists.py
+|       |   `-- numbers.py
+|       `-- python_families/
+|           |-- __init__.py
+|           |-- strings.py
+|           |-- lists.py
+|           `-- numbers.py
+|
+|-- llm/
+|   |-- llm_engine.py
+|   |-- prompt_builder.py
+|   `-- response_parser.py
+|
+|-- data/
+|   |-- question_profiles.json
+|   |-- question_profiles.db
+|   `-- evaluation_history.db
+|
+|-- tests/
+|   |-- benchmark_cases.json
+|   |-- benchmark_thresholds.json
+|   |-- test_benchmark.py
+|   |-- test_evaluator.py
+|   `-- test_language_support.py
+|
+`-- utils/
+    |-- formatter.py
+    |-- helpers.py
+    `-- logger.py
 ```
 
 ## Notes
