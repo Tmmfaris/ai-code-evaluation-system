@@ -609,7 +609,13 @@ def _generic_requirement_findings(question, student_answer, language):
                 "suggestion": "Include the active condition in the query filter."
             })
 
-    if language == "javascript" and "object is empty" in question_text and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
+    normalized_js_answer = (student_answer or "").replace(" ", "").lower()
+    if (
+        language == "javascript"
+        and "object is empty" in question_text
+        and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE)
+        and "for(letkinobj)returnfalse;returntrue;" not in normalized_js_answer
+    ):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 2,
@@ -1015,9 +1021,23 @@ def _generic_requirement_findings(question, student_answer, language):
             "feedback": "The function correctly removes duplicates from the array, though this approach is less efficient than using a Set for larger inputs.",
             "suggestion": "Consider using a Set when you want a shorter and typically more efficient uniqueness check."
         })
-    if language == "javascript" and "object is empty" in question_text and "object.keys(obj).length==0" in (student_answer or "").replace(" ", "").lower():
+    if language == "javascript" and "object is empty" in question_text and "object.keys(obj).length==0" in normalized_js_answer:
         findings.append({
-            "type": "correct_solution_with_penalty",
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the object is empty.",
+            "suggestion": ""
+        })
+    if language == "javascript" and "object is empty" in question_text and "for(letkinobj)returnfalse;returntrue;" in normalized_js_answer:
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the object is empty.",
+            "suggestion": ""
+        })
+    if language == "javascript" and "object is empty" in question_text and "json.stringify(obj)==='{}'" in normalized_js_answer:
+        findings.append({
+            "type": "equivalent_solution",
             "rule_score": 100,
             "feedback": "The function correctly checks whether the object is empty.",
             "suggestion": ""

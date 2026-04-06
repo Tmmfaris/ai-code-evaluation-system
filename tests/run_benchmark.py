@@ -133,6 +133,8 @@ def main():
         print("\nThreshold failures:")
         for item in threshold_errors:
             print(f"- {item}")
+        raise SystemExit(1)
+    raise SystemExit(0)
 
 
 if __name__ == "__main__":

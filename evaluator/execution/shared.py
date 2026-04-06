@@ -2,10 +2,14 @@ import ast
 import atexit
 import builtins
 import hashlib
+import json
 import multiprocessing
 from pathlib import Path
 import queue
 import re
+import shutil
+import subprocess
+import tempfile
 import threading
 from itertools import count
 
@@ -58,6 +62,9 @@ _EXECUTION_TASK_COUNTER = count(1)
 _EXECUTION_RESULT_CACHE = {}
 _EXECUTION_RESULT_CACHE_LOCK = threading.Lock()
 _EXECUTION_RESULT_CACHE_MAXSIZE = 512
+JAVA_METHOD_SIGNATURE_RE = re.compile(
+    r"(?:public|private|protected)?\s*(?:static\s+)?(?P<return>[A-Za-z_][A-Za-z0-9_<>\[\]]*)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\((?P<params>[^)]*)\)"
+)
 
 
 def _build_execution_cache_version():
@@ -145,6 +152,177 @@ def _question_contains(question, *parts):
 
 def _normalize_java(code):
     return re.sub(r"\s+", " ", (code or "").strip()).lower()
+
+
+def _extract_java_method_signature(code):
+    match = JAVA_METHOD_SIGNATURE_RE.search(code or "")
+    if not match:
+        return None
+    params = [item.strip() for item in match.group("params").split(",") if item.strip()]
+    param_types = []
+    for param in params:
+        parts = param.split()
+        if len(parts) < 2:
+            return None
+        param_types.append(parts[-2] if parts[-1].endswith("[]") else parts[0])
+    return {
+        "return_type": match.group("return"),
+        "method_name": match.group("name"),
+        "param_types": param_types,
+    }
+
+
+def _java_value_literal(value, declared_type=None):
+    declared = (declared_type or "").strip()
+
+    if declared.endswith("[]"):
+        base = declared[:-2]
+        if not isinstance(value, list):
+            return f"new {base}[]{{}}"
+        items = ",".join(_java_value_literal(item, base) for item in value)
+        return f"new {base}[]{{{items}}}"
+
+    if declared in {"int", "Integer"}:
+        return str(int(value))
+    if declared in {"long", "Long"}:
+        return f"{int(value)}L"
+    if declared in {"double", "Double", "float", "Float"}:
+        return str(float(value))
+    if declared in {"boolean", "Boolean"}:
+        return "true" if bool(value) else "false"
+    if declared in {"char", "Character"}:
+        text = str(value)
+        escaped = text.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped}'"
+
+    if isinstance(value, str):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f"\"{escaped}\""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(value)
+    if isinstance(value, list):
+        items = ",".join(_java_value_literal(item) for item in value)
+        return f"new Object[]{{{items}}}"
+    return "null"
+
+
+def _parse_hidden_test_input(raw_value):
+    if raw_value is None:
+        return tuple()
+    if isinstance(raw_value, (list, tuple)):
+        return tuple(raw_value)
+    if isinstance(raw_value, (int, float, bool)):
+        return (raw_value,)
+    if not isinstance(raw_value, str):
+        return (raw_value,)
+
+    text = raw_value.strip()
+    if not text:
+        return tuple()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return (text,)
+
+    if isinstance(parsed, list):
+        return tuple(parsed)
+    return (parsed,)
+
+
+def _parse_expected_output(raw_value):
+    if isinstance(raw_value, (list, dict, int, float, bool)) or raw_value is None:
+        return raw_value
+    if not isinstance(raw_value, str):
+        return raw_value
+
+    text = raw_value.strip()
+    if not text:
+        return ""
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+
+def _serialize_hidden_expected(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return json.dumps(value, separators=(",", ":"))
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def _run_java_hidden_test(student_answer, signature, args):
+    if "class " in (student_answer or ""):
+        return {"ok": False, "error": "Java hidden tests currently expect method-style answers, not full classes."}
+
+    method_name = signature["method_name"]
+    param_types = signature["param_types"]
+    if len(param_types) != len(args):
+        return {"ok": False, "error": "Hidden test input count does not match the Java method signature."}
+
+    java_args = ", ".join(_java_value_literal(arg, param_types[index]) for index, arg in enumerate(args))
+    source = f"""
+import java.util.*;
+
+public class Main {{
+    static class Solution {{
+        {student_answer}
+    }}
+
+    public static void main(String[] args) {{
+        Solution s = new Solution();
+        Object result = s.{method_name}({java_args});
+        if (result instanceof int[]) {{
+            System.out.print(Arrays.toString((int[]) result));
+        }} else if (result instanceof long[]) {{
+            System.out.print(Arrays.toString((long[]) result));
+        }} else if (result instanceof double[]) {{
+            System.out.print(Arrays.toString((double[]) result));
+        }} else if (result instanceof boolean[]) {{
+            System.out.print(Arrays.toString((boolean[]) result));
+        }} else if (result instanceof Object[]) {{
+            System.out.print(Arrays.deepToString((Object[]) result));
+        }} else {{
+            System.out.print(String.valueOf(result));
+        }}
+    }}
+}}
+""".strip()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        source_path = Path(temp_dir) / "Main.java"
+        source_path.write_text(source, encoding="utf-8")
+
+        compile_run = subprocess.run(
+            ["javac", str(source_path)],
+            capture_output=True,
+            text=True,
+            timeout=EXECUTION_TIMEOUT_SECONDS,
+            cwd=temp_dir,
+        )
+        if compile_run.returncode != 0:
+            return {"ok": False, "error": (compile_run.stderr or compile_run.stdout or "javac failed").strip()}
+
+        execute_run = subprocess.run(
+            ["java", "-cp", temp_dir, "Main"],
+            capture_output=True,
+            text=True,
+            timeout=EXECUTION_TIMEOUT_SECONDS,
+            cwd=temp_dir,
+        )
+        if execute_run.returncode != 0:
+            return {"ok": False, "error": (execute_run.stderr or execute_run.stdout or "java failed").strip()}
+
+        return {"ok": True, "result": (execute_run.stdout or "").strip()}
 
 
 def _requires_recursion(question):
@@ -1039,6 +1217,294 @@ def _run_code_with_thread_timeout(code, function_name, cases):
         return {"ok": False, "error": "No execution result returned"}
 
     return result_queue.get()
+
+
+def evaluate_python_hidden_tests(student_answer, hidden_tests):
+    if not hidden_tests:
+        return None
+
+    function_name = _extract_first_function_name(student_answer)
+    if not function_name:
+        return None
+
+    cases = []
+    expected_outputs = []
+    case_weights = []
+    required_failures = 0
+    for item in hidden_tests:
+        if not isinstance(item, dict):
+            continue
+        raw_input = item.get("input")
+        raw_expected = item.get("expected_output")
+        try:
+            parsed_input = json.loads(raw_input) if isinstance(raw_input, str) else raw_input
+        except Exception:
+            parsed_input = raw_input
+        try:
+            parsed_expected = json.loads(raw_expected) if isinstance(raw_expected, str) else raw_expected
+        except Exception:
+            parsed_expected = raw_expected
+
+        if isinstance(parsed_input, list):
+            cases.append(tuple(parsed_input))
+        else:
+            cases.append((parsed_input,))
+        expected_outputs.append(parsed_expected)
+        case_weights.append(max(0.1, float(item.get("weight", 1.0) or 1.0)))
+
+    if not cases:
+        return None
+
+    student_run = _run_code_with_timeout(student_answer, function_name, cases)
+    if not student_run.get("ok"):
+        return {
+            "result_type": "execution_error",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": f"Code could not be executed reliably on hidden tests: {student_run.get('error', 'execution error')}.",
+            "suggestion": "Fix the function so it runs successfully for the registered question inputs.",
+        }
+
+    outputs = student_run.get("outputs", [])
+    total = min(len(expected_outputs), len(outputs))
+    passed = 0
+    weighted_total = sum(case_weights[:total]) or float(total)
+    weighted_passed = 0.0
+    for index, (expected, actual) in enumerate(zip(expected_outputs, outputs)):
+        if actual.get("ok") and actual.get("result") == expected:
+            passed += 1
+            weighted_passed += case_weights[index]
+        elif hidden_tests[index].get("required"):
+            required_failures += 1
+
+    if total == 0:
+        return None
+
+    if passed == total:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "Hidden test cases matched the expected outputs for this registered question.",
+        }
+
+    weighted_ratio = weighted_passed / weighted_total if weighted_total else 0.0
+
+    if passed == 0:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": f"Hidden test cases failed on all {total} registered checks.",
+            "suggestion": "Review the logic against the registered question inputs and expected outputs.",
+        }
+
+    if required_failures:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 12,
+            "efficiency_max": 8,
+            "feedback": "The answer failed one or more required hidden test cases for this registered question.",
+            "suggestion": "Fix the required edge or trap cases before relying on this solution.",
+            "passed_cases": passed,
+            "total_cases": total,
+            "pass_ratio": weighted_ratio,
+        }
+
+    return {
+        "result_type": "partial_pass",
+        "correctness_max": 32 if weighted_ratio >= 0.7 else 28,
+        "efficiency_max": 15,
+        "passed_cases": passed,
+        "total_cases": total,
+        "pass_ratio": weighted_ratio,
+        "feedback": f"Hidden test cases passed {passed} out of {total} registered checks.",
+        "suggestion": "Review the hidden test cases where the current logic differs from the expected output.",
+    }
+
+
+def evaluate_java_hidden_tests(student_answer, hidden_tests):
+    if not hidden_tests or not shutil.which("javac") or not shutil.which("java"):
+        return None
+
+    signature = _extract_java_method_signature(student_answer)
+    if not signature:
+        return None
+
+    total = 0
+    passed = 0
+    weighted_total = 0.0
+    weighted_passed = 0.0
+    required_failures = 0
+    for item in hidden_tests:
+        if not isinstance(item, dict):
+            continue
+        args = _parse_hidden_test_input(item.get("input"))
+        expected = _serialize_hidden_expected(_parse_expected_output(item.get("expected_output")))
+        result = _run_java_hidden_test(student_answer, signature, args)
+        weight = max(0.1, float(item.get("weight", 1.0) or 1.0))
+        total += 1
+        weighted_total += weight
+        if result.get("ok") and result.get("result") == expected:
+            passed += 1
+            weighted_passed += weight
+        elif item.get("required"):
+            required_failures += 1
+
+    if total == 0:
+        return None
+
+    if passed == total:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "Hidden test cases matched the expected outputs for this registered Java question.",
+        }
+
+    weighted_ratio = weighted_passed / weighted_total if weighted_total else 0.0
+
+    if passed == 0:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": f"Hidden test cases failed on all {total} registered Java checks.",
+            "suggestion": "Review the Java logic against the registered question inputs and expected outputs.",
+        }
+
+    if required_failures:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 12,
+            "efficiency_max": 8,
+            "feedback": "The answer failed one or more required hidden Java test cases.",
+            "suggestion": "Fix the required edge or trap cases before relying on this Java solution.",
+            "passed_cases": passed,
+            "total_cases": total,
+            "pass_ratio": weighted_ratio,
+        }
+
+    return {
+        "result_type": "partial_pass",
+        "correctness_max": 32 if weighted_ratio >= 0.7 else 28,
+        "efficiency_max": 15,
+        "passed_cases": passed,
+        "total_cases": total,
+        "pass_ratio": weighted_ratio,
+        "feedback": f"Hidden test cases passed {passed} out of {total} registered Java checks.",
+        "suggestion": "Review the registered Java hidden tests where the current logic differs from the expected output.",
+    }
+
+
+def _run_javascript_hidden_test(student_answer, function_name, args):
+    serialized_args = ", ".join(json.dumps(arg) for arg in args)
+    source = f"""
+const fn = (() => {{
+  {student_answer}
+  return {function_name};
+}})();
+
+(async () => {{
+  try {{
+    const result = await fn({serialized_args});
+    console.log(JSON.stringify(result));
+  }} catch (err) {{
+    console.error(String(err && err.message ? err.message : err));
+    process.exit(1);
+  }}
+}})();
+""".strip()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        source_path = Path(temp_dir) / "main.js"
+        source_path.write_text(source, encoding="utf-8")
+        run = subprocess.run(
+            ["node", str(source_path)],
+            capture_output=True,
+            text=True,
+            timeout=EXECUTION_TIMEOUT_SECONDS,
+            cwd=temp_dir,
+        )
+        if run.returncode != 0:
+            return {"ok": False, "error": (run.stderr or run.stdout or "node failed").strip()}
+        output = (run.stdout or "").strip()
+        try:
+            parsed = json.loads(output)
+        except json.JSONDecodeError:
+            parsed = output
+        return {"ok": True, "result": parsed}
+
+
+def evaluate_javascript_hidden_tests(student_answer, hidden_tests):
+    if not hidden_tests or not shutil.which("node"):
+        return None
+
+    function_name = _extract_first_function_name(student_answer)
+    if not function_name:
+        return None
+
+    total = 0
+    passed = 0
+    weighted_total = 0.0
+    weighted_passed = 0.0
+    required_failures = 0
+    for item in hidden_tests:
+        if not isinstance(item, dict):
+            continue
+        args = _parse_hidden_test_input(item.get("input"))
+        expected = _parse_expected_output(item.get("expected_output"))
+        result = _run_javascript_hidden_test(student_answer, function_name, args)
+        weight = max(0.1, float(item.get("weight", 1.0) or 1.0))
+        total += 1
+        weighted_total += weight
+        if result.get("ok") and result.get("result") == expected:
+            passed += 1
+            weighted_passed += weight
+        elif item.get("required"):
+            required_failures += 1
+
+    if total == 0:
+        return None
+
+    if passed == total:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "Hidden test cases matched the expected outputs for this registered JavaScript question.",
+        }
+
+    weighted_ratio = weighted_passed / weighted_total if weighted_total else 0.0
+
+    if passed == 0:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": f"Hidden test cases failed on all {total} registered JavaScript checks.",
+            "suggestion": "Review the JavaScript logic against the registered question inputs and expected outputs.",
+        }
+
+    if required_failures:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 12,
+            "efficiency_max": 8,
+            "feedback": "The answer failed one or more required hidden JavaScript test cases.",
+            "suggestion": "Fix the required edge or trap cases before relying on this JavaScript solution.",
+            "passed_cases": passed,
+            "total_cases": total,
+            "pass_ratio": weighted_ratio,
+        }
+
+    return {
+        "result_type": "partial_pass",
+        "correctness_max": 32 if weighted_ratio >= 0.7 else 28,
+        "efficiency_max": 15,
+        "passed_cases": passed,
+        "total_cases": total,
+        "pass_ratio": weighted_ratio,
+        "feedback": f"Hidden test cases passed {passed} out of {total} registered JavaScript checks.",
+        "suggestion": "Review the registered JavaScript hidden tests where the current logic differs from the expected output.",
+    }
 
 
 def analyze_python_execution(question, sample_answer, student_answer):

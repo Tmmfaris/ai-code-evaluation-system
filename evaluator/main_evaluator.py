@@ -25,7 +25,7 @@ def _build_evaluator_cache_version():
     return digest.hexdigest()
 
 
-def evaluate_submission(student_id, question, sample_answer, student_answer, language):
+def evaluate_submission(student_id, question, sample_answer, student_answer, language, reference_answers=None, question_metadata=None):
     result = deepcopy(
         _evaluate_submission_uncached(
             "cache",
@@ -33,6 +33,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             sample_answer,
             student_answer,
             language,
+            reference_answers=reference_answers,
+            question_metadata=question_metadata,
         )
     )
     result["student_id"] = student_id

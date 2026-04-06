@@ -3,6 +3,17 @@ import re
 
 def analyze_list_rules(question_text, student_answer, code):
     findings = []
+    compact = code.replace(" ", "")
+    is_flatten_array_question = "flatten array" in question_text or "flatten nested array" in question_text
+    is_value_exists_question = (
+        ("includes value" in question_text)
+        or ("value exists" in question_text and "array" in question_text)
+    )
+    is_sum_array_question = (
+        "sum array" in question_text
+        or ("sum of array" in question_text)
+        or ("sum" in question_text and "array" in question_text)
+    )
 
     if ("maximum" in question_text or "max" in question_text) and "array" in question_text and re.search(r"return\s+arr\s*\[\s*0\s*\]\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
@@ -14,6 +25,26 @@ def analyze_list_rules(question_text, student_answer, code):
             "feedback": "Returning only the first element does not find the maximum value in the array.",
             "suggestion": "Scan the whole array or use Math.max(...arr) to return the largest value."
         })
+
+    if ("maximum" in question_text or "max" in question_text) and "array" in question_text and "for(letxofarr)" in compact and "if(x>m)" in compact and "returnm;" in compact:
+        if "letm=0" in compact or "letm =0" in code or "let m=0" in code:
+            findings.append({
+                "type": "correctness_cap",
+                "rule_score": 70,
+                "correctness_max": 28,
+                "efficiency_max": 15,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The function can find the maximum for many arrays, but initializing the maximum to 0 breaks cases where all values are negative.",
+                "suggestion": "Initialize the maximum from the first array element instead of 0, or use Math.max(...arr)."
+            })
+        elif "letm=arr[0]" in compact:
+            findings.append({
+                "type": "equivalent_solution",
+                "rule_score": 100,
+                "feedback": "The function correctly finds the maximum value in the array.",
+                "suggestion": ""
+            })
 
     if ("maximum" in question_text or "max" in question_text) and "array" in question_text and ".sort()" in code and re.search(r"\[\s*arr\.length\s*-\s*1\s*\]", student_answer or "", re.IGNORECASE):
         findings.append({
@@ -71,6 +102,14 @@ def analyze_list_rules(question_text, student_answer, code):
             "suggestion": "Compare adjacent elements and return false when the order decreases."
         })
 
+    if "sorted" in question_text and "array" in question_text and "every((v,i)=>i===0||v>=a[i-1])" in compact:
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the array is sorted.",
+            "suggestion": ""
+        })
+
     if "sum of even numbers" in question_text and "array" in question_text and re.search(r"return\s+0\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
             "type": "hard_fail",
@@ -93,7 +132,44 @@ def analyze_list_rules(question_text, student_answer, code):
             "suggestion": "Check arr.length === 0 to determine whether the array has no elements."
         })
 
-    compact = code.replace(" ", "")
+    if "array is empty" in question_text and ("returnarr.length===0;" in compact or "return(arr.length===0);" in compact):
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the array is empty.",
+            "suggestion": ""
+        })
+
+    if "array is empty" in question_text and "return!arr.length;" in compact:
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the array is empty.",
+            "suggestion": ""
+        })
+
+    if "array is empty" in question_text and re.search(r"return\s+arr\s*==\s*\[\s*\]\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Comparing an array directly with [] does not correctly check whether it is empty in JavaScript.",
+            "suggestion": "Check arr.length === 0 or use !arr.length instead."
+        })
+
+    if "array is empty" in question_text and re.search(r"return\s+true\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Always returning true does not check whether the array is empty.",
+            "suggestion": "Return the result of an empty-array check such as arr.length === 0."
+        })
+
     if "second smallest" in question_text and "arr.sort()[1]" in compact:
         findings.append({
             "type": "correctness_cap",
@@ -150,8 +226,9 @@ def analyze_list_rules(question_text, student_answer, code):
             "suggestion": "Return only the values that appear in both arrays."
         })
 
-    if "includes value" in question_text and "indexof" in code:
-        if "!==-1" in code.replace(" ", "") or "!=-1" in code.replace(" ", ""):
+    if is_value_exists_question and "indexof" in code:
+        compact_code = code.replace(" ", "")
+        if "!==-1" in compact_code or "!=-1" in compact_code or ">-1" in compact_code:
             findings.append({
                 "type": "equivalent_solution",
                 "rule_score": 100,
@@ -204,7 +281,7 @@ def analyze_list_rules(question_text, student_answer, code):
             "suggestion": "Compare new Set(arr).size with arr.length to detect duplicates."
         })
 
-    if "flatten nested array" in question_text and re.search(r"return\s+arr\s*;", student_answer or "", re.IGNORECASE):
+    if is_flatten_array_question and re.search(r"return\s+arr\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 5,
@@ -215,16 +292,24 @@ def analyze_list_rules(question_text, student_answer, code):
             "suggestion": "Flatten the nested structure, for example with arr.flat(Infinity) or an equivalent recursive approach."
         })
 
-    if "flatten nested array" in question_text and ".flat()" in code and "infinity" not in code:
+    if is_flatten_array_question and ".flat()" in code and "infinity" not in code:
         findings.append({
             "type": "correctness_cap",
-            "rule_score": 48,
-            "correctness_max": 48,
+            "rule_score": 70,
+            "correctness_max": 28,
             "efficiency_max": 15,
             "readability_max": 12,
             "structure_max": 12,
             "feedback": "Using flat() without Infinity only flattens one level, so deeper nesting is still left in the result.",
             "suggestion": "Use arr.flat(Infinity) or a recursive approach when the task expects fully nested arrays to be flattened."
+        })
+
+    if is_flatten_array_question and ".reduce(" in code and ".concat(" in code and "flat(b)" in compact and ",[])" in compact:
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly flattens the array.",
+            "suggestion": ""
         })
 
     if "group array elements by value" in question_text and re.search(r"return\s+\{\s*\}\s*;", student_answer or "", re.IGNORECASE):
@@ -249,13 +334,57 @@ def analyze_list_rules(question_text, student_answer, code):
             "suggestion": "Compare the arrays element by element or use an equivalent full-array equality check."
         })
 
-    if "includes" in question_text and re.search(r"arr\s*\[\s*0\s*\]\s*==\s*x", student_answer or "", re.IGNORECASE):
+    if is_value_exists_question and re.search(r"return\s+false\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
             "type": "hard_fail",
             "correctness_max": 5,
             "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function always returns false instead of checking whether the array includes the target value.",
+            "suggestion": "Use includes(...) or scan the array and return true when a match is found."
+        })
+
+    if is_value_exists_question and re.search(r"arr\s*\[\s*0\s*\]\s*={2,3}\s*x", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
             "feedback": "Checking only the first array element does not determine whether the array includes the target value anywhere.",
             "suggestion": "Use includes(...) or scan every element until a match is found."
+        })
+
+    if is_sum_array_question and "for(letxofarr)" in code.replace(" ", "") and "+=" in code and re.search(r"return\s+s\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly calculates the sum of the array values.",
+            "suggestion": ""
+        })
+
+    if is_sum_array_question and re.search(r"return\s+arr\s*\[\s*0\s*\]\s*;", student_answer or "", re.IGNORECASE):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning only the first element does not calculate the sum of the array values.",
+            "suggestion": "Loop through the array or use reduce((a, b) => a + b, 0) to add all values."
+        })
+
+    if is_sum_array_question and ".reduce(" in code and ",0" not in (student_answer or "").replace(" ", ""):
+        findings.append({
+            "type": "correctness_cap",
+            "rule_score": 70,
+            "correctness_max": 28,
+            "efficiency_max": 15,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Using reduce without an initial value works for many non-empty arrays, but it fails on empty arrays.",
+            "suggestion": "Provide an initial accumulator value such as 0 so the function also handles empty arrays safely."
         })
 
     return findings

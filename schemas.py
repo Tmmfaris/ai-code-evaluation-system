@@ -2,10 +2,21 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
+class HiddenTestCase(BaseModel):
+    input: Optional[str] = Field(None, example="[1,2,3]")
+    expected_output: Optional[str] = Field(None, example="6")
+    description: Optional[str] = Field(None, example="basic positive case")
+
+
 class QuestionSubmission(BaseModel):
     question_id: Optional[str] = Field(None, example="q1")
     question: Optional[str] = Field(None, example="Write a function to calculate factorial")
     model_answer: Optional[str] = Field(None, example="def f(n): return 1 if n==0 else n*f(n-1)")
+    alternative_answers: Optional[List[str]] = Field(
+        default=None,
+        example=["def fact(n): return 1 if n == 0 else n * fact(n - 1)"],
+    )
+    hidden_tests: Optional[List[HiddenTestCase]] = None
     student_answer: str = Field(..., example="def fact(n): return 1 if n==0 else n*fact(n-1)")
     language: Optional[str] = Field(None, example="python")
 
@@ -16,17 +27,9 @@ class StudentEvaluationRequest(BaseModel):
         ...,
         example=[
             {
-                "question_id": "q1",
                 "question": "Write a function to add two numbers",
                 "model_answer": "def add(a,b): return a+b",
                 "student_answer": "def add(a,b): return a+b",
-                "language": "python"
-            },
-            {
-                "question_id": "q2",
-                "question": "Write a function to reverse a string",
-                "model_answer": "def reverse(s): return s[::-1]",
-                "student_answer": "def reverse(s): return ''.join(reversed(s))",
                 "language": "python"
             }
         ]
@@ -41,20 +44,13 @@ class MultiStudentEvaluationRequest(BaseModel):
                 "student_id": "123",
                 "submissions": [
                     {
-                        "question_id": "q1",
                         "question": "Write a function to add two numbers",
                         "model_answer": "def add(a,b): return a+b",
                         "student_answer": "def add(a,b): return a+b",
                         "language": "python"
-                    }
-                ]
-            },
-            {
-                "student_id": "124",
-                "submissions": [
+                    },
                     {
-                        "question_id": "q1",
-                        "question": "Write a function to reverse a string",
+                        "question": "Reverse a string",
                         "model_answer": "def reverse(s): return s[::-1]",
                         "student_answer": "def reverse(s): return ''.join(reversed(s))",
                         "language": "python"
@@ -104,25 +100,47 @@ class MultiStudentEvaluationResponse(BaseModel):
     students: List[StudentEvaluationResponse]
 
 
-class QuestionProfileRequest(BaseModel):
-    question_id: str = Field(..., example="q1")
-    question: str = Field(..., example="Write a function to calculate factorial")
-    model_answer: str = Field(..., example="def fact(n): return 1 if n == 0 else n * fact(n-1)")
+class QuestionPackageRequest(BaseModel):
+    question_id: Optional[str] = Field(None, example="q-demo")
+    question: str = Field(..., example="Write a function to add two numbers")
+    model_answer: str = Field(..., example="def add(a,b): return a+b")
     language: str = Field(..., example="python")
-    course_id: Optional[str] = Field(None, example="course-101")
-    faculty_id: Optional[str] = Field(None, example="faculty-200")
-    topic: Optional[str] = Field(None, example="recursion")
 
 
-class QuestionProfileResponse(BaseModel):
+class MultiQuestionPackageRequest(BaseModel):
+    questions: List[QuestionPackageRequest] = Field(
+        ...,
+        example=[
+            {
+                "question": "Write a function to add two numbers",
+                "model_answer": "def add(a,b): return a+b",
+                "language": "python"
+            }
+        ],
+    )
+
+
+class QuestionPackageResponse(BaseModel):
     question_id: str
     question: str
     model_answer: str
     language: str
-    course_id: Optional[str] = None
-    faculty_id: Optional[str] = None
-    topic: Optional[str] = None
     profile: dict
+    question_signature: Optional[str] = None
+    template_family: Optional[str] = None
+    accepted_solutions: Optional[List[str]] = None
+    test_sets: Optional[dict] = None
+    incorrect_patterns: Optional[List[dict]] = None
+    package_status: Optional[str] = None
+    package_summary: Optional[str] = None
+    package_confidence: Optional[float] = None
+    review_required: Optional[bool] = None
+    approval_status: Optional[str] = None
+    approved_by: Optional[str] = None
+    exam_ready: Optional[bool] = None
+    positive_test_count: Optional[int] = None
+    negative_test_count: Optional[int] = None
+    reused_from_questions: Optional[List[str]] = None
 
 
 class EvaluationHistoryItem(BaseModel):
@@ -139,3 +157,9 @@ class EvaluationHistoryItem(BaseModel):
     status: str
     error: Optional[str] = None
     created_at: str
+
+
+# Backward-compatible aliases for older imports.
+QuestionProfileRequest = QuestionPackageRequest
+MultiQuestionProfileRequest = MultiQuestionPackageRequest
+QuestionProfileResponse = QuestionPackageResponse

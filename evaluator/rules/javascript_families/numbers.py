@@ -3,6 +3,36 @@ import re
 
 def analyze_number_rules(question_text, student_answer, code):
     findings = []
+    compact = (student_answer or "").replace(" ", "").lower()
+
+    if "square of a number" in question_text or "return square of a number" in question_text:
+        if "returnn*n;" in compact or "return(n*n);" in compact or "returnmath.pow(n,2);" in compact:
+            findings.append({
+                "type": "equivalent_solution",
+                "rule_score": 100,
+                "feedback": "The function correctly returns the square of the number.",
+                "suggestion": ""
+            })
+        elif "returnn+n;" in compact:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "Adding the number to itself does not compute its square.",
+                "suggestion": "Multiply the number by itself, for example with n * n or Math.pow(n, 2)."
+            })
+        elif re.search(r"return\s+1\s*;", student_answer or "", re.IGNORECASE):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "Returning 1 does not compute the square of the input.",
+                "suggestion": "Multiply the number by itself before returning the result."
+            })
 
     if "add two numbers" in question_text:
         if re.search(r"return\s+a\s*;", student_answer or "", re.IGNORECASE) or re.search(r"return\s+b\s*;", student_answer or "", re.IGNORECASE):

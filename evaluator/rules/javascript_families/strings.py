@@ -3,6 +3,46 @@ import re
 
 def analyze_string_rules(question_text, student_answer, code):
     findings = []
+    normalized_compact = (student_answer or "").replace(" ", "").lower()
+
+    if "convert string to uppercase" in question_text or "uppercase" in question_text:
+        if "returns.touppercase();" in normalized_compact:
+            findings.append({
+                "type": "equivalent_solution",
+                "rule_score": 100,
+                "feedback": "The function correctly converts the string to uppercase.",
+                "suggestion": ""
+            })
+        elif "returns.touppercase}" in normalized_compact or "returns.touppercase;" in normalized_compact:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "Returning the toUpperCase function itself does not convert the string to uppercase.",
+                "suggestion": "Call the method with parentheses, for example s.toUpperCase()."
+            })
+        elif re.search(r"return\s+s\s*;", student_answer or "", re.IGNORECASE):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "Returning the original string does not convert it to uppercase.",
+                "suggestion": "Return the uppercase string, for example with s.toUpperCase()."
+            })
+        elif re.search(r'return\s+"[^"]*"\s*;', student_answer or "", re.IGNORECASE):
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "readability_max": 8,
+                "structure_max": 10,
+                "feedback": "Returning a fixed string does not convert the input string to uppercase.",
+                "suggestion": "Use the input value and convert it with s.toUpperCase()."
+            })
 
     if "reverse" in question_text and "string" in question_text and re.search(r"return\s+s\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
@@ -15,7 +55,7 @@ def analyze_string_rules(question_text, student_answer, code):
             "suggestion": "Reverse the characters before returning the result."
         })
 
-    compact = (student_answer or "").replace(" ", "").lower()
+    compact = normalized_compact
     if "reverse" in question_text and "string" in question_text and "for(leti=s.length-1;i>=0;i--)r+=s[i];returnr;" in compact:
         findings.append({
             "type": "equivalent_solution",
@@ -46,6 +86,25 @@ def analyze_string_rules(question_text, student_answer, code):
             "suggestion": "Check each character against the vowels and count only the matches."
         })
 
+    if "count vowels" in question_text and "string" in question_text and "for(letchofs)" in compact and "'aeiou'.includes(ch)" in compact and "c++" in compact and "returnc;" in compact:
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly counts the vowels in the string.",
+            "suggestion": ""
+        })
+
+    if "count vowels" in question_text and "string" in question_text and ".filter(" in compact and "returns.split('').filter" in compact and ".length" not in compact:
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the filtered array does not return the number of vowels.",
+            "suggestion": "Return the count of matching characters, for example by adding .length after filter(...)."
+        })
+
     if "palindrome" in question_text and re.search(r"return\s+true\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
             "type": "hard_fail",
@@ -55,6 +114,17 @@ def analyze_string_rules(question_text, student_answer, code):
             "structure_max": 8,
             "feedback": "The function always returns true instead of checking whether the input is a palindrome.",
             "suggestion": "Compare the original value with its reverse or use an equivalent mirrored check."
+        })
+
+    if "palindrome" in question_text and (
+        "returns.split('').reverse().join('')===s;" in compact
+        or "returns==s.split('').reverse().join('');" in compact
+    ):
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly checks whether the string is a palindrome.",
+            "suggestion": ""
         })
 
     compact = (student_answer or "").replace(" ", "")
@@ -170,6 +240,25 @@ def analyze_string_rules(question_text, student_answer, code):
             "structure_max": 10,
             "feedback": "Returning only the first character does not find the first non-repeating character.",
             "suggestion": "Check character frequencies or compare first and last positions before returning the first unique character."
+        })
+
+    if "first non-repeating character" in question_text and "letmap={};" in normalized_compact and "map[c]=(map[c]||0)+1;" in normalized_compact and "if(map[c]===1)returnc;" in normalized_compact:
+        findings.append({
+            "type": "equivalent_solution",
+            "rule_score": 100,
+            "feedback": "The function correctly finds the first non-repeating character.",
+            "suggestion": ""
+        })
+
+    if "first non-repeating character" in question_text and "letset=newset(s);" in normalized_compact and "return[...set][0];" in normalized_compact:
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "Returning the first value from a Set does not guarantee the first non-repeating character.",
+            "suggestion": "Track character frequencies and return the first character that appears exactly once."
         })
 
     if "first unique character" in question_text and re.search(r"return\s+null\s*;", student_answer or "", re.IGNORECASE):

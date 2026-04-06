@@ -13,6 +13,11 @@ from evaluator.comparison import (
     score_calibrator,
 )
 from evaluator.execution import analyze_execution
+from evaluator.execution.shared import (
+    evaluate_java_hidden_tests,
+    evaluate_javascript_hidden_tests,
+    evaluate_python_hidden_tests,
+)
 from evaluator.rules import analyze_submission_rules, analyze_question_risk, apply_rule_adjustments
 from evaluator.scoring_engine import combine_scores
 from evaluator.question_classifier import classify_question
@@ -28,6 +33,77 @@ from utils.helpers import clean_text, normalize_code, normalize_python_structure
 
 from config import ENABLE_SYNTAX_CHECK, SUPPORTED_LANGUAGES
 import re
+
+
+def _normalize_package_reference_answers(reference_answers, question_metadata):
+    combined = list(reference_answers or [])
+    metadata_answers = (question_metadata or {}).get("accepted_solutions") or []
+    for answer in metadata_answers:
+        if isinstance(answer, str) and answer.strip():
+            combined.append(answer.strip())
+    return combined
+
+
+def _normalize_reference_answers(sample_answer, reference_answers):
+    refs = []
+    for answer in [sample_answer, *(reference_answers or [])]:
+        cleaned = clean_text(answer or "")
+        if cleaned and cleaned not in refs:
+            refs.append(cleaned)
+    return refs
+
+
+def _execution_priority(execution_finding):
+    result_type = (execution_finding or {}).get("result_type")
+    priorities = {
+        "full_pass": 5,
+        "mostly_correct": 4,
+        "correct_but_inefficient": 3,
+        "partial_pass": 2,
+        "zero_pass": 1,
+        "execution_error": 0,
+    }
+    return priorities.get(result_type, -1)
+
+
+def _select_best_execution_finding(question, reference_answers, student_answer, language):
+    best = None
+    for reference_answer in reference_answers:
+        finding = analyze_execution(
+            question=question,
+            sample_answer=reference_answer,
+            student_answer=student_answer,
+            language=language,
+        )
+        if _execution_priority(finding) > _execution_priority(best):
+            best = finding
+    return best
+
+
+def _match_package_incorrect_pattern(student_answer, pattern_item):
+    pattern = (pattern_item or {}).get("pattern", "")
+    if not pattern:
+        return False
+    code = (student_answer or "")
+    normalized_code = "".join(code.lower().split())
+    match_type = ((pattern_item or {}).get("match_type") or "contains").lower()
+
+    if match_type == "regex":
+        try:
+            return re.search(pattern, code, re.IGNORECASE) is not None
+        except re.error:
+            return False
+    if match_type == "normalized_contains":
+        return "".join(pattern.lower().split()) in normalized_code
+    return pattern.lower() in code.lower()
+
+
+def _package_rule_findings(student_answer, question_metadata):
+    findings = []
+    for item in (question_metadata or {}).get("incorrect_patterns") or []:
+        if _match_package_incorrect_pattern(student_answer, item):
+            findings.append(dict(item))
+    return findings
 
 
 def run_syntax_check(code, language):
@@ -162,7 +238,7 @@ def apply_java_accuracy_overrides(question, student_answer, syntax_result, execu
     return parsed_llm, rubric_score
 
 
-def evaluate_submission(student_id, question, sample_answer, student_answer, language):
+def evaluate_submission(student_id, question, sample_answer, student_answer, language, reference_answers=None, question_metadata=None):
     """
     Main entry point for evaluation.
     """
@@ -172,6 +248,10 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
 
         question = clean_text(question)
         sample_answer = clean_text(sample_answer)
+        reference_answers = _normalize_package_reference_answers(reference_answers, question_metadata)
+        reference_answers = _normalize_reference_answers(sample_answer, reference_answers)
+        if reference_answers:
+            sample_answer = reference_answers[0]
         student_answer = normalize_code(student_answer)
 
         if is_empty(student_answer):
@@ -191,7 +271,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
         )
 
         structure_analysis = analyze_structure(student_answer)
-        if normalize_code(sample_answer) == student_answer:
+        normalized_references = {normalize_code(answer) for answer in reference_answers if answer}
+        if normalized_references and student_answer in normalized_references:
             log_info(
                 f"Evaluation path | Student: {student_id} | Language: {language} | Mode: exact_match"
             )
@@ -253,12 +334,34 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             student_answer=student_answer,
             language=language,
         )
-        execution_finding = analyze_execution(
+        rule_findings.extend(_package_rule_findings(student_answer, question_metadata))
+        execution_finding = _select_best_execution_finding(
             question=question,
-            sample_answer=sample_answer,
+            reference_answers=reference_answers or [sample_answer],
             student_answer=student_answer,
             language=language,
         )
+        test_sets = (question_metadata or {}).get("test_sets") or {}
+        hidden_tests = (question_metadata or {}).get("hidden_tests") or test_sets.get("positive") or []
+        package_status = (question_metadata or {}).get("package_status")
+        if language == "python" and hidden_tests:
+            hidden_test_finding = evaluate_python_hidden_tests(student_answer, hidden_tests)
+            if package_status in {"validated", "live"} and hidden_test_finding:
+                execution_finding = hidden_test_finding
+            elif _execution_priority(hidden_test_finding) > _execution_priority(execution_finding):
+                execution_finding = hidden_test_finding
+        if language == "java" and hidden_tests:
+            hidden_test_finding = evaluate_java_hidden_tests(student_answer, hidden_tests)
+            if package_status in {"validated", "live"} and hidden_test_finding:
+                execution_finding = hidden_test_finding
+            elif _execution_priority(hidden_test_finding) > _execution_priority(execution_finding):
+                execution_finding = hidden_test_finding
+        if language == "javascript" and hidden_tests:
+            hidden_test_finding = evaluate_javascript_hidden_tests(student_answer, hidden_tests)
+            if package_status in {"validated", "live"} and hidden_test_finding:
+                execution_finding = hidden_test_finding
+            elif _execution_priority(hidden_test_finding) > _execution_priority(execution_finding):
+                execution_finding = hidden_test_finding
         if not execution_finding:
             rule_findings.extend(analyze_question_risk(question, language, question_profile))
         if execution_finding:

@@ -1,27 +1,26 @@
 # AI Intelligent Evaluation Model
 
-FastAPI service for evaluating student coding answers for academy and LMS workflows.
+FastAPI service for evaluating student coding answers with deterministic rules, execution checks, question packages, and LLM fallback.
 
 ## What It Does
 
 - evaluates one or many students in one request
 - supports multiple questions per student
+- supports direct evaluation with `question + model_answer + language`
+- supports reusable registered question packages
 - combines exact match, rules, execution checks, syntax checks, and local LLM fallback
-- stores question profiles and evaluation history in SQLite
+- stores package/history/learning data in SQLite
 
 ## Main Endpoint
 
 - `POST /evaluate/students`
 
-Useful routes:
+Main routes:
 
 - `GET /`
 - `GET /health`
+- `POST /evaluate/students`
 - `POST /questions/register`
-- `GET /questions`
-- `GET /questions/{question_id}`
-- `GET /evaluations`
-- `GET /evaluations/students/{student_id}`
 
 ## Supported Languages
 
@@ -40,7 +39,7 @@ Current strongest deterministic coverage:
 - `java`
 - `javascript` for common academy-style patterns
 
-## Request Shape
+## Evaluation Request
 
 ```json
 {
@@ -49,7 +48,6 @@ Current strongest deterministic coverage:
       "student_id": "101",
       "submissions": [
         {
-          "question_id": "q1",
           "question": "Write a function to add two numbers",
           "model_answer": "def add(a, b): return a + b",
           "student_answer": "def add(a, b): return a + b",
@@ -66,7 +64,7 @@ Limits:
 - max `20` students per request
 - max `20` submissions per student
 
-## Response Shape
+## Evaluation Response
 
 ```json
 {
@@ -114,11 +112,89 @@ Rubric split:
 ## Evaluation Flow
 
 1. validate and normalize input
-2. use exact-match shortcut when possible
-3. run syntax, structure, rules, and execution checks
-4. use local GGUF LLM only when needed
-5. apply score calibration and confidence bounds
-6. return structured score, concepts, and feedback
+2. load direct question context or registered package data
+3. use exact-match shortcut when possible
+4. run syntax, structure, deterministic rules, and execution checks
+5. use question-package accepted solutions, hidden tests, and incorrect patterns
+6. use local GGUF LLM only when needed
+7. apply score calibration and confidence bounds
+8. return structured score, concepts, and feedback
+
+## Evaluation Modes
+
+- direct mode
+  - send `question + model_answer + student_answer + language`
+  - useful when you want immediate evaluation without registering a package first
+- package mode
+  - register questions first with `POST /questions/register`
+  - later evaluate using the same question content or a registered package context
+  - useful for reuse, stronger hidden tests, and more stable scoring
+
+## Evaluation Layers
+
+- exact match
+  - fastest path when the student answer matches the expected answer or an accepted equivalent
+- deterministic rules
+  - catches common known patterns quickly and consistently
+- execution and hidden tests
+  - strongest for runnable languages when the question package contains hidden tests
+- package support data
+  - uses stored `accepted_solutions`, `test_sets`, and `incorrect_patterns`
+- LLM fallback
+  - used only when the earlier layers are not enough
+
+## Evaluation Output
+
+Each evaluated question returns:
+
+- `score`
+- `concepts`
+- `logic_evaluation`
+- `feedback`
+
+Each student result returns:
+
+- `student_id`
+- `question_count`
+- `total_score`
+- per-question results
+
+## Question Packages
+
+- evaluation can run directly with `question + model_answer + language`
+- faculty can register bulk question packages with `POST /questions/register`
+- registration builds reusable package data:
+  - `accepted_solutions`
+  - `test_sets`
+  - `incorrect_patterns`
+  - `template_family`
+  - `package_status`
+  - `package_confidence`
+  - `approval_status`
+  - `exam_ready`
+- `question_id` is optional at registration time
+- stored packages use question content/signature for reuse, not `question_id`
+- `question_id` is only an evaluation-time label/reference when you choose to send it
+- reuse is based on question content, normalized question signature, language, and template family
+
+### Package Registration Example
+
+```json
+{
+  "questions": [
+    {
+      "question": "Write a function to add two numbers",
+      "model_answer": "def add(a,b): return a+b",
+      "language": "python"
+    },
+    {
+      "question": "Reverse a string",
+      "model_answer": "def reverse(s): return s[::-1]",
+      "language": "python"
+    }
+  ]
+}
+```
 
 ## Setup
 
@@ -139,10 +215,17 @@ Model file expected at:
 
 ## Storage
 
-SQLite is used by default for:
+Global deterministic rules stay in code:
 
-- question profiles: `data/question_profiles.db`
+- `evaluator/rules/`
+- `evaluator/execution/shared.py`
+- `evaluator/question_rule_generator.py`
+
+Dynamic package and history data stay in SQLite:
+
+- question packages: `data/question_profiles.db`
 - evaluation history: `data/evaluation_history.db`
+- learning signals: `data/question_learning.db`
 
 Legacy JSON profile seed:
 
@@ -178,11 +261,11 @@ ai-intelligent-evaluation-model/
 |   |-- execution_engine.py
 |   |-- main_evaluator.py
 |   |-- question_classifier.py
+|   |-- question_learning_repository.py
+|   |-- question_learning_store.py
 |   |-- question_profile_repository.py
 |   |-- question_profile_store.py
-|   |-- rubric_engine.py
-|   |-- rule_engine.py
-|   |-- scoring_engine.py
+|   |-- question_rule_generator.py
 |   |-- comparison/
 |   |   |-- answer_comparator.py
 |   |   |-- feedback_generator.py
@@ -202,6 +285,17 @@ ai-intelligent-evaluation-model/
 |   |   |-- __init__.py
 |   |   |-- confidence.py
 |   |   `-- pipeline.py
+|   |-- question_package/
+|   |   |-- __init__.py
+|   |   |-- approvals.py
+|   |   |-- generator.py
+|   |   |-- learning.py
+|   |   |-- reuser.py
+|   |   |-- validator.py
+|   |   `-- workflow.py
+|   |-- rubric_engine.py
+|   |-- rule_engine.py
+|   |-- scoring_engine.py
 |   `-- rules/
 |       |-- __init__.py
 |       |-- shared.py
@@ -225,7 +319,8 @@ ai-intelligent-evaluation-model/
 |-- data/
 |   |-- question_profiles.json
 |   |-- question_profiles.db
-|   `-- evaluation_history.db
+|   |-- evaluation_history.db
+|   `-- question_learning.db
 |
 |-- tests/
 |   |-- benchmark_cases.json
@@ -244,4 +339,7 @@ ai-intelligent-evaluation-model/
 
 - best accuracy is on controlled academy-style questions
 - expanding deterministic coverage improves both speed and consistency
+- package workflow is: `generated -> validated -> live`
+- post-exam learning can promote repeated strong answers and repeated mistakes into future package improvements
+- hidden review routes exist internally for package approval and inspection
 - benchmark guards live in `tests/test_benchmark.py`

@@ -136,8 +136,57 @@ QUESTION_PROFILE_DB_PATH = "data/question_profiles.db"
 
 
 # ==============================
+# AUTO RULE GENERATION
+# ==============================
+
+AUTO_GENERATE_QUESTION_RULES = True
+AUTO_GENERATE_MAX_ALTERNATIVES = 3
+AUTO_GENERATE_MAX_HIDDEN_TESTS = 5
+AUTO_ACTIVATE_VALIDATED_QUESTIONS = True
+REQUIRE_VALIDATED_QUESTION_PACKAGE = False
+STRICT_EVALUATION_BY_QUESTION_ID = True
+REQUIRE_FACULTY_APPROVAL_FOR_LIVE = True
+MIN_PACKAGE_CONFIDENCE_FOR_EXAM = 0.75
+
+
+# ==============================
+# PACKAGE / RUNTIME FEATURE MAPS
+# ==============================
+
+QUESTION_PACKAGE_FEATURES = {
+    "llm_generation": AUTO_GENERATE_QUESTION_RULES,
+    "auto_activate_validated": AUTO_ACTIVATE_VALIDATED_QUESTIONS,
+    "require_faculty_approval": REQUIRE_FACULTY_APPROVAL_FOR_LIVE,
+    "min_exam_confidence": MIN_PACKAGE_CONFIDENCE_FOR_EXAM,
+}
+
+EVALUATION_RUNTIME_FEATURES = {
+    "require_validated_package": REQUIRE_VALIDATED_QUESTION_PACKAGE,
+    "strict_question_id_mode": STRICT_EVALUATION_BY_QUESTION_ID,
+}
+
+HIDDEN_TEST_RUNTIME_FEATURES = {
+    "python": True,
+    "java": True,
+    "javascript": True,
+    "html": False,
+    "css": False,
+    "react": False,
+    "mysql": False,
+    "mongodb": False,
+}
+
+
+# ==============================
 # EVALUATION HISTORY STORAGE
 # ==============================
 
 EVALUATION_HISTORY_BACKEND = "sqlite"
 EVALUATION_HISTORY_DB_PATH = "data/evaluation_history.db"
+
+
+# ==============================
+# QUESTION LEARNING STORAGE
+# ==============================
+
+QUESTION_LEARNING_DB_PATH = "data/question_learning.db"
