@@ -950,9 +950,11 @@ Available test and benchmark files:
 - [tests/run_benchmark.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/run_benchmark.py)
 - [tests/test_benchmark.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_benchmark.py)
 - [tests/test_evaluator.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_evaluator.py)
+- [tests/test_regressions.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py)
 - [tests/test_language_support.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_language_support.py)
 - `tests/benchmark_cases.json`
 - `tests/benchmark_thresholds.json`
+- `tests/regression_cases.json`
 
 Run the benchmark:
 
@@ -973,7 +975,7 @@ What the benchmark does:
 Run unit and integration-style tests:
 
 ```powershell
-python -m pytest tests/test_benchmark.py tests/test_evaluator.py tests/test_language_support.py
+python -m pytest tests/test_benchmark.py tests/test_evaluator.py tests/test_regressions.py tests/test_language_support.py
 ```
 
 What the test files are for:
@@ -982,8 +984,18 @@ What the test files are for:
   benchmark and threshold checks
 - [tests/test_evaluator.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_evaluator.py)
   evaluator behavior checks
+- [tests/test_regressions.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py)
+  exact known bug-fix cases that should not silently regress
 - [tests/test_language_support.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_language_support.py)
   language support and routing checks
+
+How to use the regression layer:
+
+1. when you fix a scoring bug, add one case to `tests/regression_cases.json`
+2. include the original question, reference answer, student answer, and expected score range
+3. include a small expected feedback phrase when practical
+4. run `python -m pytest tests/test_regressions.py`
+5. keep the case permanently so the same bug cannot quietly return
 
 Recommended verification flow after changing scoring logic:
 

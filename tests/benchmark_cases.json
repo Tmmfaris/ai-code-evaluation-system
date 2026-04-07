@@ -116,8 +116,8 @@
     "question": "Write a function to add two numbers",
     "model_answer": "def add(a, b): return a + b",
     "student_answer": "def add(a, b): return a",
-    "expected_min_score": 10,
-    "expected_max_score": 20
+    "expected_min_score": 0,
+    "expected_max_score": 0
   },
   {
     "id": "css_basic_rule_full",
@@ -506,8 +506,8 @@
     "question": "Write a method to check if a number is prime",
     "model_answer": "static boolean isPrime(int n){ if(n<2) return false; for(int i=2;i*i<=n;i++){ if(n%i==0) return false;} return true; }",
     "student_answer": "static boolean isPrime(int n){ for(int i=2;i<n;i++){ if(n%i==0) return false;} return true; }",
-    "expected_min_score": 80,
-    "expected_max_score": 90
+    "expected_min_score": 45,
+    "expected_max_score": 55
   },
   {
     "id": "java_word_count_split_space_partial",
@@ -516,8 +516,8 @@
     "question": "Write a method to count words",
     "model_answer": "static int wc(String s){ return s.trim().split(\"\\\\s+\").length; }",
     "student_answer": "static int wc(String s){ return s.split(\" \").length; }",
-    "expected_min_score": 75,
-    "expected_max_score": 90
+    "expected_min_score": 65,
+    "expected_max_score": 75
   },
   {
     "id": "java_vowels_missing_uppercase_partial",

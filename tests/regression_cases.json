@@ -1,0 +1,235 @@
+[
+  {
+    "id": "python_string_length_exact_full_credit",
+    "student_id": "reg-py-001",
+    "language": "python",
+    "question": "Find length of string",
+    "model_answer": "def length(s): return len(s)",
+    "student_answer": "def length(s): return len(s)",
+    "expected_min_score": 100,
+    "expected_max_score": 100
+  },
+  {
+    "id": "python_string_length_str_coercion_partial",
+    "student_id": "reg-py-002",
+    "language": "python",
+    "question": "Find length of string",
+    "model_answer": "def length(s): return len(s)",
+    "student_answer": "def length(s): return len(str(s))",
+    "expected_min_score": 70,
+    "expected_max_score": 70,
+    "expected_feedback_contains": "broadens the behavior"
+  },
+  {
+    "id": "javascript_square_correct_full_credit",
+    "student_id": "reg-js-001",
+    "language": "javascript",
+    "question": "Return square of a number",
+    "model_answer": "function square(n){ return n * n; }",
+    "student_answer": "function square(n){ return n * n; }",
+    "expected_min_score": 100,
+    "expected_max_score": 100
+  },
+  {
+    "id": "javascript_square_wrong_zero",
+    "student_id": "reg-js-002",
+    "language": "javascript",
+    "question": "Return square of a number",
+    "model_answer": "function square(n){ return n * n; }",
+    "student_answer": "function square(n){ return n + n; }",
+    "expected_min_score": 0,
+    "expected_max_score": 0
+  },
+  {
+    "id": "javascript_uppercase_correct_full_credit",
+    "student_id": "reg-js-003",
+    "language": "javascript",
+    "question": "Convert string to uppercase",
+    "model_answer": "function upper(s){ return s.toUpperCase(); }",
+    "student_answer": "function upper(s){ return s.toUpperCase(); }",
+    "expected_min_score": 100,
+    "expected_max_score": 100
+  },
+  {
+    "id": "javascript_uppercase_missing_call_zero",
+    "student_id": "reg-js-004",
+    "language": "javascript",
+    "question": "Convert string to uppercase",
+    "model_answer": "function upper(s){ return s.toUpperCase(); }",
+    "student_answer": "function upper(s){ return s.toUpperCase; }",
+    "expected_min_score": 0,
+    "expected_max_score": 0
+  },
+  {
+    "id": "javascript_array_empty_correct_full_credit",
+    "student_id": "reg-js-005",
+    "language": "javascript",
+    "question": "Check if array is empty",
+    "model_answer": "function isEmpty(arr){ return arr.length === 0; }",
+    "student_answer": "function isEmpty(arr){ return !arr.length; }",
+    "expected_min_score": 100,
+    "expected_max_score": 100,
+    "expected_feedback_contains": "checks whether the array is empty"
+  },
+  {
+    "id": "javascript_array_empty_wrong_zero",
+    "student_id": "reg-js-006",
+    "language": "javascript",
+    "question": "Check if array is empty",
+    "model_answer": "function isEmpty(arr){ return arr.length === 0; }",
+    "student_answer": "function isEmpty(arr){ return arr == []; }",
+    "expected_min_score": 0,
+    "expected_max_score": 0,
+    "expected_feedback_contains": "does not correctly check"
+  },
+  {
+    "id": "python_even_check_correct_full_credit",
+    "student_id": "reg-py-003",
+    "language": "python",
+    "question": "Check if number is even",
+    "model_answer": "def even(n): return n % 2 == 0",
+    "student_answer": "def even(n): return n % 2 == 0",
+    "expected_min_score": 100,
+    "expected_max_score": 100
+  },
+  {
+    "id": "python_even_check_wrong_zero",
+    "student_id": "reg-py-004",
+    "language": "python",
+    "question": "Check if number is even",
+    "model_answer": "def even(n): return n % 2 == 0",
+    "student_answer": "def even(n): return n % 2 == 1",
+    "expected_min_score": 0,
+    "expected_max_score": 0
+  },
+  {
+    "id": "python_add_two_numbers_wrong_zero",
+    "student_id": "reg-py-005",
+    "language": "python",
+    "question": "Add two numbers",
+    "model_answer": "def add(a,b): return a + b",
+    "student_answer": "def add(a,b): return a - b",
+    "expected_min_score": 0,
+    "expected_max_score": 0
+  },
+  {
+    "id": "python_count_vowels_correct_full_credit",
+    "student_id": "reg-py-006",
+    "language": "python",
+    "question": "Count vowels in string",
+    "model_answer": "def count_vowels(s): return sum(1 for c in s if c in 'aeiouAEIOU')",
+    "student_answer": "def count_vowels(s): return sum(1 for c in s if c in 'aeiouAEIOU')",
+    "expected_min_score": 100,
+    "expected_max_score": 100
+  },
+  {
+    "id": "python_string_length_zero_wrong",
+    "student_id": "reg-py-007",
+    "language": "python",
+    "question": "Find length of string",
+    "model_answer": "def length(s): return len(s)",
+    "student_answer": "def length(s): return 0",
+    "expected_min_score": 0,
+    "expected_max_score": 0
+  },
+  {
+    "id": "css_basic_rule_full_credit",
+    "student_id": "reg-css-001",
+    "language": "css",
+    "question": "Write CSS to make all h1 elements red",
+    "model_answer": "h1 { color: red; }",
+    "student_answer": "h1 { color: red; }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "css_wrong_property_low_credit",
+    "student_id": "reg-css-002",
+    "language": "css",
+    "question": "Write CSS to make all h1 elements red",
+    "model_answer": "h1 { color: red; }",
+    "student_answer": "h1 { font-size: 20px; }",
+    "expected_min_score": 0,
+    "expected_max_score": 30
+  },
+  {
+    "id": "react_component_full_credit",
+    "student_id": "reg-react-001",
+    "language": "react",
+    "question": "Create a React component that renders a heading Hello",
+    "model_answer": "export default function App(){ return <h1>Hello</h1>; }",
+    "student_answer": "export default function App(){ return <h1>Hello</h1>; }",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "react_plain_js_low_credit",
+    "student_id": "reg-react-002",
+    "language": "react",
+    "question": "Create a React component that renders a heading Hello",
+    "model_answer": "export default function App(){ return <h1>Hello</h1>; }",
+    "student_answer": "function hello(){ return 'Hello'; }",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "mysql_select_full_credit",
+    "student_id": "reg-mysql-001",
+    "language": "mysql",
+    "question": "Write a MySQL query to select all rows from students",
+    "model_answer": "SELECT * FROM students;",
+    "student_answer": "SELECT * FROM students;",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "mysql_wrong_table_low_credit",
+    "student_id": "reg-mysql-002",
+    "language": "mysql",
+    "question": "Write a MySQL query to select all rows from students",
+    "model_answer": "SELECT * FROM students;",
+    "student_answer": "SELECT * FROM teachers;",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "mongodb_find_full_credit",
+    "student_id": "reg-mongo-001",
+    "language": "mongodb",
+    "question": "Write a MongoDB query to find all active students",
+    "model_answer": "db.students.find({ active: true })",
+    "student_answer": "db.students.find({ active: true })",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "mongodb_wrong_collection_low_credit",
+    "student_id": "reg-mongo-002",
+    "language": "mongodb",
+    "question": "Write a MongoDB query to find all active students",
+    "model_answer": "db.students.find({ active: true })",
+    "student_answer": "db.teachers.find({ active: true })",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  },
+  {
+    "id": "html_heading_full_credit",
+    "student_id": "reg-html-001",
+    "language": "html",
+    "question": "Create a HTML page with a heading",
+    "model_answer": "<html><body><h1>Hello</h1></body></html>",
+    "student_answer": "<html><body><h1>Hello</h1></body></html>",
+    "expected_min_score": 90,
+    "expected_max_score": 100
+  },
+  {
+    "id": "html_wrong_tag_low_credit",
+    "student_id": "reg-html-002",
+    "language": "html",
+    "question": "Create a HTML page with a heading",
+    "model_answer": "<html><body><h1>Hello</h1></body></html>",
+    "student_answer": "<html><body><p>Hello</p></body></html>",
+    "expected_min_score": 0,
+    "expected_max_score": 35
+  }
+]
