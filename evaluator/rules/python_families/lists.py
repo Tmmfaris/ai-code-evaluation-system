@@ -9,6 +9,17 @@ def analyze_list_rules(question_text, function_node, student_answer, helpers):
             "suggestion": "Use max(lst) or a single-pass comparison instead of sorting the entire list."
         })
 
+    if ("maximum" in question_text or "max" in question_text) and helpers["_returns_sorted_index"](function_node, 0):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 8,
+            "efficiency_max": 8,
+            "readability_max": 10,
+            "structure_max": 12,
+            "feedback": "Returning the first item from a sorted collection finds the minimum value, not the maximum.",
+            "suggestion": "Return the largest value, such as max(lst), or take the last item after sorting."
+        })
+
     if ("minimum" in question_text or "min" in question_text) and (helpers["_uses_sorted_call"](function_node) or helpers["_returns_sorted_index"](function_node, 0)):
         findings.append({
             "type": "correct_solution_with_penalty",

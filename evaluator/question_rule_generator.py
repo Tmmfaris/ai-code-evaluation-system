@@ -52,26 +52,334 @@ def _infer_template_family(question, language):
         return f"{language}::recursion"
     if _contains_all(question_text, "add", "two", "numbers"):
         return f"{language}::add_two_numbers"
+    if "square of a number" in question_text or "return square of a number" in question_text:
+        return f"{language}::square_number"
+    if "length of string" in question_text or "find length of string" in question_text:
+        return f"{language}::string_length"
     if _contains_all(question_text, "reverse", "string"):
         return f"{language}::reverse_string"
+    if _contains_all(question_text, "reverse", "words"):
+        return f"{language}::reverse_words"
+    if "uppercase" in question_text and "string" in question_text:
+        return f"{language}::uppercase_string"
+    if "lowercase" in question_text and "string" in question_text:
+        return f"{language}::lowercase_string"
     if "palindrome" in question_text:
         return f"{language}::palindrome"
-    if language == "mysql" and "join" in question_text:
-        return "mysql::sql_join"
+    if "ipv4" in question_text or _contains_all(question_text, "ip", "address"):
+        return f"{language}::ipv4"
+    if _contains_all(question_text, "valid", "json"):
+        return f"{language}::valid_json"
+    if _contains_all(question_text, "exception", "handling") and "division" in question_text:
+        return f"{language}::safe_divide_exception"
+    if _contains_all(question_text, "convert", "string", "integer", "safely"):
+        return f"{language}::safe_parse_int"
+    if "nullpointerexception" in question_text or (_contains_all(question_text, "null") and _contains_all(question_text, "string", "length")):
+        return f"{language}::null_safe_length"
+    if _contains_all(question_text, "valid", "email"):
+        return f"{language}::valid_email"
+    if _contains_all(question_text, "valid", "url"):
+        return f"{language}::valid_url"
+    if _contains_all(question_text, "count", "vowel") and "string" in question_text:
+        return f"{language}::count_vowels"
+    if (_contains_all(question_text, "unique", "characters")) or (_contains_all(question_text, "all", "unique")):
+        return f"{language}::unique_characters"
+    if _contains_all(question_text, "first", "character"):
+        return f"{language}::first_character"
+    if _contains_all(question_text, "last", "character"):
+        return f"{language}::last_character"
+    if _contains_all(question_text, "count", "words"):
+        return f"{language}::count_words"
+    if _contains_all(question_text, "remove", "spaces"):
+        return f"{language}::remove_spaces"
+    if _contains_all(question_text, "only", "digits") or "numeric" in question_text:
+        return f"{language}::only_digits"
+    if _contains_all(question_text, "only", "alphabets") or _contains_all(question_text, "only", "alphabet"):
+        return f"{language}::only_alphabets"
+    if _contains_all(question_text, "convert", "string", "integer"):
+        return f"{language}::convert_string_to_integer"
+    if "balanced parentheses" in question_text or (_contains_all(question_text, "balanced") and "parentheses" in question_text):
+        return f"{language}::balanced_parentheses"
+    if "anagram" in question_text:
+        return f"{language}::anagram"
+    if "armstrong" in question_text:
+        return f"{language}::armstrong"
+    if "leap year" in question_text:
+        return f"{language}::leap_year"
+    if "gcd" in question_text or "greatest common divisor" in question_text:
+        return f"{language}::gcd"
+    if "lcm" in question_text or "least common multiple" in question_text:
+        return f"{language}::lcm"
+    if "power of 2" in question_text or "power of two" in question_text:
+        return f"{language}::power_of_two"
+    if "power of 3" in question_text or "power of three" in question_text:
+        return f"{language}::power_of_three"
+    if _contains_all(question_text, "reverse", "number") or _contains_all(question_text, "reverse", "a", "number"):
+        return f"{language}::reverse_number"
+    if "concatenate" in question_text and "string" in question_text:
+        return f"{language}::concatenate_strings"
+    if _contains_all(question_text, "empty", "string"):
+        return f"{language}::empty_string_check"
+    if language == "mysql":
+        if "join" in question_text:
+            return "mysql::sql_join"
+        if "having" in question_text:
+            return "mysql::sql_having"
+        if "distinct" in question_text:
+            return "mysql::sql_distinct"
+        if "limit" in question_text:
+            return "mysql::sql_limit"
+        if "group by" in question_text or "count" in question_text or "sum" in question_text or "avg" in question_text or "aggregate" in question_text:
+            return "mysql::sql_group_aggregate"
+        if "order by" in question_text or "sort" in question_text:
+            return "mysql::sql_order"
+        if "insert" in question_text:
+            return "mysql::sql_insert"
+        if "update" in question_text:
+            return "mysql::sql_update"
+        if "delete" in question_text:
+            return "mysql::sql_delete"
+        if "select" in question_text or "where" in question_text or "filter" in question_text:
+            return "mysql::sql_select"
+        return "mysql::static_template"
     if language == "mongodb" and ("aggregate" in question_text or "$group" in question_text):
         return "mongodb::aggregation"
-    if language == "react" and ("hook" in question_text or "usestate" in question_text or "useeffect" in question_text):
-        return "react::hooks"
-    if language == "css" and ("layout" in question_text or "flex" in question_text or "grid" in question_text):
-        return "css::layout"
+    if language == "react":
+        if "usestate" in question_text or "state management" in question_text or ("state" in question_text and "react" in question_text):
+            return "react::use_state"
+        if "useeffect" in question_text or "fetch api" in question_text or "fetch data" in question_text or ("effect" in question_text and "react" in question_text):
+            return "react::use_effect"
+        if "props" in question_text:
+            return "react::props_component"
+        if "list" in question_text and ("render" in question_text or "map" in question_text):
+            return "react::list_render"
+        if "form" in question_text or "authentication" in question_text or "login" in question_text or "signup" in question_text:
+            return "react::form_component"
+        if "conditional" in question_text or "show" in question_text or "hide" in question_text:
+            return "react::conditional_render"
+        if "click" in question_text or "button" in question_text or "event" in question_text:
+            return "react::event_handler"
+        if "hook" in question_text:
+            return "react::hooks"
+        if "component-driven" in question_text or "component driven" in question_text:
+            return "react::component"
+        return "react::component"
+    if language == "css":
+        if "flex" in question_text:
+            return "css::flex_layout"
+        if "grid" in question_text:
+            return "css::grid_layout"
+        if "responsive" in question_text or "bootstrap" in question_text:
+            return "css::layout"
+        if "font" in question_text or "typography" in question_text or "text-align" in question_text or "text align" in question_text:
+            return "css::typography"
+        if "margin" in question_text or "padding" in question_text or "spacing" in question_text:
+            return "css::spacing"
+        if "border" in question_text or "radius" in question_text or "rounded" in question_text:
+            return "css::border_style"
+        if "width" in question_text or "height" in question_text or "size" in question_text:
+            return "css::sizing"
+        if "display" in question_text or "inline" in question_text or "block" in question_text or "position" in question_text:
+            return "css::display"
+        if "background" in question_text:
+            return "css::background_style"
+        if "color" in question_text and "background" not in question_text:
+            return "css::text_color"
+        if "hover" in question_text:
+            return "css::hover_style"
+        if "button" in question_text:
+            return "css::button_style"
+        if "card" in question_text:
+            return "css::card_style"
+        if "center" in question_text:
+            return "css::center_alignment"
+        if "layout" in question_text:
+            return "css::layout"
+        return "css::static_template"
+    if language == "html":
+        if "form" in question_text:
+            return "html::form"
+        if "responsive" in question_text or "bootstrap" in question_text:
+            return "html::semantic_layout"
+        if "table" in question_text:
+            return "html::table"
+        if "image" in question_text or "img" in question_text:
+            return "html::image"
+        if "audio" in question_text or "video" in question_text or "media" in question_text:
+            return "html::media"
+        if "link" in question_text or "anchor" in question_text:
+            return "html::link"
+        if "unordered list" in question_text or "ordered list" in question_text or "list item" in question_text:
+            return "html::list"
+        if "heading" in question_text or "h1" in question_text:
+            return "html::heading"
+        if "paragraph" in question_text:
+            return "html::paragraph"
+        if "input" in question_text or "textarea" in question_text or "select" in question_text or "dropdown" in question_text or "label" in question_text:
+            return "html::input_form_controls"
+        if "div" in question_text or "container" in question_text or "span" in question_text:
+            return "html::container"
+        if "button" in question_text:
+            return "html::button"
+        if "semantic" in question_text or "header" in question_text or "footer" in question_text or "nav" in question_text or "section" in question_text:
+            return "html::semantic_layout"
+        return "html::static_template"
+    if language == "mongodb":
+        if "crud" in question_text or "collection" in question_text or "nosql" in question_text or "database" in question_text:
+            return "mongodb::find_query"
+        if "aggregate" in question_text or "$group" in question_text:
+            return "mongodb::aggregation"
+        if "insert" in question_text:
+            return "mongodb::insert_query"
+        if "delete" in question_text or "remove" in question_text:
+            return "mongodb::delete_query"
+        if "count" in question_text:
+            return "mongodb::count_query"
+        if "limit" in question_text:
+            return "mongodb::limit_query"
+        if "distinct" in question_text:
+            return "mongodb::distinct_query"
+        if "sort" in question_text:
+            return "mongodb::sort_query"
+        if "project" in question_text or "projection" in question_text:
+            return "mongodb::projection"
+        if "update" in question_text or "$set" in question_text:
+            return "mongodb::update"
+        if "find" in question_text:
+            return "mongodb::find_query"
+        return "mongodb::static_template"
     if "even" in question_text:
         return f"{language}::even_check"
-    if ("maximum" in question_text or "max" in question_text) and "array" in question_text:
+    if "prime" in question_text:
+        return f"{language}::prime_check"
+    if _contains_all(question_text, "sum", "digits"):
+        return f"{language}::sum_of_digits"
+    if _contains_all(question_text, "split", "dataset") and _contains_all(question_text, "train") and _contains_all(question_text, "test"):
+        return f"{language}::train_test_split"
+    if _contains_all(question_text, "stratified", "train", "test", "split") or _contains_all(question_text, "stratified", "train-test", "split"):
+        return f"{language}::stratified_train_test_split"
+    if _contains_all(question_text, "shuffle", "dataset") and _contains_all(question_text, "features", "labels", "aligned"):
+        return f"{language}::shuffle_dataset_aligned"
+    if _contains_all(question_text, "shuffle", "dataset"):
+        return f"{language}::shuffle_dataset"
+    if _contains_all(question_text, "accuracy") and _contains_all(question_text, "predictions") and _contains_all(question_text, "labels"):
+        return f"{language}::classification_accuracy"
+    if _contains_all(question_text, "precision", "score"):
+        return f"{language}::precision_score"
+    if _contains_all(question_text, "recall", "score"):
+        return f"{language}::recall_score"
+    if _contains_all(question_text, "f1", "score"):
+        return f"{language}::f1_score"
+    if _contains_all(question_text, "confusion", "matrix"):
+        return f"{language}::confusion_matrix"
+    if _contains_all(question_text, "k-fold", "cross", "validation") or _contains_all(question_text, "k", "fold", "cross", "validation"):
+        return f"{language}::kfold_cross_validation"
+    if "roc-auc" in question_text or _contains_all(question_text, "roc", "auc"):
+        return f"{language}::roc_auc_score"
+    if _contains_all(question_text, "log", "loss"):
+        return f"{language}::log_loss"
+    if _contains_all(question_text, "mean", "squared", "error"):
+        return f"{language}::mean_squared_error"
+    if "rmse" in question_text or _contains_all(question_text, "root", "mean", "squared", "error"):
+        return f"{language}::rmse"
+    if _contains_all(question_text, "missing", "values") and "none" in question_text:
+        return f"{language}::has_missing_values"
+    if _contains_all(question_text, "drop", "rows") and _contains_all(question_text, "missing", "values"):
+        return f"{language}::drop_missing_rows"
+    if _contains_all(question_text, "label", "encoding"):
+        return f"{language}::label_encoding"
+    if _contains_all(question_text, "one-hot", "encoding") or _contains_all(question_text, "one", "hot", "encoding"):
+        return f"{language}::one_hot_encoding"
+    if "labelencoder" in question_text or (_contains_all(question_text, "encode", "labels") and "sklearn" in question_text):
+        return f"{language}::label_encoder"
+    if _contains_all(question_text, "fill", "missing") and "mean" in question_text:
+        return f"{language}::fill_missing_with_mean"
+    if _contains_all(question_text, "fill", "missing") and "median" in question_text:
+        return f"{language}::fill_missing_with_median"
+    if ("min-max" in question_text or "min max" in question_text) and ("normalize" in question_text or "normalization" in question_text):
+        return f"{language}::min_max_normalize"
+    if "minmaxscaler" in question_text or (_contains_all(question_text, "scale", "features") and "minmax" in question_text):
+        return f"{language}::minmax_scaler"
+    if _contains_all(question_text, "mean", "normalization"):
+        return f"{language}::mean_normalization"
+    if "z-score" in question_text or "z score" in question_text or "standardize" in question_text or "standardization" in question_text:
+        return f"{language}::zscore_standardize"
+    if _contains_all(question_text, "remove", "outliers") and ("z-score" in question_text or "z score" in question_text):
+        return f"{language}::zscore_outlier_removal"
+    if _contains_all(question_text, "outliers") and "iqr" in question_text:
+        return f"{language}::iqr_outliers"
+    if _contains_all(question_text, "split", "features") and _contains_all(question_text, "labels"):
+        return f"{language}::split_features_labels"
+    if _contains_all(question_text, "linear", "regression", "prediction") or "y = mx + c" in question_text:
+        return f"{language}::linear_regression_predict"
+    if _contains_all(question_text, "train", "logistic", "regression"):
+        return f"{language}::train_logistic_regression"
+    if _contains_all(question_text, "fit", "logistic", "regression"):
+        return f"{language}::train_logistic_regression"
+    if _contains_all(question_text, "train", "decision", "tree"):
+        return f"{language}::train_decision_tree"
+    if _contains_all(question_text, "fit", "decision", "tree"):
+        return f"{language}::train_decision_tree"
+    if _contains_all(question_text, "train", "knn") or _contains_all(question_text, "train", "k", "nn"):
+        return f"{language}::train_knn"
+    if _contains_all(question_text, "fit", "knn") or _contains_all(question_text, "fit", "k", "nn"):
+        return f"{language}::train_knn"
+    if _contains_all(question_text, "train", "svm"):
+        return f"{language}::train_svm"
+    if _contains_all(question_text, "fit", "svm"):
+        return f"{language}::train_svm"
+    if _contains_all(question_text, "train", "random", "forest") or _contains_all(question_text, "train", "randomforest"):
+        return f"{language}::train_random_forest"
+    if _contains_all(question_text, "fit", "random", "forest") or _contains_all(question_text, "fit", "randomforest"):
+        return f"{language}::train_random_forest"
+    if _contains_all(question_text, "correlation", "matrix"):
+        return f"{language}::correlation_matrix"
+    if _contains_all(question_text, "correlated", "features"):
+        return f"{language}::top_correlated_features"
+    if "multicollinearity" in question_text or (_contains_all(question_text, "correlation") and "0.9" in question_text):
+        return f"{language}::multicollinearity_check"
+    if _contains_all(question_text, "sort", "dataframe") and "descending" in question_text:
+        return f"{language}::sort_dataframe_desc"
+    if _contains_all(question_text, "datetime", "column", "year") and "pandas" in question_text:
+        return f"{language}::datetime_to_year"
+    if _contains_all(question_text, "sigmoid", "function") or _contains_all(question_text, "implement", "sigmoid"):
+        return f"{language}::sigmoid_function"
+    if _contains_all(question_text, "softmax", "function") or _contains_all(question_text, "implement", "softmax"):
+        return f"{language}::softmax_function"
+    if _contains_all(question_text, "binary", "cross", "entropy"):
+        return f"{language}::binary_cross_entropy"
+    if _contains_all(question_text, "gradient", "descent", "step"):
+        return f"{language}::gradient_descent_step"
+    if ("maximum" in question_text or "max" in question_text) and ("array" in question_text or "list" in question_text):
         return f"{language}::maximum_array"
-    if ("minimum" in question_text or "min" in question_text) and "array" in question_text:
+    if ("minimum" in question_text or "min" in question_text) and ("array" in question_text or "list" in question_text):
         return f"{language}::minimum_array"
     if (_contains_all(question_text, "sum", "array")) or (_contains_all(question_text, "sum", "list")):
         return f"{language}::sum_collection"
+    if _contains_all(question_text, "sum", "even", "numbers") and "list" in question_text:
+        return f"{language}::sum_even_numbers"
+    if (_contains_all(question_text, "first", "element")) and ("list" in question_text or "array" in question_text):
+        return f"{language}::first_element"
+    if (_contains_all(question_text, "last", "element")) and ("list" in question_text or "array" in question_text):
+        return f"{language}::last_element"
+    if ("list is empty" in question_text) or ("empty list" in question_text):
+        return f"{language}::list_is_empty"
+    if _contains_all(question_text, "remove", "duplicates") and "list" in question_text and "preserve order" in question_text:
+        return f"{language}::remove_duplicates_preserve_order"
+    if _contains_all(question_text, "contains", "duplicates"):
+        return f"{language}::contains_duplicates"
+    if _contains_all(question_text, "list", "sorted"):
+        return f"{language}::list_sorted"
+    if _contains_all(question_text, "frequency", "elements") and "list" in question_text:
+        return f"{language}::frequency_elements"
+    if (
+        (_contains_all(question_text, "length", "list"))
+        or (_contains_all(question_text, "get", "length", "list"))
+        or (_contains_all(question_text, "count", "elements") and "list" in question_text)
+    ):
+        return f"{language}::list_length"
+    if "array is empty" in question_text:
+        return f"{language}::array_is_empty"
     if "array" in question_text:
         return f"{language}::array_ops"
     if "string" in question_text:
@@ -182,6 +490,276 @@ def _contains_all(text, *parts):
     return all(part in lowered for part in parts)
 
 
+def _java_for_list_or_array(question_text, list_expr="", array_expr=""):
+    lowered = (question_text or "").lower()
+    if "list" in lowered and list_expr:
+        return list_expr
+    if "array" in lowered and array_expr:
+        return array_expr
+    return list_expr or array_expr or ""
+
+
+def _javascript_for_collection(question_text, array_expr="", list_expr=""):
+    lowered = (question_text or "").lower()
+    if "array" in lowered and array_expr:
+        return array_expr
+    if "list" in lowered and list_expr:
+        return list_expr
+    return array_expr or list_expr or ""
+
+
+def _html_expected_markers(question_text):
+    lowered = (question_text or "").lower()
+    markers = []
+    if "html" in lowered:
+        markers.append("<html")
+    if "title" in lowered:
+        markers.append("<title")
+    if "heading" in lowered or "h1" in lowered:
+        markers.append("<h1")
+    if "button" in lowered:
+        markers.append("<button")
+    if "form" in lowered:
+        markers.append("<form")
+    if "input" in lowered:
+        markers.append("<input")
+    if "label" in lowered:
+        markers.append("<label")
+    if "textarea" in lowered:
+        markers.append("<textarea")
+    if "select" in lowered or "dropdown" in lowered:
+        markers.append("<select")
+    if "option" in lowered:
+        markers.append("<option")
+    if "table" in lowered:
+        markers.append("<table")
+    if "image" in lowered or "img" in lowered:
+        markers.append("<img")
+    if "audio" in lowered:
+        markers.append("<audio")
+    if "video" in lowered:
+        markers.append("<video")
+    if "link" in lowered or "anchor" in lowered:
+        markers.append("<a")
+    if "unordered list" in lowered or "ul" in lowered:
+        markers.append("<ul")
+    if "ordered list" in lowered or "ol" in lowered:
+        markers.append("<ol")
+    if "list item" in lowered or " li" in lowered:
+        markers.append("<li")
+    if "paragraph" in lowered or "<p" in lowered:
+        markers.append("<p")
+    if "div" in lowered or "container" in lowered:
+        markers.append("<div")
+    if "span" in lowered:
+        markers.append("<span")
+    if "br" in lowered or "line break" in lowered:
+        markers.append("<br")
+    if "semantic" in lowered or "header" in lowered or "footer" in lowered or "nav" in lowered or "section" in lowered:
+        for marker in ("<header", "<nav", "<main", "<section", "<footer"):
+            if marker not in markers:
+                markers.append(marker)
+    deduped = []
+    for marker in markers:
+        if marker not in deduped:
+            deduped.append(marker)
+    return deduped
+
+
+def _css_expected_bits(question_text):
+    lowered = (question_text or "").lower()
+    bits = []
+    if "red" in lowered:
+        bits.append("red")
+    if "blue" in lowered:
+        bits.append("blue")
+    if "green" in lowered:
+        bits.append("green")
+    if "color" in lowered:
+        bits.append("color")
+    if "background" in lowered:
+        bits.append("background")
+    if "font-size" in lowered or "font size" in lowered:
+        bits.append("font-size")
+    if "font-family" in lowered or "font family" in lowered:
+        bits.append("font-family")
+    if "font-weight" in lowered or "bold" in lowered:
+        bits.append("font-weight")
+    if "text-align" in lowered or "text align" in lowered:
+        bits.append("text-align")
+    if "text-decoration" in lowered or "underline" in lowered:
+        bits.append("text-decoration")
+    if "margin" in lowered:
+        bits.append("margin")
+    if "padding" in lowered:
+        bits.append("padding")
+    if "border" in lowered:
+        bits.append("border")
+    if "width" in lowered:
+        bits.append("width")
+    if "height" in lowered:
+        bits.append("height")
+    if "display" in lowered:
+        bits.append("display")
+    if "inline" in lowered:
+        bits.append("inline")
+    if "block" in lowered:
+        bits.append("block")
+    if "position" in lowered:
+        bits.append("position")
+    if "radius" in lowered or "rounded" in lowered:
+        bits.append("border-radius")
+    if "center" in lowered:
+        bits.append("center")
+    if "flex" in lowered:
+        bits.append("display:flex")
+    if "grid" in lowered:
+        bits.append("display:grid")
+    if "justify-content" in lowered or "justify content" in lowered:
+        bits.append("justify-content")
+    if "align-items" in lowered or "align items" in lowered:
+        bits.append("align-items")
+    if "hover" in lowered:
+        bits.append(":hover")
+    deduped = []
+    for bit in bits:
+        if bit not in deduped:
+            deduped.append(bit)
+    return deduped
+
+
+def _react_expected_markers(question_text):
+    lowered = (question_text or "").lower()
+    markers = []
+    if "usestate" in lowered or "state" in lowered:
+        markers.append("useState")
+    if "useeffect" in lowered or "effect" in lowered:
+        markers.append("useEffect")
+    if "props" in lowered:
+        markers.append("props")
+    if "list" in lowered and ("render" in lowered or "map" in lowered):
+        markers.append(".map(")
+    if "form" in lowered:
+        markers.extend(["<form", "onSubmit"])
+    if "input" in lowered:
+        markers.append("<input")
+    if "button" in lowered:
+        markers.append("<button")
+    if "click" in lowered or "event" in lowered or "button" in lowered:
+        markers.append("onClick")
+    if "conditional" in lowered or "show" in lowered or "hide" in lowered:
+        markers.append("{")
+    deduped = []
+    for marker in markers:
+        if marker not in deduped:
+            deduped.append(marker)
+    return deduped
+
+
+def _mongodb_expected_markers(question_text):
+    lowered = (question_text or "").lower()
+    markers = []
+    if "aggregate" in lowered or "$group" in lowered:
+        markers.append("aggregate")
+        if "$group" in lowered or "group" in lowered:
+            markers.append("$group")
+    if "find" in lowered:
+        markers.append("find")
+    if "sort" in lowered:
+        markers.append("sort")
+    if "project" in lowered or "projection" in lowered:
+        markers.append("$project")
+    if "match" in lowered or "filter" in lowered:
+        markers.append("$match")
+    if "update" in lowered or "$set" in lowered:
+        markers.append("update")
+    if "insert" in lowered:
+        markers.append("insert")
+    if "delete" in lowered:
+        markers.append("delete")
+    if "count" in lowered:
+        markers.append("count")
+    if "limit" in lowered:
+        markers.append("limit")
+    if "distinct" in lowered:
+        markers.append("distinct")
+    deduped = []
+    for marker in markers:
+        if marker not in deduped:
+            deduped.append(marker)
+    return deduped
+
+
+def _mysql_expected_markers(question_text):
+    lowered = (question_text or "").lower()
+    markers = []
+    if "select" in lowered or "find" in lowered or "show" in lowered:
+        markers.append("select")
+    if "where" in lowered or "filter" in lowered:
+        markers.append("where")
+    if "join" in lowered:
+        markers.append("join")
+    if "group by" in lowered or "count" in lowered or "sum" in lowered or "avg" in lowered or "aggregate" in lowered:
+        markers.append("group by")
+    if "order by" in lowered or "sort" in lowered:
+        markers.append("order by")
+    if "limit" in lowered:
+        markers.append("limit")
+    if "distinct" in lowered:
+        markers.append("distinct")
+    if "insert" in lowered:
+        markers.append("insert")
+    if "update" in lowered:
+        markers.append("update")
+    if "delete" in lowered:
+        markers.append("delete")
+    if "having" in lowered:
+        markers.append("having")
+    deduped = []
+    for marker in markers:
+        if marker not in deduped:
+            deduped.append(marker)
+    return deduped
+
+
+def _extract_declared_callable_name(code):
+    text = (code or "").strip()
+    if not text:
+        return None
+
+    python_name = _extract_first_function_name(text)
+    if python_name:
+        return python_name
+
+    javascript_match = re.search(
+        r"\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        text,
+    )
+    if javascript_match:
+        return javascript_match.group(1)
+
+    java_match = re.search(
+        r"\b(?:public|private|protected)?\s*(?:static\s+)?[A-Za-z_][A-Za-z0-9_<>\[\]]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        text,
+    )
+    if java_match:
+        return java_match.group(1)
+
+    return None
+
+
+def _is_answer_aligned_with_model(raw_answer, model_answer):
+    answer_name = _extract_declared_callable_name(raw_answer)
+    model_name = _extract_declared_callable_name(model_answer)
+    if answer_name and model_name:
+        return answer_name == model_name
+    return True
+
+
+def _is_pattern_aligned_with_model(pattern, model_answer):
+    return _is_answer_aligned_with_model(pattern, model_answer)
+
+
 def _deterministic_code_baselines(question, language):
     question_text = (question or "").lower()
 
@@ -190,6 +768,8 @@ def _deterministic_code_baselines(question, language):
             "accepted_solutions": [
                 "def fact(n):\n    if n == 0:\n        return 1\n    return n * fact(n - 1)" if language == "python" else "",
                 "function fact(n){ if(n===0) return 1; return n * fact(n-1); }" if language == "javascript" else "",
+                "if (n == 0) return 1; return n * fact(n - 1);" if language == "java" else "",
+                "if(n <= 1) return 1; return n * fact(n - 1);" if language == "javascript" else "",
             ],
             "test_sets": {
                 "positive": [
@@ -248,6 +828,7 @@ def _deterministic_code_baselines(question, language):
     if "square of a number" in question_text or "return square of a number" in question_text:
         return {
             "accepted_solutions": [
+                "return n * n;" if language == "java" else "",
                 "return n * n;" if language == "javascript" else "",
                 "return Math.pow(n, 2);" if language == "javascript" else "",
                 "return n ** 2;" if language == "javascript" else "",
@@ -279,6 +860,7 @@ def _deterministic_code_baselines(question, language):
                 "return s[::-1]" if language == "python" else "",
                 "return ''.join(reversed(s))" if language == "python" else "",
                 "return s.split('').reverse().join('')" if language == "javascript" else "",
+                "return new StringBuilder(s).reverse().toString();" if language == "java" else "",
             ],
             "test_sets": {
                 "positive": [
@@ -302,9 +884,37 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    if _contains_all(question_text, "reverse", "words"):
+        return {
+            "accepted_solutions": [
+                "return ' '.join(s.split()[::-1])" if language == "python" else "",
+                'String[] parts = s.split(" "); Collections.reverse(Arrays.asList(parts)); return String.join(" ", parts);' if language == "java" else "",
+                "return s.split(' ').reverse().join(' ');" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["hello world"], "world hello", "basic two-word reversal", kind="normal", weight=1.0, required=True),
+                    _build_case(["one"], "one", "single word input", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["a b c"], "c b a", "three-word reversal", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the original string does not reverse the word order.",
+                    "suggestion": "Split the sentence into words, reverse their order, then join them back together.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
     if "uppercase" in question_text and "string" in question_text:
         return {
             "accepted_solutions": [
+                "return s.toUpperCase();" if language == "java" else "",
                 "return s.toUpperCase();" if language == "javascript" else "",
             ],
             "test_sets": {
@@ -327,10 +937,123 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    if "lowercase" in question_text and "string" in question_text:
+        return {
+            "accepted_solutions": [
+                "return s.lower()" if language == "python" else "",
+                "return s.toLowerCase();" if language == "java" else "",
+                "return s.toLowerCase();" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["AB"], "ab", "uppercase to lowercase", kind="normal", weight=1.0, required=True),
+                    _build_case([""], "", "empty string lowercase", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["Ab"], "ab", "mixed-case normalization", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s;",
+                    "match_type": "contains",
+                    "feedback": "Returning the original string does not convert it to lowercase.",
+                    "suggestion": "Call lower() or toLowerCase() before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "length of string" in question_text or "find length of string" in question_text:
+        return {
+            "accepted_solutions": [
+                "return len(s)" if language == "python" else "",
+                "return s.length();" if language == "java" else "",
+                "return s.length;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["hello"], 5, "basic string length", kind="normal", weight=1.0, required=True),
+                    _build_case([""], 0, "empty string length", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["a"], 1, "single character length", kind="trap", weight=1.0, required=False),
+                    _build_case(["hello world"], 11, "string with space length", kind="edge", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Returning 0 does not calculate the string length for non-empty inputs.",
+                    "suggestion": "Return the length of the input string, for example with len(s).",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "concatenate" in question_text and "string" in question_text:
+        return {
+            "accepted_solutions": [
+                "return a + b" if language == "python" else "",
+                "return ''.join([a,b])" if language == "python" else "",
+                "return a + b;" if language == "java" else "",
+                "return a + b;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["ab", "cd"], "abcd", "basic concatenation", kind="normal", weight=1.0, required=True),
+                    _build_case(["", "x"], "x", "empty first string", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["a", ""], "a", "empty second string", kind="edge", weight=1.0),
+                    _build_case(["hi", " there"], "hi there", "concatenate with whitespace", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return a",
+                    "match_type": "contains",
+                    "feedback": "Returning only the first string does not concatenate both inputs.",
+                    "suggestion": "Return the combined strings, for example with a + b.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "empty", "string"):
+        return {
+            "accepted_solutions": [
+                "return not s" if language == "python" else "",
+                "return s == ''" if language == "python" else "",
+                "return s.isEmpty();" if language == "java" else "",
+                "return s.length === 0;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([""], True, "empty string case", kind="edge", weight=1.2, required=True),
+                    _build_case(["abc"], False, "non-empty string", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([" "], False, "whitespace is still non-empty", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not actually check whether the string is empty.",
+                    "suggestion": "Return True only when the string has no characters.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
     if "palindrome" in question_text:
         return {
             "accepted_solutions": [
                 "return s == s[::-1]" if language == "python" else "",
+                "return s.equals(new StringBuilder(s).reverse().toString());" if language == "java" else "",
                 "return s === s.split('').reverse().join('')" if language == "javascript" else "",
             ],
             "test_sets": {
@@ -350,6 +1073,699 @@ def _deterministic_code_baselines(question, language):
                     "match_type": "contains",
                     "feedback": "Always returning true does not actually check whether the value is a palindrome.",
                     "suggestion": "Compare the value with its reverse or mirrored characters.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "ipv4" in question_text or _contains_all(question_text, "ip", "address"):
+        return {
+            "accepted_solutions": [
+                "parts = ip.split('.')\nreturn len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 and (p == '0' or not p.startswith('0')) for p in parts)" if language == "python" else "",
+                "String[] parts = ip.split(\"\\\\.\"); if (parts.length != 4) return false; for (String p : parts) { if (p.isEmpty() || (p.length() > 1 && p.startsWith(\"0\"))) return false; try { int n = Integer.parseInt(p); if (n < 0 || n > 255) return false; } catch (Exception e) { return false; } } return true;" if language == "java" else "",
+                "const parts = ip.split('.'); return parts.length === 4 && parts.every(p => /^\\d+$/.test(p) && Number(p) >= 0 && Number(p) <= 255 && (p === '0' || !p.startsWith('0')));" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["192.168.1.1"], True, "common valid IPv4 address", kind="normal", weight=1.0, required=True),
+                    _build_case(["0.0.0.0"], True, "all-zero IPv4 address", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["256.1.1.1"], False, "octet larger than 255", kind="normal", weight=1.1, required=True),
+                    _build_case(["1.2.3"], False, "too few octets", kind="edge", weight=1.0),
+                    _build_case(["01.2.3.4"], False, "leading zero octet", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return true",
+                    "match_type": "contains",
+                    "feedback": "Always returning true does not validate IPv4 structure or octet ranges.",
+                    "suggestion": "Split the string into four octets and validate each octet is numeric and between 0 and 255.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "valid", "json"):
+        return {
+            "accepted_solutions": [
+                "s = s.strip()\nreturn (s.startswith('{') and s.endswith('}')) or (s.startswith('[') and s.endswith(']'))" if language == "python" else "",
+                "s = s.trim(); return (s.startsWith(\"{\") && s.endsWith(\"}\")) || (s.startsWith(\"[\") && s.endsWith(\"]\"));" if language == "java" else "",
+                "s = s.trim(); return (s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'));" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(['{"a":1}'], True, "basic json object", kind="normal", weight=1.0, required=True),
+                    _build_case(['[1,2,3]'], True, "basic json array", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(['{a:1}'], False, "missing quoted key", kind="normal", weight=1.1, required=True),
+                    _build_case(['text'], False, "plain text is not json", kind="edge", weight=1.0),
+                    _build_case(['{"a":1'], False, "unbalanced json object", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return true",
+                    "match_type": "contains",
+                    "feedback": "Always returning true does not validate whether the string is JSON-like.",
+                    "suggestion": "At minimum, validate the trimmed opening and closing JSON delimiters before returning true.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "exception", "handling") and "division" in question_text:
+        return {
+            "accepted_solutions": [
+                "try { return a / b; } catch (Exception e) { return 0; }" if language == "java" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([10, 2], 5, "normal division", kind="normal", weight=1.0, required=True),
+                    _build_case([5, 0], 0, "division by zero fallback", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case([9, 3], 3, "exact division", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "a / b",
+                    "match_type": "contains",
+                    "feedback": "Plain division without exception handling does not safely handle divide-by-zero cases.",
+                    "suggestion": "Wrap the division in try/catch and return a safe fallback for invalid division.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "convert", "string", "integer", "safely"):
+        return {
+            "accepted_solutions": [
+                "try { return Integer.parseInt(s); } catch (Exception e) { return 0; }" if language == "java" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["123"], 123, "valid integer string", kind="normal", weight=1.0, required=True),
+                    _build_case(["abc"], 0, "invalid string fallback", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["007"], 7, "leading zeros still parse", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "Integer.parseInt",
+                    "match_type": "contains",
+                    "feedback": "Parsing without exception handling is not safe for invalid numeric strings.",
+                    "suggestion": "Wrap Integer.parseInt(...) in a try/catch block and return a safe fallback value.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "nullpointerexception" in question_text or (_contains_all(question_text, "null") and _contains_all(question_text, "string", "length")):
+        return {
+            "accepted_solutions": [
+                "if (s == null) return 0; return s.length();" if language == "java" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abc"], 3, "normal string length", kind="normal", weight=1.0, required=True),
+                    _build_case([None], 0, "null-safe fallback", kind="edge", weight=1.3, required=True),
+                ],
+                "negative": [
+                    _build_case([""], 0, "empty string still valid", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": ".length()",
+                    "match_type": "contains",
+                    "feedback": "Accessing s.length() without a null guard can still throw a NullPointerException.",
+                    "suggestion": "Check for null first, then return the string length for valid inputs.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "valid", "email"):
+        return {
+            "accepted_solutions": [
+                "parts = s.split('@')\nreturn len(parts) == 2 and parts[0] != '' and '.' in parts[1] and not parts[1].startswith('.') and not parts[1].endswith('.')" if language == "python" else "",
+                "int at = s.indexOf('@'); return at > 0 && s.indexOf('@', at + 1) == -1 && s.indexOf('.', at) > at + 1 && !s.endsWith(\".\");" if language == "java" else "",
+                "const at = s.indexOf('@'); return at > 0 && s.indexOf('@', at + 1) === -1 && s.indexOf('.', at) > at + 1 && !s.endsWith('.');" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["user@example.com"], True, "basic valid email", kind="normal", weight=1.0, required=True),
+                    _build_case(["a.b@domain.org"], True, "valid email with dot in local part", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["userexample.com"], False, "missing at sign", kind="normal", weight=1.1, required=True),
+                    _build_case(["user@domain"], False, "missing dot in domain", kind="edge", weight=1.1),
+                    _build_case(["user@.com"], False, "dot immediately after at sign", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "@",
+                    "match_type": "contains",
+                    "feedback": "Checking only for '@' is too weak for even a basic email validation.",
+                    "suggestion": "Also verify there is a domain part and that the dot appears after '@'.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "valid", "url"):
+        return {
+            "accepted_solutions": [
+                "return s.startswith(('http://', 'https://')) and '://' in s and '.' in s.split('://', 1)[1]" if language == "python" else "",
+                "return (s.startsWith(\"http://\") || s.startsWith(\"https://\")) && s.substring(s.indexOf(\"://\") + 3).contains(\".\");" if language == "java" else "",
+                "return (s.startsWith('http://') || s.startsWith('https://')) && s.includes('://') && s.split('://')[1].includes('.');" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["https://example.com"], True, "basic https url", kind="normal", weight=1.0, required=True),
+                    _build_case(["http://site.org/path"], True, "basic http url with path", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["ftp://example.com"], False, "unsupported scheme", kind="normal", weight=1.1, required=True),
+                    _build_case(["https://localhost"], False, "missing dot in host", kind="edge", weight=1.0),
+                    _build_case(["example.com"], False, "missing scheme", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "http",
+                    "match_type": "contains",
+                    "feedback": "Checking only for the presence of 'http' is weaker than validating that the URL starts with http:// or https://.",
+                    "suggestion": "Validate the scheme explicitly and ensure the host portion is present.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "count", "vowel") and "string" in question_text:
+        return {
+            "accepted_solutions": [
+                "return sum(1 for c in s if c in 'aeiouAEIOU')" if language == "python" else "",
+                "return len([c for c in s if c in 'aeiouAEIOU'])" if language == "python" else "",
+                'int count = 0; for (char c : s.toCharArray()) { if ("aeiouAEIOU".indexOf(c) >= 0) count++; } return count;' if language == "java" else "",
+                "return (s.match(/[aeiou]/gi) || []).length;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["hello"], 2, "basic mixed vowel string", kind="normal", weight=1.0, required=True),
+                    _build_case(["AEIOU"], 5, "uppercase vowels", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case([""], 0, "empty string", kind="edge", weight=1.1, required=False),
+                    _build_case(["xyz"], 0, "no vowels", kind="trap", weight=1.0, required=True),
+                    _build_case(["Alphabet"], 3, "mixed-case word", kind="normal", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Always returning 0 does not count vowels in the input string.",
+                    "suggestion": "Check each character and count the ones that are vowels.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "count", "words"):
+        return {
+            "accepted_solutions": [
+                "return len(s.split())" if language == "python" else "",
+                "return s.trim().isEmpty() ? 0 : s.trim().split(\"\\\\s+\").length;" if language == "java" else "",
+                "return s.trim() === '' ? 0 : s.trim().split(/\\s+/).length;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["hello world"], 2, "two-word string", kind="normal", weight=1.0, required=True),
+                    _build_case(["one"], 1, "single word", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([" two  spaces here "], 3, "multiple spaces collapsed", kind="trap", weight=1.1),
+                    _build_case([""], 0, "empty string", kind="edge", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return len(s)",
+                    "match_type": "contains",
+                    "feedback": "Returning the string length counts characters, not words.",
+                    "suggestion": "Split the string into words and count the resulting tokens.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "remove", "spaces"):
+        return {
+            "accepted_solutions": [
+                "return s.replace(' ', '')" if language == "python" else "",
+                "return s.replace(\" \", \"\");" if language == "java" else "",
+                "return s.replace(/ /g, '');" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["a b c"], "abc", "remove internal spaces", kind="normal", weight=1.0, required=True),
+                    _build_case([" no spaces "], "nospaces", "remove leading and trailing spaces", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([""], "", "empty string", kind="edge", weight=1.0),
+                    _build_case(["a  b"], "ab", "multiple adjacent spaces", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the original string does not remove spaces.",
+                    "suggestion": "Replace or filter out the space characters before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "only", "digits") or "numeric" in question_text:
+        return {
+            "accepted_solutions": [
+                "return s.isdigit()" if language == "python" else "",
+                "return s.matches(\"\\\\d+\");" if language == "java" else "",
+                "return /^\\d+$/.test(s);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["123"], True, "all digits", kind="normal", weight=1.0, required=True),
+                    _build_case(["007"], True, "leading zeros still digits", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["12a"], False, "contains alphabet", kind="normal", weight=1.1, required=True),
+                    _build_case([""], False, "empty string", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not verify whether the string contains only digits.",
+                    "suggestion": "Check each character or use a digit-only helper before returning True.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "only", "alphabets") or _contains_all(question_text, "only", "alphabet"):
+        return {
+            "accepted_solutions": [
+                "return s.isalpha()" if language == "python" else "",
+                "return s.matches(\"[A-Za-z]+\");" if language == "java" else "",
+                "return /^[A-Za-z]+$/.test(s);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abc"], True, "lowercase alphabets", kind="normal", weight=1.0, required=True),
+                    _build_case(["AbC"], True, "mixed-case alphabets", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["abc1"], False, "contains digit", kind="normal", weight=1.1, required=True),
+                    _build_case([""], False, "empty string", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not verify whether the string contains only alphabets.",
+                    "suggestion": "Check that every character is alphabetic before returning True.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "balanced parentheses" in question_text or (_contains_all(question_text, "balanced") and "parentheses" in question_text):
+        return {
+            "accepted_solutions": [
+                "stack = 0\nfor ch in s:\n    if ch == '(':\n        stack += 1\n    elif ch == ')':\n        stack -= 1\n        if stack < 0:\n            return False\nreturn stack == 0" if language == "python" else "",
+                "int bal = 0; for (char ch : s.toCharArray()) { if (ch == '(') bal++; else if (ch == ')') { bal--; if (bal < 0) return false; } } return bal == 0;" if language == "java" else "",
+                "let bal = 0; for (const ch of s) { if (ch === '(') bal++; else if (ch === ')') { bal--; if (bal < 0) return false; } } return bal === 0;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["()"], True, "simple balanced", kind="normal", weight=1.0, required=True),
+                    _build_case(["(())"], True, "nested balanced", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["(()"], False, "missing closing bracket", kind="normal", weight=1.1, required=True),
+                    _build_case([")("], False, "wrong order", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "len(s) % 2 == 0",
+                    "match_type": "contains",
+                    "feedback": "Even length alone does not determine whether parentheses are balanced.",
+                    "suggestion": "Track opening and closing parentheses as you scan the string.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "anagram" in question_text:
+        return {
+            "accepted_solutions": [
+                "return sorted(a) == sorted(b)" if language == "python" else "",
+                "char[] x = a.toCharArray(); char[] y = b.toCharArray(); Arrays.sort(x); Arrays.sort(y); return Arrays.equals(x, y);" if language == "java" else "",
+                "return a.split('').sort().join('') === b.split('').sort().join('');" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["listen", "silent"], True, "common anagram pair", kind="normal", weight=1.0, required=True),
+                    _build_case(["aab", "aba"], True, "repeated letters", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["ab", "abc"], False, "different lengths", kind="normal", weight=1.0, required=True),
+                    _build_case(["rat", "car"], False, "same length non-anagram", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "len(a) == len(b)",
+                    "match_type": "contains",
+                    "feedback": "Equal length alone does not determine whether two strings are anagrams.",
+                    "suggestion": "Compare the character multiset, for example by sorting or counting characters.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "armstrong" in question_text:
+        return {
+            "accepted_solutions": [
+                "digits = str(n); return sum(int(d) ** len(digits) for d in digits) == n" if language == "python" else "",
+                "String digits = Integer.toString(n); int sum = 0; for (char d : digits.toCharArray()) sum += Math.pow(d - '0', digits.length()); return sum == n;" if language == "java" else "",
+                "const digits = String(n); return digits.split('').reduce((sum, d) => sum + Number(d) ** digits.length, 0) === n;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([153], True, "classic armstrong number", kind="normal", weight=1.0, required=True),
+                    _build_case([9474], True, "four-digit armstrong number", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case([154], False, "near miss non-armstrong", kind="normal", weight=1.0, required=True),
+                    _build_case([10], False, "two-digit non-armstrong", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n > 0",
+                    "match_type": "contains",
+                    "feedback": "Checking only whether the number is positive does not determine whether it is an Armstrong number.",
+                    "suggestion": "Compare the number with the sum of its digits raised to the appropriate power.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "leap year" in question_text:
+        return {
+            "accepted_solutions": [
+                "return year % 400 == 0 or (year % 4 == 0 and year % 100 != 0)" if language == "python" else "",
+                "return year % 400 == 0 || (year % 4 == 0 && year % 100 != 0);" if language == "java" else "",
+                "return year % 400 === 0 || (year % 4 === 0 && year % 100 !== 0);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([2024], True, "standard leap year", kind="normal", weight=1.0, required=True),
+                    _build_case([2000], True, "century leap year divisible by 400", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case([1900], False, "century year not divisible by 400", kind="trap", weight=1.2, required=True),
+                    _build_case([2023], False, "common year", kind="normal", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "year % 4 == 0",
+                    "match_type": "contains",
+                    "feedback": "Checking divisibility by 4 alone misses the century-year rule.",
+                    "suggestion": "Also require century years to be divisible by 400.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "gcd" in question_text or "greatest common divisor" in question_text:
+        return {
+            "accepted_solutions": [
+                "while b:\n    a, b = b, a % b\nreturn a" if language == "python" else "",
+                "while (b != 0) { int t = b; b = a % b; a = t; } return a;" if language == "java" else "",
+                "while (b !== 0) { const t = b; b = a % b; a = t; } return a;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([12, 18], 6, "common gcd case", kind="normal", weight=1.0, required=True),
+                    _build_case([7, 3], 1, "coprime numbers", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([10, 0], 10, "zero second operand", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return a * b",
+                    "match_type": "contains",
+                    "feedback": "Multiplying the inputs does not compute the greatest common divisor.",
+                    "suggestion": "Use the Euclidean algorithm to reduce the pair until the remainder is zero.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "lcm" in question_text or "least common multiple" in question_text:
+        return {
+            "accepted_solutions": [
+                "import math\nreturn abs(a * b) // math.gcd(a, b)" if language == "python" else "",
+                "int x = a, y = b; while (y != 0) { int t = y; y = x % y; x = t; } return Math.abs(a * b) / x;" if language == "java" else "",
+                "let x = a, y = b; while (y !== 0) { const t = y; y = x % y; x = t; } return Math.abs(a * b) / x;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([4, 6], 12, "common lcm case", kind="normal", weight=1.0, required=True),
+                    _build_case([5, 7], 35, "coprime numbers", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([3, 3], 3, "same numbers", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return a + b",
+                    "match_type": "contains",
+                    "feedback": "Adding the inputs does not compute the least common multiple.",
+                    "suggestion": "Use the relation lcm(a, b) = abs(a*b) / gcd(a, b).",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "power of 2" in question_text or "power of two" in question_text:
+        return {
+            "accepted_solutions": [
+                "return n > 0 and (n & (n - 1)) == 0" if language == "python" else "",
+                "return n > 0 && (n & (n - 1)) == 0;" if language == "java" else "",
+                "return n > 0 && (n & (n - 1)) === 0;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([8], True, "power of two", kind="normal", weight=1.0, required=True),
+                    _build_case([1], True, "one is a power of two", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([6], False, "non-power even number", kind="trap", weight=1.1, required=True),
+                    _build_case([0], False, "zero is not a power of two", kind="edge", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "n % 2 == 0",
+                    "match_type": "contains",
+                    "feedback": "Checking whether a number is even is not the same as checking whether it is a power of two.",
+                    "suggestion": "Use a repeated division or bitwise check that only powers of two satisfy.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "power of 3" in question_text or "power of three" in question_text:
+        return {
+            "accepted_solutions": [
+                "while n > 1:\n    if n % 3 != 0:\n        return False\n    n //= 3\nreturn n == 1" if language == "python" else "",
+                "while (n > 1) { if (n % 3 != 0) return false; n /= 3; } return n == 1;" if language == "java" else "",
+                "while (n > 1) { if (n % 3 !== 0) return false; n /= 3; } return n === 1;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([9], True, "power of three", kind="normal", weight=1.0, required=True),
+                    _build_case([1], True, "one is a power of three", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([12], False, "non-power of three", kind="trap", weight=1.1, required=True),
+                    _build_case([0], False, "zero is not a power of three", kind="edge", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "n % 3 == 0",
+                    "match_type": "contains",
+                    "feedback": "Checking divisibility by 3 once is not enough to determine whether the number is a power of three.",
+                    "suggestion": "Keep dividing by 3 until the value is no longer divisible and check whether it finishes at 1.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "reverse", "number") or _contains_all(question_text, "reverse", "a", "number"):
+        return {
+            "accepted_solutions": [
+                "return int(str(n)[::-1])" if language == "python" else "",
+                "StringBuilder sb = new StringBuilder(Integer.toString(n)); return Integer.parseInt(sb.reverse().toString());" if language == "java" else "",
+                "return Number(String(n).split('').reverse().join(''));" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([123], 321, "basic reverse number", kind="normal", weight=1.0, required=True),
+                    _build_case([1005], 5001, "number with internal zeros", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([0], 0, "zero input", kind="trap", weight=1.0),
+                    _build_case([10], 1, "trailing zero removed after integer conversion", kind="edge", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n",
+                    "match_type": "contains",
+                    "feedback": "Returning the original number does not reverse its digits.",
+                    "suggestion": "Reverse the digit order before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if (_contains_all(question_text, "unique", "characters")) or (_contains_all(question_text, "all", "unique")):
+        return {
+            "accepted_solutions": [
+                "return len(s) == len(set(s))" if language == "python" else "",
+                "return s.chars().distinct().count() == s.length();" if language == "java" else "",
+                "return new Set(s).size === s.length;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abc"], True, "all unique letters", kind="normal", weight=1.0, required=True),
+                    _build_case([""], True, "empty string has unique characters", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["hello"], False, "repeated character string", kind="trap", weight=1.1, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not check for repeated characters.",
+                    "suggestion": "Compare the string length with the length of a set of its characters, or track seen characters.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "first", "character"):
+        return {
+            "accepted_solutions": [
+                "return s[0]" if language == "python" else "",
+                "return s.charAt(0);" if language == "java" else "",
+                "return s[0];" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abc"], "a", "basic first character", kind="normal", weight=1.0, required=True),
+                    _build_case(["Z"], "Z", "single character string", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["hello"], "h", "longer string first character", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s[s.length - 1]",
+                    "match_type": "contains",
+                    "feedback": "Returning the last character does not satisfy the first-character requirement.",
+                    "suggestion": "Return the first character, for example with s[0] or s.charAt(0).",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "last", "character"):
+        return {
+            "accepted_solutions": [
+                "return s[-1]" if language == "python" else "",
+                "return s.charAt(s.length() - 1);" if language == "java" else "",
+                "return s[s.length - 1];" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abc"], "c", "basic last character", kind="normal", weight=1.0, required=True),
+                    _build_case(["Z"], "Z", "single character string", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["hello"], "o", "longer string last character", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning the first character does not satisfy the last-character requirement.",
+                    "suggestion": "Return the last character, for example with s[s.length - 1] or s.charAt(s.length() - 1).",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "convert", "string", "integer"):
+        return {
+            "accepted_solutions": [
+                "return int(s)" if language == "python" else "",
+                "return Integer.parseInt(s);" if language == "java" else "",
+                "return Number(s);" if language == "javascript" else "",
+                "return parseInt(s, 10);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["123"], 123, "basic numeric string", kind="normal", weight=1.0, required=True),
+                    _build_case(["007"], 7, "leading-zero numeric string", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["0"], 0, "zero string", kind="trap", weight=1.0),
+                    _build_case(["42"], 42, "larger numeric string", kind="normal", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the original string does not convert it to an integer.",
+                    "suggestion": "Parse the numeric string before returning the result.",
                     "score_cap": 20,
                 }
             ],
@@ -387,11 +1803,542 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
-    if ("maximum" in question_text or "max" in question_text) and "array" in question_text:
+    if "prime" in question_text:
+        return {
+            "accepted_solutions": [
+                "return n > 1 and all(n % i != 0 for i in range(2, int(n ** 0.5) + 1))" if language == "python" else "",
+                "if (n <= 1) return false; for (int i = 2; i * i <= n; i++) { if (n % i == 0) return false; } return true;" if language == "java" else "",
+                "if (n <= 1) return false; for (let i = 2; i * i <= n; i++) { if (n % i === 0) return false; } return true;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([2], True, "smallest prime", kind="edge", weight=1.1, required=True),
+                    _build_case([13], True, "larger prime", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([1], False, "one is not prime", kind="edge", weight=1.2, required=True),
+                    _build_case([9], False, "composite odd number", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n > 1",
+                    "match_type": "contains",
+                    "feedback": "Checking only n > 1 incorrectly treats many composite numbers as prime.",
+                    "suggestion": "Test divisibility by smaller numbers before returning True.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "sum", "digits"):
+        return {
+            "accepted_solutions": [
+                "return sum(int(d) for d in str(n))" if language == "python" else "",
+                "int sum = 0; n = Math.abs(n); while (n != 0) { sum += n % 10; n /= 10; } return sum;" if language == "java" else "",
+                "return Math.abs(n).toString().split('').reduce((sum, d) => sum + Number(d), 0);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([123], 6, "sum digits of positive integer", kind="normal", weight=1.0, required=True),
+                    _build_case([0], 0, "zero input", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([909], 18, "includes zero digit", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n",
+                    "match_type": "contains",
+                    "feedback": "Returning the original number does not sum its digits.",
+                    "suggestion": "Extract each digit and add them together before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "split", "dataset") and _contains_all(question_text, "train") and _contains_all(question_text, "test"):
+        return {
+            "accepted_solutions": [
+                "split = int(len(data) * 0.8); return data[:split], data[split:]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3, 4, 5]], [[1, 2, 3, 4], [5]], "basic 80/20 dataset split", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 2, 3, 4]], [[1, 2, 3], [4]], "rounding down for train size", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[1, 2]], [[1], [2]], "small dataset split", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return data, data",
+                    "match_type": "contains",
+                    "feedback": "Returning the same dataset twice does not split it into training and test subsets.",
+                    "suggestion": "Partition the data into separate train and test slices before returning them.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "accuracy") and _contains_all(question_text, "predictions") and _contains_all(question_text, "labels"):
+        return {
+            "accepted_solutions": [
+                "return sum(1 for t, p in zip(y_true, y_pred) if t == p) / len(y_true)" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 0, 1], [1, 0, 1]], 1.0, "perfect accuracy", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 0], [1, 1]], 0.5, "half-correct predictions", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[0, 0], [1, 1]], 0.0, "all predictions incorrect", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return len(y_true)",
+                    "match_type": "contains",
+                    "feedback": "Returning the label count does not compute prediction accuracy.",
+                    "suggestion": "Compare predictions with labels and divide the number of matches by the total number of labels.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "mean", "squared", "error"):
+        return {
+            "accepted_solutions": [
+                "return sum((a - b) ** 2 for a, b in zip(y_true, y_pred)) / len(y_true)" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2], [1, 2]], 0.0, "zero error when predictions match", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 2], [2, 4]], 2.5, "basic mse example", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[0], [3]], 9.0, "single-value squared error", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Always returning 0 does not compute the mean squared error.",
+                    "suggestion": "Average the squared differences between the true values and the predictions.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "precision", "score"):
+        return {
+            "accepted_solutions": [
+                "return tp / (tp + fp) if (tp + fp) else 0.0" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([8, 2], 0.8, "basic precision calculation", kind="normal", weight=1.0, required=True),
+                    _build_case([0, 0], 0.0, "zero predicted positives edge case", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([3, 1], 0.75, "non-trivial precision ratio", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return tp",
+                    "match_type": "contains",
+                    "feedback": "Returning true positives alone does not compute precision.",
+                    "suggestion": "Divide true positives by the total predicted positives tp + fp.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "recall", "score"):
+        return {
+            "accepted_solutions": [
+                "return tp / (tp + fn) if (tp + fn) else 0.0" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([8, 2], 0.8, "basic recall calculation", kind="normal", weight=1.0, required=True),
+                    _build_case([0, 0], 0.0, "zero actual positives edge case", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([3, 1], 0.75, "non-trivial recall ratio", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return tp",
+                    "match_type": "contains",
+                    "feedback": "Returning true positives alone does not compute recall.",
+                    "suggestion": "Divide true positives by the total actual positives tp + fn.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "f1", "score"):
+        return {
+            "accepted_solutions": [
+                "return 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([0.8, 0.8], 0.8, "matching precision and recall", kind="normal", weight=1.0, required=True),
+                    _build_case([0.5, 1.0], 0.6666666666666666, "imbalanced precision and recall", kind="normal", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([0.0, 0.0], 0.0, "zero metrics edge case", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return precision",
+                    "match_type": "contains",
+                    "feedback": "Returning only precision does not compute the F1 score.",
+                    "suggestion": "Use the harmonic mean of precision and recall.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "confusion", "matrix"):
+        return {
+            "accepted_solutions": [
+                "tn = fp = fn = tp = 0\nfor yt, yp in zip(y_true, y_pred):\n    if yt == 0 and yp == 0:\n        tn += 1\n    elif yt == 0 and yp == 1:\n        fp += 1\n    elif yt == 1 and yp == 0:\n        fn += 1\n    else:\n        tp += 1\nreturn [tn, fp, fn, tp]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([ [0, 1, 1, 0], [0, 1, 0, 1] ], [1, 1, 1, 1], "balanced confusion counts", kind="normal", weight=1.0, required=True),
+                    _build_case([ [1, 1], [1, 1] ], [0, 0, 0, 2], "all true positives", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([ [0, 0], [1, 1] ], [0, 2, 0, 0], "all false positives", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return [0,0,0,0]",
+                    "match_type": "normalized_contains",
+                    "feedback": "Returning zero counts does not compute the confusion matrix.",
+                    "suggestion": "Count TN, FP, FN, and TP across the paired true and predicted labels.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "missing", "values") and "none" in question_text:
+        return {
+            "accepted_solutions": [
+                "return any(x is None for x in lst)" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, None, 3]], True, "list contains missing value", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 2, 3]], False, "list without missing values", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[None]], True, "single missing value", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return False",
+                    "match_type": "contains",
+                    "feedback": "Always returning False does not detect missing values in the input.",
+                    "suggestion": "Check whether any element is None before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "label", "encoding"):
+        return {
+            "accepted_solutions": [
+                "mapping = {label: i for i, label in enumerate(dict.fromkeys(lst))}; return [mapping[x] for x in lst]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([["cat", "dog", "cat"]], [0, 1, 0], "basic label encoding", kind="normal", weight=1.0, required=True),
+                    _build_case([["red", "blue"]], [0, 1], "distinct label order preserved", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([["same", "same"]], [0, 0], "same label maps consistently", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the original labels does not perform label encoding.",
+                    "suggestion": "Map each distinct label to a numeric code and return the encoded list.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "fill", "missing") and "mean" in question_text:
+        return {
+            "accepted_solutions": [
+                "valid = [x for x in lst if x is not None]; mean = sum(valid) / len(valid); return [mean if x is None else x for x in lst]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, None, 3]], [1, 2.0, 3], "fill missing value with mean", kind="normal", weight=1.0, required=True),
+                    _build_case([[2, None, 4, None]], [2, 3.0, 4, 3.0], "fill multiple missing values", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[1, 2, 3]], [1, 2, 3], "no missing values leaves list unchanged", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the original list does not fill missing values with the mean.",
+                    "suggestion": "Compute the mean of the non-missing values and replace each None with that mean.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if ("min-max" in question_text or "min max" in question_text) and ("normalize" in question_text or "normalization" in question_text):
+        return {
+            "accepted_solutions": [
+                "mn, mx = min(lst), max(lst); return [(x - mn) / (mx - mn) for x in lst]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], [0.0, 0.5, 1.0], "basic min-max normalization", kind="normal", weight=1.0, required=True),
+                    _build_case([[2, 4, 6]], [0.0, 0.5, 1.0], "scaled positive values", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[5, 5, 5]], [0.0, 0.0, 0.0], "constant values edge case", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return [x / max(lst) for x in lst]",
+                    "match_type": "contains",
+                    "feedback": "Dividing only by the maximum value does not perform full min-max normalization.",
+                    "suggestion": "Subtract the minimum value and divide by the full range max-min.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if "z-score" in question_text or "z score" in question_text or "standardize" in question_text or "standardization" in question_text:
+        return {
+            "accepted_solutions": [
+                "mean = sum(lst) / len(lst); std = (sum((x - mean) ** 2 for x in lst) / len(lst)) ** 0.5; return [(x - mean) / std for x in lst]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], [-1.224744871391589, 0.0, 1.224744871391589], "basic z-score standardization", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[2, 4, 6]], [-1.224744871391589, 0.0, 1.224744871391589], "same shape with different scale", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the original list does not standardize the values.",
+                    "suggestion": "Center the values by the mean and divide by the standard deviation.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "k-fold", "cross", "validation") or _contains_all(question_text, "k", "fold", "cross", "validation"):
+        return {
+            "accepted_solutions": [
+                "fold_size = len(data) // k\nreturn [data[i * fold_size:(i + 1) * fold_size] for i in range(k - 1)] + [data[(k - 1) * fold_size:]]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([ [1, 2, 3, 4], 2 ], [[1, 2], [3, 4]], "split into two folds", kind="normal", weight=1.0, required=True),
+                    _build_case([ [1, 2, 3, 4, 5], 2 ], [[1, 2], [3, 4, 5]], "last fold keeps remainder", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([ [1, 2, 3], 3 ], [[1], [2], [3]], "single-item folds", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Returning 0 does not partition the dataset into folds.",
+                    "suggestion": "Return a list of folds that covers the input data.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "split", "features") and _contains_all(question_text, "labels"):
+        return {
+            "accepted_solutions": [
+                "return [row[:-1] for row in data], [row[-1] for row in data]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[[1, 2, 0], [3, 4, 1]]], [[[1, 2], [3, 4]], [0, 1]], "split rows into features and labels", kind="normal", weight=1.0, required=True),
+                    _build_case([[[5, 1]]], [[[5]], [1]], "single-row dataset", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[]], [[], []], "empty dataset edge case", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return data, data",
+                    "match_type": "contains",
+                    "feedback": "Returning the same dataset twice does not separate features from labels.",
+                    "suggestion": "Return the feature columns without the last element in each row and the last-column labels separately.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "linear", "regression", "prediction") or "y = mx + c" in question_text:
+        return {
+            "accepted_solutions": [
+                "return m * x + c" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([2, 3, 1], 7, "basic linear prediction", kind="normal", weight=1.0, required=True),
+                    _build_case([-1, 4, 2], -2, "negative slope prediction", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([0, 5, 3], 3, "zero slope returns intercept", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return x",
+                    "match_type": "contains",
+                    "feedback": "Returning only x does not compute the linear regression prediction.",
+                    "suggestion": "Use the formula y = m * x + c to compute the predicted value.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "sigmoid", "function") or _contains_all(question_text, "implement", "sigmoid"):
+        return {
+            "accepted_solutions": [
+                "return 1 / (1 + math.exp(-x))" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([0], 0.5, "sigmoid at zero", kind="normal", weight=1.0, required=True),
+                    _build_case([1], 0.7310585786300049, "positive input sigmoid", kind="normal", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([-1], 0.2689414213699951, "negative input sigmoid", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return x",
+                    "match_type": "contains",
+                    "feedback": "Returning x unchanged does not apply the sigmoid transformation.",
+                    "suggestion": "Compute 1 / (1 + exp(-x)) for the input value.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "softmax", "function") or _contains_all(question_text, "implement", "softmax"):
+        return {
+            "accepted_solutions": [
+                "exps = [math.exp(x) for x in lst]; total = sum(exps); return [x / total for x in exps]" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[0, 0]], [0.5, 0.5], "equal logits softmax", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 2]], [0.2689414213699951, 0.7310585786300049], "two-value softmax", kind="normal", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[0]], [1.0], "single logit softmax", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the input list unchanged does not apply softmax.",
+                    "suggestion": "Exponentiate the inputs and normalize them by their sum.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "binary", "cross", "entropy"):
+        return {
+            "accepted_solutions": [
+                "return -(y * math.log(p) + (1 - y) * math.log(1 - p))" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([1, 0.9], 0.10536051565782628, "positive class low loss", kind="normal", weight=1.0, required=True),
+                    _build_case([0, 0.1], 0.10536051565782628, "negative class low loss", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([1, 0.5], 0.6931471805599453, "uncertain prediction", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Returning 0 does not compute the binary cross-entropy loss.",
+                    "suggestion": "Use the target and predicted probability in the log-loss formula.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "gradient", "descent", "step"):
+        return {
+            "accepted_solutions": [
+                "return w - lr * grad" if language == "python" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([1.0, 0.5, 0.1], 0.95, "single gradient descent update", kind="normal", weight=1.0, required=True),
+                    _build_case([2.0, -1.0, 0.2], 2.2, "negative gradient increases weight", kind="normal", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([3.0, 0.0, 0.5], 3.0, "zero gradient leaves weight unchanged", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return w",
+                    "match_type": "contains",
+                    "feedback": "Returning the original weight does not apply the gradient descent update.",
+                    "suggestion": "Subtract the learning-rate-scaled gradient from the current weight.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if ("maximum" in question_text or "max" in question_text) and ("array" in question_text or "list" in question_text):
         return {
             "accepted_solutions": [
                 "return max(arr)" if language == "python" else "",
-                "return Math.max(...arr)" if language == "javascript" else "",
+                "return max(lst)" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return Collections.max(lst);", "return Arrays.stream(arr).max().orElse(Integer.MIN_VALUE);") if language == "java" else "",
+                _javascript_for_collection(question_text, "return Math.max(...arr);", "return Math.max(...lst);") if language == "javascript" else "",
             ],
             "test_sets": {
                 "positive": [
@@ -411,15 +2358,23 @@ def _deterministic_code_baselines(question, language):
                     "feedback": "Returning only the first element does not find the maximum in general.",
                     "suggestion": "Scan every element and keep track of the largest value.",
                     "score_cap": 20,
+                },
+                {
+                    "pattern": "return lst[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning only the first element does not find the maximum in general.",
+                    "suggestion": "Scan every element and keep track of the largest value.",
+                    "score_cap": 20,
                 }
             ],
         }
 
-    if ("minimum" in question_text or "min" in question_text) and "array" in question_text:
+    if ("minimum" in question_text or "min" in question_text) and ("array" in question_text or "list" in question_text):
         return {
             "accepted_solutions": [
                 "return min(arr)" if language == "python" else "",
-                "return Math.min(...arr)" if language == "javascript" else "",
+                _java_for_list_or_array(question_text, "return Collections.min(lst);", "return Arrays.stream(arr).min().orElse(Integer.MAX_VALUE);") if language == "java" else "",
+                _javascript_for_collection(question_text, "return Math.min(...arr);", "return Math.min(...lst);") if language == "javascript" else "",
             ],
             "test_sets": {
                 "positive": [
@@ -447,7 +2402,8 @@ def _deterministic_code_baselines(question, language):
         return {
             "accepted_solutions": [
                 "return sum(arr)" if language == "python" else "",
-                "return arr.reduce((a,b)=>a+b,0)" if language == "javascript" else "",
+                _java_for_list_or_array(question_text, "return lst.stream().mapToInt(Integer::intValue).sum();", "return Arrays.stream(arr).sum();") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr.reduce((a,b)=>a+b,0);", "return lst.reduce((a,b)=>a+b,0);") if language == "javascript" else "",
             ],
             "test_sets": {
                 "positive": [
@@ -466,6 +2422,256 @@ def _deterministic_code_baselines(question, language):
                     "match_type": "contains",
                     "feedback": "Returning only the first element does not compute the sum of the whole collection.",
                     "suggestion": "Accumulate all values before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "sum", "even", "numbers") and "list" in question_text:
+        return {
+            "accepted_solutions": [
+                "return sum(x for x in lst if x % 2 == 0)" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.stream().filter(x -> x % 2 == 0).mapToInt(Integer::intValue).sum();", "return Arrays.stream(arr).filter(x -> x % 2 == 0).sum();") if language == "java" else "",
+                "return lst.filter(x => x % 2 === 0).reduce((sum, x) => sum + x, 0);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3, 4]], 6, "basic even-number sum", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 3, 5]], 0, "no even numbers", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[0, 2, 5]], 2, "includes zero", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Returning 0 does not compute the sum of the even numbers in the list.",
+                    "suggestion": "Add only values where x % 2 == 0.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if (_contains_all(question_text, "first", "element")) and ("list" in question_text or "array" in question_text):
+        return {
+            "accepted_solutions": [
+                "return lst[0]" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.get(0);", "return arr[0];") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr[0];", "return lst[0];") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], 1, "basic first element", kind="normal", weight=1.0, required=True),
+                    _build_case([[7]], 7, "single element list", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[9, 3]], 9, "two-element list", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst[-1]",
+                    "match_type": "contains",
+                    "feedback": "Returning the last element does not satisfy the first-element requirement.",
+                    "suggestion": "Return the first item, for example with lst[0].",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if (_contains_all(question_text, "last", "element")) and ("list" in question_text or "array" in question_text):
+        return {
+            "accepted_solutions": [
+                "return lst[-1]" if language == "python" else "",
+                "return lst[len(lst)-1]" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.get(lst.size() - 1);", "return arr[arr.length - 1];") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr[arr.length - 1];", "return lst[lst.length - 1];") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], 3, "basic last element", kind="normal", weight=1.0, required=True),
+                    _build_case([[7]], 7, "single element list", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[9, 3]], 3, "two-element list", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning the first element does not satisfy the last-element requirement.",
+                    "suggestion": "Return the last item, for example with lst[-1].",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if ("list is empty" in question_text) or ("empty list" in question_text):
+        return {
+            "accepted_solutions": [
+                "return not lst" if language == "python" else "",
+                "return len(lst) == 0" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.isEmpty();", "return arr.length == 0;") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr.length === 0;", "return lst.length === 0;") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[]], True, "empty list case", kind="edge", weight=1.2, required=True),
+                    _build_case([[1]], False, "non-empty list case", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[""]], False, "single empty-string element still non-empty list", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return False",
+                    "match_type": "contains",
+                    "feedback": "Always returning False does not actually check whether the list is empty.",
+                    "suggestion": "Return True only when the list has no elements.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "remove", "duplicates") and "list" in question_text and "preserve order" in question_text:
+        return {
+            "accepted_solutions": [
+                "return list(dict.fromkeys(lst))" if language == "python" else "",
+                "return new ArrayList<>(new LinkedHashSet<>(lst));" if language == "java" else "",
+                "return [...new Set(lst)];" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 1, 3]], [1, 2, 3], "remove duplicates while keeping first occurrences", kind="normal", weight=1.0, required=True),
+                    _build_case([[]], [], "empty list remains empty", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[2, 2, 2]], [2], "all duplicates collapse to one value", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the original list does not remove duplicates.",
+                    "suggestion": "Track seen values and keep only the first occurrence of each item.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "contains", "duplicates"):
+        return {
+            "accepted_solutions": [
+                "return len(lst) != len(set(lst))" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return new HashSet<>(lst).size() != lst.size();", "return Arrays.stream(arr).distinct().count() != arr.length;") if language == "java" else "",
+                _javascript_for_collection(question_text, "return new Set(arr).size !== arr.length;", "return new Set(lst).size !== lst.length;") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 2]], True, "list with duplicates", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 2, 3]], False, "list without duplicates", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[]], False, "empty list has no duplicates", kind="edge", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return False",
+                    "match_type": "contains",
+                    "feedback": "Always returning False does not actually check whether duplicates exist.",
+                    "suggestion": "Compare the list length with the length of a set of its values.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "list", "sorted"):
+        return {
+            "accepted_solutions": [
+                "return all(lst[i] <= lst[i + 1] for i in range(len(lst) - 1))" if language == "python" else "",
+                _java_for_list_or_array(question_text, "for (int i = 0; i < lst.size() - 1; i++) { if (lst.get(i) > lst.get(i + 1)) return false; } return true;", "for (int i = 0; i < arr.length - 1; i++) { if (arr[i] > arr[i + 1]) return false; } return true;") if language == "java" else "",
+                "return lst.every((x, i) => i === 0 || lst[i - 1] <= x);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], True, "ascending sorted list", kind="normal", weight=1.0, required=True),
+                    _build_case([[3, 2, 1]], False, "descending unsorted list", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[1, 1, 2]], True, "non-decreasing list with duplicates", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not check whether the list is sorted.",
+                    "suggestion": "Compare adjacent values and return False when the order drops.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if _contains_all(question_text, "frequency", "elements") and "list" in question_text:
+        return {
+            "accepted_solutions": [
+                "return {x: lst.count(x) for x in lst}" if language == "python" else "",
+                "Map<Integer, Integer> freq = new LinkedHashMap<>(); for (int x : lst) { freq.put(x, freq.getOrDefault(x, 0) + 1); } return freq;" if language == "java" else "",
+                "return lst.reduce((freq, x) => { freq[x] = (freq[x] || 0) + 1; return freq; }, {});" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 1]], {"1": 2, "2": 1}, "frequency count with repeated values", kind="normal", weight=1.0, required=True),
+                    _build_case([[]], {}, "empty list frequency map", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[3, 3, 3]], {"3": 3}, "single repeated value", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return {}",
+                    "match_type": "contains",
+                    "feedback": "Returning an empty dictionary does not count element frequencies.",
+                    "suggestion": "Count how many times each list value appears and return those counts.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    if (
+        (_contains_all(question_text, "length", "list"))
+        or (_contains_all(question_text, "get", "length", "list"))
+        or (_contains_all(question_text, "count", "elements") and "list" in question_text)
+    ):
+        return {
+            "accepted_solutions": [
+                "return len(lst)" if language == "python" else "",
+                "return sum(1 for _ in lst)" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.size();", "return arr.length;") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr.length;", "return lst.length;") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], 3, "multi-element list length", kind="normal", weight=1.0, required=True),
+                    _build_case([[]], 0, "empty list length", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case([[7]], 1, "single element list", kind="trap", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Returning 0 does not calculate the number of elements in the list.",
+                    "suggestion": "Return the number of items, for example with len(lst).",
                     "score_cap": 20,
                 }
             ],
@@ -563,24 +2769,48 @@ def _deterministic_code_baselines(question, language):
 def _deterministic_markup_baselines(question, language):
     question_text = (question or "").lower()
     if language == "html":
-        expected_markers = []
-        if "button" in question_text:
-            expected_markers.append("<button")
-        if "heading" in question_text or "h1" in question_text:
-            expected_markers.append("<h1")
+        expected_markers = _html_expected_markers(question_text)
+        positive_tests = [
+            {"input": "static", "expected_output": "valid_html", "description": "well-formed html structure"},
+            {"input": "static", "expected_output": "balanced_html", "description": "balanced opening and closing tags"},
+        ]
+        negative_tests = [
+            {"input": "static", "expected_output": "required_markers", "description": "contains expected html tags from the question"},
+            {"input": "static", "expected_output": "question_text_alignment", "description": "matches the requested html intent"},
+        ]
         if "form" in question_text:
-            expected_markers.append("<form")
+            positive_tests.append({"input": "static", "expected_output": "form_structure", "description": "contains form wrapper and controls"})
+        if "table" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "table_structure", "description": "contains table rows and cells"})
+        if "image" in question_text or "img" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "image_tag", "description": "contains an image element"})
+            negative_tests.append({"input": "static", "expected_output": "alt_text", "description": "image includes alt text"})
+        if "audio" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "audio_tag", "description": "contains an audio element"})
+        if "video" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "video_tag", "description": "contains a video element"})
+        if "link" in question_text or "anchor" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "anchor_tag", "description": "contains a hyperlink"})
+            negative_tests.append({"input": "static", "expected_output": "href_attribute", "description": "link includes href attribute"})
+        if "unordered list" in question_text or "ordered list" in question_text or "list item" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "list_structure", "description": "contains list wrapper and items"})
+        if "button" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "button_tag", "description": "contains a button element"})
+        if "heading" in question_text or "h1" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "heading_tag", "description": "contains a heading element"})
+        if "paragraph" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "paragraph_tag", "description": "contains a paragraph element"})
+        if "input" in question_text or "textarea" in question_text or "select" in question_text or "dropdown" in question_text or "label" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "input_structure", "description": "contains the requested input controls"})
+        if "div" in question_text or "container" in question_text or "span" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "container_structure", "description": "contains basic container elements"})
+        if "semantic" in question_text or "header" in question_text or "footer" in question_text or "nav" in question_text or "section" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "semantic_layout", "description": "uses semantic layout tags"})
         return {
             "accepted_solutions": [],
             "test_sets": {
-                "positive": [
-                    {"input": "static", "expected_output": "valid_html", "description": "well-formed html structure"},
-                    {"input": "static", "expected_output": "semantic_layout", "description": "semantic layout structure"},
-                ],
-                "negative": [
-                    {"input": "static", "expected_output": "required_markers", "description": "contains expected semantic tags"},
-                    {"input": "static", "expected_output": "question_text_alignment", "description": "matches the requested html intent"},
-                ],
+                "positive": positive_tests,
+                "negative": negative_tests,
             },
             "incorrect_patterns": [
                 {
@@ -595,28 +2825,42 @@ def _deterministic_markup_baselines(question, language):
         }
 
     if language == "css":
-        expected_bits = []
-        if "red" in question_text:
-            expected_bits.append("red")
-        if "color" in question_text:
-            expected_bits.append("color")
-        if "center" in question_text:
-            expected_bits.append("center")
+        expected_bits = _css_expected_bits(question_text)
+        positive_tests = [
+            {"input": "static", "expected_output": "valid_css", "description": "valid css rule block"},
+            {"input": "static", "expected_output": "balanced_css", "description": "balanced selector/declaration structure"},
+        ]
+        negative_tests = [
+            {"input": "static", "expected_output": "required_properties", "description": "contains requested properties"},
+            {"input": "static", "expected_output": "question_style_intent", "description": "matches the requested css intent"},
+        ]
         if "flex" in question_text:
-            expected_bits.append("display:flex")
+            positive_tests.append({"input": "static", "expected_output": "flex_layout", "description": "uses flex layout properties"})
         if "grid" in question_text:
-            expected_bits.append("display:grid")
+            positive_tests.append({"input": "static", "expected_output": "grid_layout", "description": "uses grid layout properties"})
+        if "font" in question_text or "typography" in question_text or "text-align" in question_text or "text align" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "typography_style", "description": "uses the requested typography properties"})
+        if "margin" in question_text or "padding" in question_text or "spacing" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "spacing_style", "description": "uses spacing-related properties"})
+        if "border" in question_text or "radius" in question_text or "rounded" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "border_style", "description": "uses border-related properties"})
+        if "width" in question_text or "height" in question_text or "size" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "sizing_style", "description": "uses sizing properties"})
+        if "display" in question_text or "inline" in question_text or "block" in question_text or "position" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "display_style", "description": "uses display or positioning properties"})
+        if "hover" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "hover_rule", "description": "includes a hover state rule"})
+        if "button" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "button_style", "description": "styles a button selector"})
+        if "card" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "card_style", "description": "styles a card-like container"})
+        if "center" in question_text:
+            negative_tests.append({"input": "static", "expected_output": "center_alignment", "description": "uses an appropriate centering technique"})
         return {
             "accepted_solutions": [],
             "test_sets": {
-                "positive": [
-                    {"input": "static", "expected_output": "valid_css", "description": "valid css rule block"},
-                    {"input": "static", "expected_output": "balanced_css", "description": "balanced selector/declaration structure"},
-                ],
-                "negative": [
-                    {"input": "static", "expected_output": "required_properties", "description": "contains requested properties"},
-                    {"input": "static", "expected_output": "question_style_intent", "description": "matches the requested css intent"},
-                ],
+                "positive": positive_tests,
+                "negative": negative_tests,
             },
             "incorrect_patterns": [
                 {
@@ -631,96 +2875,148 @@ def _deterministic_markup_baselines(question, language):
         }
 
     if language == "react":
+        expected_markers = _react_expected_markers(question_text)
+        positive_tests = [
+            {"input": "static", "expected_output": "valid_react", "description": "valid component syntax"},
+            {"input": "static", "expected_output": "component_render", "description": "component renders valid JSX"},
+        ]
+        negative_tests = [
+            {"input": "static", "expected_output": "jsx_return", "description": "returns JSX or equivalent UI output"},
+            {"input": "static", "expected_output": "question_ui_intent", "description": "matches the requested react intent"},
+        ]
         if "hook" in question_text or "usestate" in question_text or "useeffect" in question_text:
-            return {
-                "accepted_solutions": [],
-                "test_sets": {
-                    "positive": [
-                        {"input": "static", "expected_output": "hook_usage", "description": "uses the requested React hook"},
-                        {"input": "static", "expected_output": "component_render", "description": "component renders valid JSX"},
-                    ],
-                    "negative": [
-                        {"input": "static", "expected_output": "state_update_path", "description": "state or effect path is present"},
-                        {"input": "static", "expected_output": "question_alignment", "description": "matches the requested React behavior"},
-                    ],
-                },
-                "incorrect_patterns": [],
-            }
+            positive_tests.append({"input": "static", "expected_output": "hook_usage", "description": "uses the requested React hook"})
+            negative_tests.append({"input": "static", "expected_output": "hook_alignment", "description": "hook usage matches the requested behavior"})
+        if "props" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "props_usage", "description": "component uses props"})
+        if "list" in question_text and ("render" in question_text or "map" in question_text):
+            positive_tests.append({"input": "static", "expected_output": "list_render", "description": "renders a list from data"})
+            negative_tests.append({"input": "static", "expected_output": "key_usage", "description": "list items use stable keys"})
+        if "form" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "form_structure", "description": "contains form and controlled inputs"})
+            negative_tests.append({"input": "static", "expected_output": "form_event_path", "description": "form handles change or submit events"})
+        if "conditional" in question_text or "show" in question_text or "hide" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "conditional_render", "description": "includes conditional UI logic"})
+        if "click" in question_text or "button" in question_text or "event" in question_text:
+            positive_tests.append({"input": "static", "expected_output": "event_handler", "description": "includes the requested event handler"})
         return {
             "accepted_solutions": [],
             "test_sets": {
-                "positive": [
-                    {"input": "static", "expected_output": "valid_react", "description": "valid component syntax"},
-                    {"input": "static", "expected_output": "component_shape", "description": "component shape looks valid"},
-                ],
-                "negative": [
-                    {"input": "static", "expected_output": "jsx_return", "description": "returns JSX or equivalent UI output"},
-                    {"input": "static", "expected_output": "question_ui_intent", "description": "matches the requested react intent"},
-                ],
+                "positive": positive_tests,
+                "negative": negative_tests,
             },
-            "incorrect_patterns": [],
+            "incorrect_patterns": [
+                {
+                    "pattern": marker,
+                    "match_type": "contains",
+                    "feedback": f"The component appears to miss the expected React marker '{marker}'.",
+                    "suggestion": "Include the requested hook, JSX structure, props, or event path from the question.",
+                    "score_cap": 45,
+                }
+                for marker in expected_markers
+            ],
         }
 
     if language == "mysql":
+        expected_markers = _mysql_expected_markers(question_text)
+        positive_tests = [
+            {"input": "static", "expected_output": "valid_sql", "description": "recognizable sql statement"},
+            {"input": "static", "expected_output": "balanced_sql", "description": "balanced query structure"},
+        ]
+        negative_tests = [
+            {"input": "static", "expected_output": "question_intent", "description": "contains key sql clauses from the question intent"},
+            {"input": "static", "expected_output": "operation_alignment", "description": "matches the requested SQL operation"},
+        ]
         if "join" in question_text:
-            return {
-                "accepted_solutions": [],
-                "test_sets": {
-                    "positive": [
-                        {"input": "seeded", "expected_output": "joined_rows", "description": "returns expected joined rows"},
-                        {"input": "seeded", "expected_output": "column_projection", "description": "returns requested join columns"},
-                    ],
-                    "negative": [
-                        {"input": "seeded", "expected_output": "join_condition", "description": "uses an appropriate join condition"},
-                        {"input": "seeded", "expected_output": "row_count_alignment", "description": "does not duplicate or drop expected rows"},
-                    ],
-                },
-                "incorrect_patterns": [],
-            }
+            positive_tests.append({"input": "seeded", "expected_output": "joined_rows", "description": "returns expected joined rows"})
+            positive_tests.append({"input": "seeded", "expected_output": "column_projection", "description": "returns requested join columns"})
+            negative_tests.append({"input": "seeded", "expected_output": "join_condition", "description": "uses an appropriate join condition"})
+            negative_tests.append({"input": "seeded", "expected_output": "row_count_alignment", "description": "does not duplicate or drop expected rows"})
+        if "group by" in question_text or "count" in question_text or "sum" in question_text or "avg" in question_text or "aggregate" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "group_aggregate", "description": "uses grouping or aggregation correctly"})
+        if "order by" in question_text or "sort" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "order_clause", "description": "includes ordering behavior"})
+        if "having" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "having_clause", "description": "uses a having clause after grouping"})
+        if "distinct" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "distinct_clause", "description": "uses a distinct selection"})
+        if "limit" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "limit_clause", "description": "uses a limit clause"})
+        if "insert" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "insert_statement", "description": "uses an insert statement"})
+        if "update" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "update_statement", "description": "uses an update statement"})
+        if "delete" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "delete_statement", "description": "uses a delete statement"})
+        if "select" in question_text or "where" in question_text or "filter" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "select_query", "description": "uses a select/filter query"})
         return {
             "accepted_solutions": [],
             "test_sets": {
-                "positive": [
-                    {"input": "static", "expected_output": "valid_sql", "description": "recognizable sql statement"},
-                    {"input": "static", "expected_output": "balanced_sql", "description": "balanced query structure"},
-                ],
-                "negative": [
-                    {"input": "static", "expected_output": "question_intent", "description": "contains key sql clauses from the question intent"},
-                    {"input": "static", "expected_output": "operation_alignment", "description": "matches the requested SQL operation"},
-                ],
+                "positive": positive_tests,
+                "negative": negative_tests,
             },
-            "incorrect_patterns": [],
+            "incorrect_patterns": [
+                {
+                    "pattern": marker,
+                    "match_type": "contains",
+                    "feedback": f"The SQL query appears to miss the expected clause '{marker}'.",
+                    "suggestion": "Include the required SQL clause or operation from the question.",
+                    "score_cap": 45,
+                }
+                for marker in expected_markers
+            ],
         }
 
     if language == "mongodb":
+        expected_markers = _mongodb_expected_markers(question_text)
+        positive_tests = [
+            {"input": "static", "expected_output": "valid_mongodb", "description": "recognizable mongodb command"},
+            {"input": "static", "expected_output": "balanced_mongodb", "description": "balanced mongodb query structure"},
+        ]
+        negative_tests = [
+            {"input": "static", "expected_output": "question_intent", "description": "contains key mongodb operations from the question intent"},
+            {"input": "static", "expected_output": "operation_alignment", "description": "matches the requested mongodb operation"},
+        ]
         if "aggregate" in question_text or "$group" in question_text:
-            return {
-                "accepted_solutions": [],
-                "test_sets": {
-                    "positive": [
-                        {"input": "seeded", "expected_output": "aggregation_result", "description": "returns expected aggregation result"},
-                        {"input": "seeded", "expected_output": "pipeline_shape", "description": "uses the requested pipeline shape"},
-                    ],
-                    "negative": [
-                        {"input": "seeded", "expected_output": "group_stage", "description": "includes grouping or aggregation logic"},
-                        {"input": "seeded", "expected_output": "field_alignment", "description": "matches requested MongoDB fields"},
-                    ],
-                },
-                "incorrect_patterns": [],
-            }
+            positive_tests.append({"input": "seeded", "expected_output": "aggregation_result", "description": "returns expected aggregation result"})
+            positive_tests.append({"input": "seeded", "expected_output": "pipeline_shape", "description": "uses the requested pipeline shape"})
+            negative_tests.append({"input": "seeded", "expected_output": "group_stage", "description": "includes grouping or aggregation logic"})
+            negative_tests.append({"input": "seeded", "expected_output": "field_alignment", "description": "matches requested mongodb fields"})
+        if "find" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "find_query", "description": "uses a mongodb find query"})
+        if "insert" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "insert_clause", "description": "uses an insert operation"})
+        if "sort" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "sort_clause", "description": "includes sort behavior"})
+        if "project" in question_text or "projection" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "projection_fields", "description": "projects the requested fields"})
+        if "update" in question_text or "$set" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "update_clause", "description": "includes update behavior"})
+        if "delete" in question_text or "remove" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "delete_clause", "description": "uses a delete operation"})
+        if "count" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "count_clause", "description": "uses a count operation"})
+        if "limit" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "limit_clause", "description": "uses a limit operation"})
+        if "distinct" in question_text:
+            positive_tests.append({"input": "seeded", "expected_output": "distinct_clause", "description": "uses a distinct operation"})
         return {
             "accepted_solutions": [],
             "test_sets": {
-                "positive": [
-                    {"input": "static", "expected_output": "valid_mongodb", "description": "recognizable mongodb command"},
-                    {"input": "static", "expected_output": "balanced_mongodb", "description": "balanced query structure"},
-                ],
-                "negative": [
-                    {"input": "static", "expected_output": "question_intent", "description": "contains key mongodb operations from the question intent"},
-                    {"input": "static", "expected_output": "operation_alignment", "description": "matches the requested MongoDB operation"},
-                ],
+                "positive": positive_tests,
+                "negative": negative_tests,
             },
-            "incorrect_patterns": [],
+            "incorrect_patterns": [
+                {
+                    "pattern": marker,
+                    "match_type": "contains",
+                    "feedback": f"The MongoDB command appears to miss the expected marker '{marker}'.",
+                    "suggestion": "Include the required MongoDB stage or operation from the question.",
+                    "score_cap": 45,
+                }
+                for marker in expected_markers
+            ],
         }
 
     return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
@@ -731,6 +3027,52 @@ def _build_deterministic_baseline_package(question, model_answer, language):
     if language in {"python", "java", "javascript"}:
         return _deterministic_code_baselines(question, language)
     return _deterministic_markup_baselines(question, language)
+
+
+def _is_specific_template_family(template_family):
+    family = (template_family or "").strip().lower()
+    broad_suffixes = {
+        "::generic",
+        "::array_ops",
+        "::string_ops",
+        "::static_template",
+    }
+    return bool(family) and not any(family.endswith(suffix) for suffix in broad_suffixes)
+
+
+def _prune_placeholder_tests(test_sets, template_family):
+    if not _is_specific_template_family(template_family):
+        return test_sets
+
+    cleaned = {"positive": [], "negative": []}
+    for bucket in ("positive", "negative"):
+        normalized_items = [
+            _normalize_test_case(item)
+            for item in (test_sets or {}).get(bucket, [])
+        ]
+        has_exact_expected_output = any(
+            item and item.get("expected_output") != "null"
+            for item in normalized_items
+        )
+        for normalized in normalized_items:
+            if not normalized:
+                continue
+            expected_output = normalized.get("expected_output")
+            description = (normalized.get("description") or "").strip().lower()
+            if expected_output == "null" and (
+                has_exact_expected_output
+                or "baseline" in description
+                or "representative" in description
+                or "edge-case" in description
+                or "edge case" in description
+                or "single-character" in description
+                or "single element" in description
+                or "mixed-sign" in description
+                or "string containing space" in description
+            ):
+                continue
+            cleaned[bucket].append(normalized)
+    return cleaned
 
 
 def _merge_generated_package(base_payload, generated_payload):
@@ -760,7 +3102,10 @@ def _merge_generated_package(base_payload, generated_payload):
             if normalized and normalized not in seen:
                 seen.append(normalized)
         combined_tests[bucket] = seen[:AUTO_GENERATE_MAX_HIDDEN_TESTS]
-    merged["test_sets"] = combined_tests
+    merged["test_sets"] = _prune_placeholder_tests(
+        combined_tests,
+        merged.get("template_family") or generated_payload.get("template_family"),
+    )
     return merged
 
 
@@ -768,6 +3113,7 @@ def merge_with_existing_profiles(payload, existing_profiles):
     merged = dict(payload or {})
     signature = _normalize_question_signature(merged.get("question"), merged.get("language"))
     template_family = merged.get("template_family") or _infer_template_family(merged.get("question"), merged.get("language"))
+    model_answer = merged.get("model_answer") or ""
     merged["question_signature"] = signature
     merged["template_family"] = template_family
 
@@ -779,7 +3125,12 @@ def merge_with_existing_profiles(payload, existing_profiles):
     for profile in existing_profiles or []:
         profile_signature = _normalize_question_signature(profile.get("question"), profile.get("language"))
         profile_family = profile.get("template_family") or _infer_template_family(profile.get("question"), profile.get("language"))
-        if profile_signature != signature and profile_family != template_family:
+        signature_match = profile_signature == signature
+        family_match = (
+            profile_family == template_family
+            and _is_specific_template_family(template_family)
+        )
+        if not signature_match and not family_match:
             continue
         profile_question = (profile.get("question") or "").strip()
         if profile_question and profile_question not in reused_from_questions:
@@ -787,20 +3138,26 @@ def merge_with_existing_profiles(payload, existing_profiles):
         for answer in profile.get("accepted_solutions", []) or profile.get("alternative_answers", []) or []:
             if isinstance(answer, str) and answer.strip() and answer not in accepted:
                 accepted.append(answer.strip())
-        for item in (profile.get("incorrect_patterns") or []):
-            normalized = _normalize_incorrect_pattern(item)
-            if normalized and normalized not in incorrect_patterns:
-                incorrect_patterns.append(normalized)
+        if signature_match:
+            for item in (profile.get("incorrect_patterns") or []):
+                normalized = _normalize_incorrect_pattern(item)
+                if (
+                    normalized
+                    and _is_pattern_aligned_with_model(normalized.get("pattern"), model_answer)
+                    and normalized not in incorrect_patterns
+                ):
+                    incorrect_patterns.append(normalized)
         profile_test_sets = profile.get("test_sets") or {}
         legacy_hidden = profile.get("hidden_tests") or []
-        for item in profile_test_sets.get("positive", []) + legacy_hidden:
-            normalized = _normalize_test_case(item)
-            if normalized and normalized not in test_sets["positive"]:
-                test_sets["positive"].append(normalized)
-        for item in profile_test_sets.get("negative", []):
-            normalized = _normalize_test_case(item)
-            if normalized and normalized not in test_sets["negative"]:
-                test_sets["negative"].append(normalized)
+        if signature_match or family_match:
+            for item in profile_test_sets.get("positive", []) + legacy_hidden:
+                normalized = _normalize_test_case(item)
+                if normalized and normalized not in test_sets["positive"]:
+                    test_sets["positive"].append(normalized)
+            for item in profile_test_sets.get("negative", []):
+                normalized = _normalize_test_case(item)
+                if normalized and normalized not in test_sets["negative"]:
+                    test_sets["negative"].append(normalized)
 
     merged.setdefault("accepted_solutions", [])
     merged.setdefault("incorrect_patterns", [])
@@ -821,10 +3178,13 @@ def merge_with_existing_profiles(payload, existing_profiles):
 
     merged["accepted_solutions"] = accepted[:AUTO_GENERATE_MAX_ALTERNATIVES]
     merged["incorrect_patterns"] = incorrect_patterns
-    merged["test_sets"] = {
-        "positive": test_sets["positive"][:AUTO_GENERATE_MAX_HIDDEN_TESTS],
-        "negative": test_sets["negative"][:AUTO_GENERATE_MAX_HIDDEN_TESTS],
-    }
+    merged["test_sets"] = _prune_placeholder_tests(
+        {
+            "positive": test_sets["positive"][:AUTO_GENERATE_MAX_HIDDEN_TESTS],
+            "negative": test_sets["negative"][:AUTO_GENERATE_MAX_HIDDEN_TESTS],
+        },
+        template_family,
+    )
     merged["reused_from_questions"] = reused_from_questions
     return merged
 
@@ -838,14 +3198,17 @@ def _promote_learning_patterns(payload):
     repeated_bad = {}
     repeated_good = {}
     low_score_hits = 0
+    model_answer = payload.get("model_answer") or ""
 
     for item in list_recent_learning_signals(limit=500):
         if (item.get("language") or "").strip().lower() != (payload.get("language") or "").strip().lower():
             continue
         metadata = item.get("metadata") or {}
-        if metadata.get("question_signature") != signature and metadata.get("template_family") != template_family:
+        if metadata.get("question_signature") != signature:
             continue
         raw_answer = (item.get("student_answer_text") or "").strip()
+        if raw_answer and not _is_answer_aligned_with_model(raw_answer, model_answer):
+            continue
         if item.get("status") != "error" and item.get("score", 0) >= 90 and raw_answer:
             entry = repeated_good.setdefault(raw_answer, {"count": 0})
             entry["count"] += 1

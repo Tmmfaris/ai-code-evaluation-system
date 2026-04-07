@@ -43,6 +43,15 @@ def get_question_profile(question_id: str):
     return deepcopy(profile) if profile else profile
 
 
+def get_question_profile_fresh(question_id: str):
+    if not question_id:
+        return None
+    profile = _REPOSITORY.get(question_id)
+    _get_question_profile_cached.cache_clear()
+    _list_question_profiles_cached.cache_clear()
+    return deepcopy(profile) if profile else profile
+
+
 @lru_cache(maxsize=1)
 def _list_question_profiles_cached():
     return tuple(_REPOSITORY.list_all())

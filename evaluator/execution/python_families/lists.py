@@ -3,6 +3,33 @@ def _contains(question_text, *parts):
 
 
 def evaluate_list_family(question, question_text, families, normalized_student, student_answer):
+    if (
+        ((_contains(question_text, "maximum") or _contains(question_text, "max")))
+        and (_contains(question_text, "list") or _contains(question_text, "array"))
+        and ("returnmax(lst)" in normalized_student or "returnmax(arr)" in normalized_student)
+    ):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly returns the maximum value in the collection.",
+        }
+
+    if (
+        ((_contains(question_text, "maximum") or _contains(question_text, "max")))
+        and (_contains(question_text, "list") or _contains(question_text, "array"))
+        and (
+            "returnsorted(lst)[-1]" in normalized_student
+            or "returnsorted(arr)[-1]" in normalized_student
+        )
+    ):
+        return {
+            "result_type": "correct_but_inefficient",
+            "correctness_min": 36,
+            "efficiency_max": 12,
+            "feedback": "The function correctly finds the maximum value, but sorting the whole collection is less efficient than a direct maximum scan.",
+            "suggestion": "Use max(lst) or a single-pass comparison instead of sorting the entire collection.",
+        }
+
     if (_contains(question_text, "maximum") or _contains(question_text, "max")) and _contains(question_text, "list") and "returnlst[0]" in normalized_student:
         return {
             "result_type": "zero_pass",
@@ -10,6 +37,15 @@ def evaluate_list_family(question, question_text, families, normalized_student, 
             "efficiency_max": 5,
             "feedback": "Returning only the first element works only when the maximum happens to be at the front of the list.",
             "suggestion": "Scan the whole list or use max(lst) to return the largest value.",
+        }
+
+    if (_contains(question_text, "maximum") or _contains(question_text, "max")) and _contains(question_text, "array") and "returnarr[0]" in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "Returning only the first element works only when the maximum happens to be at the front of the array.",
+            "suggestion": "Scan the whole array or use max(arr) to return the largest value.",
         }
 
     if _contains(question_text, "majority", "element") and "forxinlst" in normalized_student and "lst.count(x)>len(lst)//2" in normalized_student and "returnx" in normalized_student:

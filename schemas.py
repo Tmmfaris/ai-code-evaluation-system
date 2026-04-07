@@ -135,9 +135,6 @@ class QuestionPackageResponse(BaseModel):
     package_summary: Optional[str] = None
     package_confidence: Optional[float] = None
     review_required: Optional[bool] = None
-    approval_status: Optional[str] = None
-    approved_by: Optional[str] = None
-    exam_ready: Optional[bool] = None
     positive_test_count: Optional[int] = None
     negative_test_count: Optional[int] = None
     reused_from_questions: Optional[List[str]] = None

@@ -21,9 +21,13 @@ def evaluate_string_family(question, question_text, families, normalized_student
 
     if (_contains(question_text, "length", "string") or _contains(question_text, "find", "length")) and "returnlen(str(s))" in normalized_student:
         return {
-            "result_type": "full_pass",
-            "correctness_min": 36,
-            "feedback": "The function correctly returns the length of the string.",
+            "result_type": "mostly_correct",
+            "correctness_max": 20,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The result is correct for strings, but converting the input with str() broadens the behavior beyond a strict string-length question.",
+            "suggestion": "Return len(s) directly when the task is specifically about the input string length.",
         }
 
     if (_contains(question_text, "length", "string") or _contains(question_text, "find", "length")) and normalized_student.endswith("returns"):
@@ -66,6 +70,34 @@ def evaluate_string_family(question, question_text, families, normalized_student
             "efficiency_max": 5,
             "feedback": "Returning the string length counts every character, not just the vowels.",
             "suggestion": "Count only the characters that are vowels, for example by checking membership in 'aeiou'.",
+        }
+
+    if "count_vowels" in families and (
+        "returnsum(1forcinsifcin'aeiouaeiou')" in normalized_student
+        or 'returnsum(1forcinsifcin"aeiouaeiou")' in normalized_student
+        or "returnlen([cforcinsifcin'aeiouaeiou'])" in normalized_student
+        or 'returnlen([cforcinsifcin"aeiouaeiou"])' in normalized_student
+    ):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly counts the vowels in the string.",
+        }
+
+    if "count_vowels" in families and (
+        "returnsum(1forcinsifcin'aeiou')" in normalized_student
+        or 'returnsum(1forcinsifcin"aeiou")' in normalized_student
+        or "returnlen([cforcinsifcin'aeiou'])" in normalized_student
+        or 'returnlen([cforcinsifcin"aeiou"])' in normalized_student
+    ):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 18,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The function counts lowercase vowels, but it misses uppercase vowel inputs.",
+            "suggestion": "Include both lowercase and uppercase vowels, or normalize the string before checking each character.",
         }
 
     if "palindrome_ignore_case" in families and "returns==s[::-1]" in normalized_student and ".lower()" not in normalized_student and ".casefold()" not in normalized_student:

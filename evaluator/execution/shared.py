@@ -90,6 +90,12 @@ def _extract_first_function_name(code):
     try:
         tree = ast.parse(code)
     except Exception:
+        javascript_match = re.search(
+            r"\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+            code or "",
+        )
+        if javascript_match:
+            return javascript_match.group(1)
         return None
 
     for node in tree.body:
@@ -148,6 +154,10 @@ def _extract_class_method_name(code, class_name, method_name):
 def _question_contains(question, *parts):
     lowered = (question or "").lower()
     return all(part in lowered for part in parts)
+
+
+def _uses_string_coercion_for_length(normalized_student):
+    return bool(re.search(r"return\(*len\(str\(", normalized_student or ""))
 
 
 def _normalize_java(code):
@@ -1991,6 +2001,17 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "structure_max": 12,
             "feedback": "The length result is correct, but it does not follow the requirement to avoid using len().",
             "suggestion": "Count the characters manually with a loop and a counter variable instead of calling len().",
+        }
+
+    if "string_length" in families and _uses_string_coercion_for_length(normalized_student):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 20,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "The result is correct for strings, but converting the input with str() broadens the behavior beyond a strict string-length question.",
+            "suggestion": "Return len(s) directly when the task is specifically about the input string length.",
         }
 
     if (_question_contains(question, "only alphabets") or _question_contains(question, "only alphabet")) and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:

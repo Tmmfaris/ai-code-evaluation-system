@@ -23,4 +23,15 @@ def analyze_string_rules(question_text, function_node, student_answer, helpers):
             "suggestion": "Compare the original string with its reverse or an equivalent mirrored check."
         })
 
+    if "count vowels" in question_text and helpers["_contains_lowercase_vowel_membership"](function_node) and not helpers["_has_lower_or_casefold"](function_node):
+        findings.append({
+            "type": "correct_solution_with_penalty",
+            "correctness_min": 30,
+            "efficiency_max": 15,
+            "readability_min": 8,
+            "structure_min": 12,
+            "feedback": "The code counts lowercase vowels only and misses uppercase vowel inputs.",
+            "suggestion": "Normalize the string or check against both lowercase and uppercase vowels."
+        })
+
     return findings

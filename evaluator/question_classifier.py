@@ -50,11 +50,17 @@ def _classify_question_cached(question, language):
     if any(token in question_text for token in ("binary search", "sort", "top 2", "second largest", "minimum", "maximum", "min", "max")):
         return mark("arrays_search_sort", "search_sort", "medium", "arrays", "search_sort")
 
-    if any(token in question_text for token in ("reverse", "palindrome", "vowel", "lowercase", "uppercase", "empty", "digits", "numeric", "anagram", "email")):
-        return mark("strings", "string_processing", "low", "strings")
-
     if any(token in question_text for token in ("array", "list", "flatten", "common elements", "duplicates", "frequency", "sum of array", "average of array")):
         return mark("arrays_lists", "data_processing", "medium", "arrays", "lists")
+
+    if any(token in question_text for token in ("array is empty", "empty array")):
+        return mark("arrays_lists", "data_processing", "medium", "arrays", "lists", "emptiness")
+
+    if any(token in question_text for token in ("length of string", "find length of string", "string length")):
+        return mark("strings", "string_processing", "low", "strings", "length")
+
+    if any(token in question_text for token in ("reverse", "palindrome", "vowel", "lowercase", "uppercase", "empty", "digits", "numeric", "anagram", "email")):
+        return mark("strings", "string_processing", "low", "strings")
 
     if any(token in question_text for token in ("factorial", "prime", "power of 2", "power of two", "positive", "even", "sum of digits", "add two numbers", "cube", "square")):
         return mark("basics_math", "basic_logic", "low", "math", "basics")
