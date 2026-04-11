@@ -17,6 +17,8 @@ from schemas import (
     ConceptEvaluation,
     MultiQuestionPackageRequest,
     QuestionPackageResponse,
+    QuestionPackageEditRequest,
+    ApprovalRequest,
 )
 
 from evaluator.question_profile_store import get_question_profile_fresh
@@ -31,7 +33,14 @@ from evaluator.question_learning_store import save_learning_signal
 from evaluator.comparison.feedback_generator import sanitize_text_or_fallback, choose_safe_improvement
 from utils.helpers import normalize_code
 from utils.logger import log_error, log_info
-from config import REQUIRE_VALIDATED_QUESTION_PACKAGE, STRICT_EVALUATION_BY_QUESTION_ID
+from config import (
+    REQUIRE_VALIDATED_QUESTION_PACKAGE,
+    STRICT_EVALUATION_BY_QUESTION_ID,
+    ALWAYS_LLM_REVIEW,
+    LLM_REVIEW_MAX_ATTEMPTS,
+    AUTO_REPAIR_BAD_PACKAGES,
+    REQUIRE_FACULTY_APPROVAL_FOR_LIVE,
+)
 
 
 _EVALUATOR_MODULE_NAMES = [
@@ -106,6 +115,88 @@ def _is_redundant_suggestion(feedback, suggestion):
 
     overlap = len(feedback_tokens & suggestion_tokens) / max(1, len(suggestion_tokens))
     return overlap >= 0.7
+
+
+def _match_incorrect_pattern(student_answer, pattern_item):
+    pattern = (pattern_item or {}).get("pattern", "")
+    if not pattern:
+        return False
+    code = (student_answer or "")
+    normalized_code = "".join(code.lower().split())
+    match_type = ((pattern_item or {}).get("match_type") or "contains").lower()
+
+    if match_type == "regex":
+        try:
+            return re.search(pattern, code, re.IGNORECASE) is not None
+        except re.error:
+            return False
+    if match_type == "normalized_contains":
+        return "".join(pattern.lower().split()) in normalized_code
+    return pattern.lower() in code.lower()
+
+
+def _has_placeholder_tests(test_sets):
+    test_sets = test_sets or {}
+    all_tests = list(test_sets.get("positive") or []) + list(test_sets.get("negative") or [])
+    for item in all_tests:
+        description = (item or {}).get("description") or ""
+        if isinstance(description, str) and "faculty model answer baseline" in description.lower():
+            return True
+    return False
+
+
+def _has_fallback_feedback(patterns):
+    for item in patterns or []:
+        feedback = (item or {}).get("feedback") or ""
+        lowered = feedback.lower()
+        if ("safe fallback" in lowered and "primary review" in lowered) or (
+            "retry the evaluation" in lowered and "rule-based checks" in lowered
+        ):
+            return True
+    return False
+
+
+def _is_bad_question_package(profile, require_approval=None):
+    if not profile:
+        return True
+    status = (profile.get("package_status") or "").strip().lower()
+    if status not in {"validated", "live"}:
+        return True
+    if require_approval is None:
+        require_approval = REQUIRE_FACULTY_APPROVAL_FOR_LIVE
+    if require_approval:
+        approval_status = (profile.get("approval_status") or "pending").strip().lower()
+        if approval_status != "approved":
+            return True
+    if bool(profile.get("review_required", True)):
+        return True
+    template_family = (profile.get("template_family") or "").strip().lower()
+    if template_family.endswith("::generic") or template_family == "python::generic":
+        return True
+    if _has_placeholder_tests(profile.get("test_sets") or {}):
+        return True
+    if _has_fallback_feedback(profile.get("incorrect_patterns") or []):
+        return True
+    confidence = float(profile.get("package_confidence", 0.0) or 0.0)
+    if confidence < 0.999:
+        return True
+    return False
+
+
+def _try_repair_package(profile):
+    if not profile:
+        return None
+    try:
+        payload = {
+            "question_id": profile.get("question_id"),
+            "question": profile.get("question"),
+            "model_answer": profile.get("model_answer"),
+            "language": profile.get("language"),
+        }
+        saved = prepare_question_profiles([payload], force_llm=True)
+        return saved[0] if saved else None
+    except Exception:
+        return None
 
 
 def normalize_known_accuracy_result(result):
@@ -200,6 +291,12 @@ def build_evaluation_data(result):
         result.get("suggestions") or result.get("improvements") or "",
         "",
     )
+    if suggestion:
+        lowered = suggestion.lower()
+        if "safe fallback" in lowered and "primary review" in lowered:
+            suggestion = ""
+        elif "retry the evaluation" in lowered and "rule-based checks" in lowered:
+            suggestion = ""
 
     if suggestion and not _is_redundant_suggestion(feedback, suggestion):
         feedback = f"{feedback} {suggestion}".strip()
@@ -764,7 +861,13 @@ def _package_specific_findings(profile):
     return findings
 
 
-def _evaluate_single_submission(student_id, submission):
+def _evaluate_single_submission(
+    student_id,
+    submission,
+    force_llm_when_not_deterministic=False,
+    llm_review=False,
+    llm_review_max_attempts=None,
+):
     profile = get_question_profile_fresh(submission.question_id) if submission.question_id else None
     direct_question = (submission.question or "").strip()
     direct_model_answer = (submission.model_answer or "").strip()
@@ -794,6 +897,33 @@ def _evaluate_single_submission(student_id, submission):
             "question_metadata": {},
         }
 
+    if REQUIRE_VALIDATED_QUESTION_PACKAGE:
+        if not profile:
+            return {
+                "question_id": submission.question_id,
+                "question": "",
+                "model_answer": "",
+                "student_answer": submission.student_answer,
+                "language": (submission.language or "").strip().lower(),
+                "error": "Question package is not registered or approved for scoring",
+                "question_metadata": {},
+            }
+        if _is_bad_question_package(profile):
+            return {
+                "question_id": submission.question_id,
+                "question": (profile or {}).get("question", ""),
+                "model_answer": (profile or {}).get("model_answer", ""),
+                "student_answer": submission.student_answer,
+                "language": (profile or {}).get("language", ""),
+                "error": "Question package is not validated/approved for scoring",
+                "question_metadata": {
+                    "package_status": (profile or {}).get("package_status"),
+                    "package_confidence": (profile or {}).get("package_confidence", 0.0),
+                    "review_required": (profile or {}).get("review_required", True),
+                    "approval_status": (profile or {}).get("approval_status"),
+                },
+            }
+
     profile_question = ((profile or {}).get("question") or "").strip()
     profile_model_answer = ((profile or {}).get("model_answer") or "").strip()
     profile_language = (((profile or {}).get("language") or "")).strip().lower()
@@ -808,6 +938,16 @@ def _evaluate_single_submission(student_id, submission):
         and direct_language == profile_language
     )
     use_profile_package = bool(profile and (not has_inline_question_context or direct_context_matches_profile))
+    if use_profile_package and _is_bad_question_package(profile):
+        if AUTO_REPAIR_BAD_PACKAGES:
+            refreshed = _try_repair_package(profile)
+            if refreshed and not _is_bad_question_package(refreshed):
+                profile = refreshed
+                use_profile_package = True
+            elif has_inline_question_context:
+                use_profile_package = False
+        elif has_inline_question_context:
+            use_profile_package = False
 
     question = direct_question or profile_question
     model_answer = direct_model_answer or profile_model_answer
@@ -943,6 +1083,9 @@ def _evaluate_single_submission(student_id, submission):
         language=language,
         reference_answers=reference_answers,
         question_metadata=question_metadata,
+        force_llm_when_not_deterministic=force_llm_when_not_deterministic,
+        force_llm_review=llm_review,
+        llm_review_max_attempts=llm_review_max_attempts,
     )
 
     if result.get("status") == "error":
@@ -972,10 +1115,32 @@ def _evaluate_single_submission(student_id, submission):
             )
         ),
     }
+
+    # If LLM fell back, replace with deterministic feedback when possible.
+    feedback_text = (result["data"].feedback or "").lower()
+    if "safe fallback" in feedback_text and "primary review" in feedback_text:
+        replacement = ""
+        for item in question_metadata.get("incorrect_patterns", []) or []:
+            if _match_incorrect_pattern(submission.student_answer, item):
+                replacement = (item.get("feedback") or "").strip()
+                if replacement:
+                    break
+        if not replacement:
+            replacement = (
+                "The student logic does not correctly solve the problem yet."
+                if result["data"].score < 60
+                else "The student used a different approach, but the logic is correct."
+            )
+        result["data"].feedback = replacement
     return result
 
 
-def build_student_evaluation_response(req: StudentEvaluationRequest):
+def build_student_evaluation_response(
+    req: StudentEvaluationRequest,
+    force_llm_when_not_deterministic=False,
+    llm_review=False,
+    llm_review_max_attempts=None,
+):
     if not req.submissions:
         raise HTTPException(status_code=400, detail="No question submissions provided")
 
@@ -988,7 +1153,14 @@ def build_student_evaluation_response(req: StudentEvaluationRequest):
     max_workers = min(4, len(req.submissions)) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_evaluate_single_submission, req.student_id, submission): index
+            executor.submit(
+                _evaluate_single_submission,
+                req.student_id,
+                submission,
+                force_llm_when_not_deterministic,
+                llm_review,
+                llm_review_max_attempts,
+            ): index
             for index, submission in enumerate(req.submissions)
         }
 
@@ -1082,7 +1254,26 @@ def build_multi_student_evaluation_response(req: MultiStudentEvaluationRequest):
 
     def _evaluate_one_student(index, student_req):
         try:
-            return index, build_student_evaluation_response(student_req)
+            review_flag = (
+                student_req.llm_review
+                if student_req.llm_review is not None
+                else req.llm_review
+            )
+            if review_flag is None:
+                review_flag = ALWAYS_LLM_REVIEW
+            review_attempts = (
+                student_req.llm_review_max_attempts
+                if student_req.llm_review_max_attempts is not None
+                else req.llm_review_max_attempts
+            )
+            if review_attempts is None:
+                review_attempts = LLM_REVIEW_MAX_ATTEMPTS
+            return index, build_student_evaluation_response(
+                student_req,
+                force_llm_when_not_deterministic=True,
+                llm_review=bool(review_flag),
+                llm_review_max_attempts=review_attempts,
+            )
         except HTTPException as exc:
             return index, StudentEvaluationResponse(
                 student_id=student_req.student_id,
@@ -1161,19 +1352,57 @@ def register_question_profiles(req: MultiQuestionPackageRequest):
     if len(req.questions) > 50:
         raise HTTPException(status_code=400, detail="Maximum 50 questions per request")
 
-    saved = prepare_question_profiles([item.model_dump() for item in req.questions])
-    return [QuestionPackageResponse(**item) for item in saved]
+    saved = prepare_question_profiles([item.model_dump() for item in req.questions], force_llm=True)
+    bad = [item for item in saved if _is_bad_question_package(item, require_approval=False)]
+    if bad:
+        detail = [
+            {
+                "question_id": item.get("question_id"),
+                "question": item.get("question"),
+                "package_status": item.get("package_status"),
+                "package_confidence": item.get("package_confidence"),
+                "review_required": item.get("review_required"),
+                "template_family": item.get("template_family"),
+            }
+            for item in bad
+        ]
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Question package generation failed to produce fully correct packages.",
+                "items": detail,
+            },
+        )
+    responses = []
+    for item in saved:
+        payload = dict(item)
+        payload["validation_options"] = {
+            "question": item.get("question"),
+            "model_answer": item.get("model_answer"),
+            "language": item.get("language"),
+            "accepted_solutions": item.get("accepted_solutions") or [],
+            "test_sets": item.get("test_sets") or {},
+            "incorrect_patterns": item.get("incorrect_patterns") or [],
+            "package_summary": item.get("package_summary"),
+            "package_confidence": item.get("package_confidence"),
+        }
+        responses.append(QuestionPackageResponse(**payload))
+    return responses
 
 
-@app.post("/questions/{question_id}/approve", response_model=QuestionPackageResponse, response_model_exclude_none=True, include_in_schema=False)
-def approve_question_profile(question_id: str, approved_by: str = "faculty"):
-    profile = approve_registered_question(question_id, approved_by=approved_by)
+@app.post("/questions/{question_id}/approve", response_model=QuestionPackageResponse, response_model_exclude_none=True)
+def approve_question_profile(question_id: str, req: ApprovalRequest):
+    edits = req.model_dump(exclude_unset=True)
+    approved_by = edits.pop("approved_by", "faculty")
+    edits.pop("checklist", None)
+    edits.pop("approval_notes", None)
+    profile = approve_registered_question(question_id, approved_by=approved_by, edits=edits)
     if not profile:
         raise HTTPException(status_code=404, detail="Question profile not found")
     return QuestionPackageResponse(**profile)
 
 
-@app.get("/questions/{question_id}", response_model=QuestionPackageResponse, response_model_exclude_none=True, include_in_schema=False)
+@app.get("/questions/{question_id}", response_model=QuestionPackageResponse, response_model_exclude_none=True)
 def get_question_package(question_id: str):
     profile = get_registered_question_package(question_id)
     if not profile:
@@ -1181,7 +1410,44 @@ def get_question_package(question_id: str):
     return QuestionPackageResponse(**profile)
 
 
-@app.get("/questions/review/pending", response_model=list[QuestionPackageResponse], response_model_exclude_none=True, include_in_schema=False)
+@app.patch("/questions/{question_id}/edit", response_model=QuestionPackageResponse, response_model_exclude_none=True)
+def edit_question_package(question_id: str, req: QuestionPackageEditRequest):
+    profile = get_registered_question_package(question_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Question profile not found")
+
+    updates = req.model_dump(exclude_unset=True)
+    if not updates:
+        return QuestionPackageResponse(**profile)
+
+    patched = dict(profile)
+    patched.update(updates)
+
+    # If faculty edits content, require re-validation and re-approval.
+    content_keys = {"question", "model_answer", "language", "accepted_solutions", "test_sets", "incorrect_patterns"}
+    if content_keys & set(updates.keys()):
+        patched["approval_status"] = "pending"
+        patched["review_required"] = True
+
+    saved = prepare_question_profiles([patched], force_llm=True)[0]
+    return QuestionPackageResponse(**saved)
+
+
+@app.get("/questions/review/pending", response_model=list[QuestionPackageResponse], response_model_exclude_none=True)
 def get_pending_question_packages():
     profiles = list_pending_question_packages()
     return [QuestionPackageResponse(**item) for item in profiles]
+
+
+@app.post("/questions/approve-all", response_model=list[QuestionPackageResponse], response_model_exclude_none=True)
+def approve_all_question_packages(approved_by: str = "faculty"):
+    profiles = list_pending_question_packages()
+    approved = []
+    for item in profiles:
+        question_id = item.get("question_id")
+        if not question_id:
+            continue
+        profile = approve_registered_question(question_id, approved_by=approved_by)
+        if profile:
+            approved.append(QuestionPackageResponse(**profile))
+    return approved

@@ -26,12 +26,14 @@ from evaluator.orchestration.confidence import (
     apply_confidence_bounds,
     infer_confidence_score,
 )
+from evaluator.question_learning_store import save_learning_signal
+from llm.llm_engine import is_llm_available
 
 from utils.logger import log_info, log_error, log_request, log_result
 from utils.formatter import format_final_output, format_error_response
 from utils.helpers import clean_text, normalize_code, normalize_python_structure, is_empty
 
-from config import ENABLE_SYNTAX_CHECK, SUPPORTED_LANGUAGES
+from config import ENABLE_SYNTAX_CHECK, SUPPORTED_LANGUAGES, FORCE_LLM_WHEN_NOT_DETERMINISTIC, LLM_REVIEW_MAX_ATTEMPTS
 import re
 
 
@@ -51,6 +53,51 @@ def _normalize_reference_answers(sample_answer, reference_answers):
         if cleaned and cleaned not in refs:
             refs.append(cleaned)
     return refs
+
+
+def _normalize_question_signature(question, language):
+    normalized_question = re.sub(r"\s+", " ", (question or "").strip().lower())
+    normalized_question = re.sub(r"[^a-z0-9 ]", "", normalized_question)
+    return f"{(language or '').strip().lower()}::{normalized_question}"
+
+
+def _save_learning_signal_safe(
+    *,
+    question,
+    language,
+    question_metadata,
+    student_answer_text,
+    normalized_student_answer,
+    feedback,
+    score,
+    used_llm,
+    evaluation_mode,
+    sample_answer,
+):
+    try:
+        metadata = {
+            "question_signature": _normalize_question_signature(question, language),
+            "template_family": (question_metadata or {}).get("template_family"),
+            "evaluation_mode": evaluation_mode,
+            "question": question,
+            "sample_answer": sample_answer,
+        }
+        payload = {
+            "question_id": (question_metadata or {}).get("question_id") or (question_metadata or {}).get("id"),
+            "language": language,
+            "package_status": (question_metadata or {}).get("package_status"),
+            "package_confidence": (question_metadata or {}).get("package_confidence", 0.0),
+            "used_fallback": bool(used_llm),
+            "status": "llm" if used_llm else "deterministic",
+            "score": score,
+            "student_answer_text": student_answer_text,
+            "normalized_student_answer": normalized_student_answer,
+            "feedback": feedback,
+            "metadata": metadata,
+        }
+        save_learning_signal(payload)
+    except Exception:
+        pass
 
 
 def _execution_priority(execution_finding):
@@ -151,7 +198,19 @@ def should_use_deterministic_shortcut(language, syntax_result, execution_finding
     )
 
 
-def should_use_rule_only_shortcut(language, syntax_result, execution_finding, rule_findings=None):
+def should_use_rule_only_shortcut(
+    language,
+    syntax_result,
+    execution_finding,
+    rule_findings=None,
+    force_llm_when_not_deterministic=False,
+):
+    if force_llm_when_not_deterministic and is_llm_available():
+        return False
+
+    if FORCE_LLM_WHEN_NOT_DETERMINISTIC and is_llm_available():
+        return False
+
     if language in {"python", "java"}:
         return False
 
@@ -238,7 +297,18 @@ def apply_java_accuracy_overrides(question, student_answer, syntax_result, execu
     return parsed_llm, rubric_score
 
 
-def evaluate_submission(student_id, question, sample_answer, student_answer, language, reference_answers=None, question_metadata=None):
+def evaluate_submission(
+    student_id,
+    question,
+    sample_answer,
+    student_answer,
+    language,
+    reference_answers=None,
+    question_metadata=None,
+    force_llm_when_not_deterministic=False,
+    force_llm_review=False,
+    llm_review_max_attempts=None,
+):
     """
     Main entry point for evaluation.
     """
@@ -246,6 +316,7 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
     try:
         log_request(student_id, question)
 
+        raw_student_answer = student_answer
         question = clean_text(question)
         sample_answer = clean_text(sample_answer)
         reference_answers = _normalize_package_reference_answers(reference_answers, question_metadata)
@@ -276,6 +347,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             log_info(
                 f"Evaluation path | Student: {student_id} | Language: {language} | Mode: exact_match"
             )
+            evaluation_mode = "exact_match"
+            used_llm = False
             parsed_llm = answer_comparator.build_exact_match_result(
                 question=question,
                 language=language,
@@ -324,6 +397,18 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 exact_match=True,
             )
             log_result(student_id, final_score)
+            _save_learning_signal_safe(
+                question=question,
+                language=language,
+                question_metadata=question_metadata,
+                student_answer_text=raw_student_answer,
+                normalized_student_answer=student_answer,
+                feedback=result.get("feedback", ""),
+                score=final_score,
+                used_llm=used_llm,
+                evaluation_mode=evaluation_mode,
+                sample_answer=sample_answer,
+            )
             return result
 
         syntax_result = run_syntax_check(student_answer, language)
@@ -341,8 +426,11 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             student_answer=student_answer,
             language=language,
         )
+        baseline_execution_finding = execution_finding
         test_sets = (question_metadata or {}).get("test_sets") or {}
-        hidden_tests = (question_metadata or {}).get("hidden_tests") or test_sets.get("positive") or []
+        hidden_tests = (question_metadata or {}).get("hidden_tests")
+        if not hidden_tests:
+            hidden_tests = (test_sets.get("positive") or []) + (test_sets.get("negative") or [])
         package_status = (question_metadata or {}).get("package_status")
         if language == "python" and hidden_tests:
             hidden_test_finding = evaluate_python_hidden_tests(student_answer, hidden_tests)
@@ -364,6 +452,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 execution_finding = hidden_test_finding
         if not execution_finding:
             rule_findings.extend(analyze_question_risk(question, language, question_profile))
+        if baseline_execution_finding and baseline_execution_finding is not execution_finding:
+            rule_findings.append(baseline_execution_finding)
         if execution_finding:
             rule_findings.append(execution_finding)
 
@@ -371,6 +461,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             log_info(
                 f"Evaluation path | Student: {student_id} | Language: {language} | Mode: syntax_error"
             )
+            evaluation_mode = "syntax_error"
+            used_llm = False
             parsed_llm = answer_comparator.build_syntax_error_result(syntax_result)
             rubric_score = dict(parsed_llm["rubric"])
         elif should_use_deterministic_shortcut(
@@ -384,6 +476,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 f"Evaluation path | Student: {student_id} | Language: {language} | "
                 f"Mode: deterministic_shortcut | Type: {execution_finding.get('result_type', 'unknown')}"
             )
+            evaluation_mode = "deterministic_shortcut"
+            used_llm = False
             parsed_llm = logic_checker.build_deterministic_result(
                 execution_finding=execution_finding,
                 structure_analysis=structure_analysis,
@@ -394,11 +488,14 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             syntax_result,
             execution_finding,
             rule_findings=rule_findings,
+            force_llm_when_not_deterministic=force_llm_when_not_deterministic,
         ):
             log_info(
                 f"Evaluation path | Student: {student_id} | Language: {language} | "
                 f"Mode: deterministic_rule_shortcut"
             )
+            evaluation_mode = "rule_only"
+            used_llm = False
             parsed_llm = logic_checker.build_rule_only_result(rule_findings)
             rubric_score = dict(parsed_llm["rubric"])
         else:
@@ -412,6 +509,8 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 f"Evaluation path | Student: {student_id} | Language: {language} | Mode: {mode} | Reason: {reason}"
             )
             log_info("Calling LLM...")
+            evaluation_mode = "llm"
+            used_llm = True
             parsed_llm = llm_comparator.compare_answers_with_llm(
                 question=question,
                 sample_answer=sample_answer,
@@ -512,9 +611,44 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
                 improvements=parsed_llm.get("improvements", ""),
                 rubric_score=rubric_score,
             )
-            final_score = audit_result["score"]
-            parsed_llm["feedback"] = audit_result["feedback"]
-            parsed_llm["improvements"] = audit_result["improvements"]
+            if not audit_result.get("_llm_fallback"):
+                final_score = audit_result["score"]
+                parsed_llm["feedback"] = audit_result["feedback"]
+                parsed_llm["improvements"] = audit_result["improvements"]
+
+        # Forced LLM review loop (optional): iterate until stable or max attempts.
+        if force_llm_review and is_llm_available():
+            attempts = int(llm_review_max_attempts or LLM_REVIEW_MAX_ATTEMPTS or 1)
+            attempts = max(1, attempts)
+            for _ in range(attempts):
+                audit_result = llm_comparator.audit_evaluation_with_llm(
+                    question=question,
+                    sample_answer=sample_answer,
+                    student_answer=student_answer,
+                    language=language,
+                    question_profile=question_profile,
+                    syntax_result=syntax_result,
+                    execution_finding=execution_finding,
+                    rule_findings=rule_findings,
+                    confidence=confidence,
+                    score=final_score,
+                    feedback=parsed_llm.get("feedback", ""),
+                    improvements=parsed_llm.get("improvements", ""),
+                    rubric_score=rubric_score,
+                )
+                if audit_result.get("_llm_fallback"):
+                    break
+                if (
+                    audit_result.get("score") == final_score
+                    and audit_result.get("feedback") == parsed_llm.get("feedback")
+                    and audit_result.get("improvements") == parsed_llm.get("improvements")
+                ):
+                    break
+                final_score = audit_result["score"]
+                parsed_llm["feedback"] = audit_result["feedback"]
+                parsed_llm["improvements"] = audit_result["improvements"]
+            used_llm = True
+            evaluation_mode = "llm_review"
 
         fallback_feedback = ""
         if execution_finding and execution_finding.get("feedback"):
@@ -568,6 +702,18 @@ def evaluate_submission(student_id, question, sample_answer, student_answer, lan
             result["confidence"] = 0.96
 
         log_result(student_id, final_score)
+        _save_learning_signal_safe(
+            question=question,
+            language=language,
+            question_metadata=question_metadata,
+            student_answer_text=raw_student_answer,
+            normalized_student_answer=student_answer,
+            feedback=result.get("feedback", ""),
+            score=final_score,
+            used_llm=used_llm,
+            evaluation_mode=evaluation_mode,
+            sample_answer=sample_answer,
+        )
         return result
 
     except Exception as exc:

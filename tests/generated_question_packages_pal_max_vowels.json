@@ -1,0 +1,276 @@
+[
+  {
+    "question_id": "q1",
+    "question": "Check if string is palindrome",
+    "model_answer": "def pal(s): return s == s[::-1]",
+    "language": "python",
+    "question_signature": "python::check if string is palindrome",
+    "template_family": "python::palindrome",
+    "accepted_solutions": [
+      "def pal(s): return s == s[::-1]",
+      "return s == s[::-1]"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[\"madam\"]",
+          "expected_output": "true",
+          "description": "palindrome string",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[\"level\"]",
+          "expected_output": "true",
+          "description": "another palindrome",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": false
+        }
+      ],
+      "negative": [
+        {
+          "input": "[\"hello\"]",
+          "expected_output": "false",
+          "description": "non-palindrome",
+          "kind": "normal",
+          "weight": 1.2,
+          "required": true
+        },
+        {
+          "input": "[\"ab\"]",
+          "expected_output": "false",
+          "description": "short non-palindrome",
+          "kind": "trap",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[\"\"]",
+          "expected_output": "true",
+          "description": "empty string edge case",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return true;",
+        "match_type": "contains",
+        "feedback": "Always returning true does not actually check whether the value is a palindrome.",
+        "suggestion": "Compare the value with its reverse or mirrored characters.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 5/5 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 3,
+    "reused_from_questions": [
+      "Check if string is palindrome"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "strings",
+      "task_type": "string_processing",
+      "risk": "low",
+      "markers": [
+        "strings"
+      ]
+    }
+  },
+  {
+    "question_id": "q2",
+    "question": "Find maximum in list",
+    "model_answer": "def max_val(lst): return max(lst)",
+    "language": "python",
+    "question_signature": "python::find maximum in list",
+    "template_family": "python::maximum_array",
+    "accepted_solutions": [
+      "def max_val(lst): return max(lst)",
+      "return max(lst)"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[[1,5,3]]",
+          "expected_output": "5",
+          "description": "mixed positive values",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[[-4,-2,-9]]",
+          "expected_output": "-2",
+          "description": "all negative values",
+          "kind": "edge",
+          "weight": 1.4,
+          "required": true
+        }
+      ],
+      "negative": [
+        {
+          "input": "[[7]]",
+          "expected_output": "7",
+          "description": "single element array",
+          "kind": "edge",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[[2,2,2]]",
+          "expected_output": "2",
+          "description": "duplicate maximum values",
+          "kind": "trap",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[[0,-1,-2]]",
+          "expected_output": "0",
+          "description": "includes zero",
+          "kind": "normal",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return lst[0]",
+        "match_type": "contains",
+        "feedback": "Returning only the first element does not find the maximum in general.",
+        "suggestion": "Scan every element and keep track of the largest value.",
+        "score_cap": 20
+      },
+      {
+        "pattern": "return arr[0];",
+        "match_type": "contains",
+        "feedback": "Returning only the first element does not find the maximum in general.",
+        "suggestion": "Scan every element and keep track of the largest value.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 5/5 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 3,
+    "reused_from_questions": [
+      "Find maximum in list"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "arrays_search_sort",
+      "task_type": "search_sort",
+      "risk": "medium",
+      "markers": [
+        "arrays",
+        "search_sort"
+      ]
+    }
+  },
+  {
+    "question_id": "q3",
+    "question": "Count vowels in string",
+    "model_answer": "def count_vowels(s): return sum(1 for c in s if c in \"aeiouAEIOU\")",
+    "language": "python",
+    "question_signature": "python::count vowels in string",
+    "template_family": "python::count_vowels",
+    "accepted_solutions": [
+      "def count_vowels(s): return sum(1 for c in s if c in \"aeiouAEIOU\")",
+      "def count_vowels(s): return sum(1 for c in s if c in 'aeiouAEIOU')",
+      "return sum(1 for c in s if c in 'aeiouAEIOU')",
+      "return len([c for c in s if c in 'aeiouAEIOU'])"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[\"hello\"]",
+          "expected_output": "2",
+          "description": "basic mixed vowel string",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[\"AEIOU\"]",
+          "expected_output": "5",
+          "description": "uppercase vowels",
+          "kind": "edge",
+          "weight": 1.2,
+          "required": true
+        }
+      ],
+      "negative": [
+        {
+          "input": "[\"\"]",
+          "expected_output": "0",
+          "description": "empty string",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        },
+        {
+          "input": "[\"xyz\"]",
+          "expected_output": "0",
+          "description": "no vowels",
+          "kind": "trap",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[\"Alphabet\"]",
+          "expected_output": "3",
+          "description": "mixed-case word",
+          "kind": "normal",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return 0",
+        "match_type": "contains",
+        "feedback": "Always returning 0 does not count vowels in the input string.",
+        "suggestion": "Check each character and count the ones that are vowels.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 5/5 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 3,
+    "reused_from_questions": [
+      "Count vowels in string"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "strings",
+      "task_type": "string_processing",
+      "risk": "low",
+      "markers": [
+        "strings"
+      ]
+    }
+  }
+]

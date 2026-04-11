@@ -77,6 +77,13 @@ def audit_evaluation_with_llm(
 
     raw_audit_output = call_llm(prompt)
     parsed_audit = parse_llm_response(raw_audit_output)
+    if parsed_audit.get("_llm_fallback"):
+        return {
+            "score": score,
+            "feedback": feedback,
+            "improvements": improvements,
+            "_llm_fallback": True,
+        }
 
     corrected_score = calibrate_final_score(
         base_score=score,
@@ -115,6 +122,7 @@ def audit_evaluation_with_llm(
         "score": corrected_score,
         "feedback": corrected_feedback,
         "improvements": corrected_improvements,
+        "_llm_fallback": False,
     }
 
 

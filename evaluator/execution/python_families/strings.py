@@ -111,6 +111,29 @@ def evaluate_string_family(question, question_text, families, normalized_student
             "suggestion": "Normalize the string with lower() or casefold() before comparing it with its reverse.",
         }
 
+    if (
+        "palindrome" in families
+        and "palindrome_number" not in families
+        and "palindrome_ignore_case" not in families
+        and "palindrome_ignore_non_alnum" not in families
+    ):
+        if "returns==s[::-1]" in normalized_student or "returns==\"\".join(reversed(s))" in normalized_student or "returns==''.join(reversed(s))" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly checks whether the string is a palindrome.",
+            }
+        if "returns[0]==s[-1]" in normalized_student or "returns[0]==s[len(s)-1]" in normalized_student:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 20,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "Checking only the first and last characters is not enough to determine whether the full string is a palindrome.",
+                "suggestion": "Compare the whole string to its reverse or check mirrored characters across the entire length.",
+            }
+
     if _contains(question_text, "empty", "string") and "returnnots" in normalized_student:
         return {
             "result_type": "full_pass",

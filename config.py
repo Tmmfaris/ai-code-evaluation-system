@@ -24,15 +24,15 @@ LLM_PROVIDER = "llama_cpp"
 GGUF_MODEL_PATH = "models/Phi-3-mini-4k-instruct-q4.gguf"
 
 # ⚡ Performance tuning
-N_CTX = 1024            # prompt ~200 tok + response ~130 tok; 1024 is plenty
-N_THREADS = 8           # 👉 set 6–8 if strong CPU
+N_CTX = 512             # conservative for 8 GB RAM
+N_THREADS = 4           # conservative for 8 GB RAM
 N_GPU_LAYERS = 0        # keep 0 (CPU mode)
 
 # =========================
 # 🔁 OLLAMA (FALLBACK)
 # =========================
 
-LLM_MODEL = "mistral"
+LLM_MODEL = "phi3-gguf"
 OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
 
 # =========================
@@ -142,11 +142,16 @@ QUESTION_PROFILE_DB_PATH = "data/question_profiles.db"
 AUTO_GENERATE_QUESTION_RULES = True
 AUTO_GENERATE_MAX_ALTERNATIVES = 3
 AUTO_GENERATE_MAX_HIDDEN_TESTS = 5
+QUESTION_REGISTER_MAX_ATTEMPTS = 5  # retries per question when LLM is enabled
 AUTO_ACTIVATE_VALIDATED_QUESTIONS = True
 REQUIRE_VALIDATED_QUESTION_PACKAGE = False
 STRICT_EVALUATION_BY_QUESTION_ID = True
 REQUIRE_FACULTY_APPROVAL_FOR_LIVE = True
 MIN_PACKAGE_CONFIDENCE_FOR_EXAM = 0.75
+FORCE_LLM_WHEN_NOT_DETERMINISTIC = True
+LLM_REVIEW_MAX_ATTEMPTS = 3
+ALWAYS_LLM_REVIEW = True
+AUTO_REPAIR_BAD_PACKAGES = True
 
 
 # ==============================

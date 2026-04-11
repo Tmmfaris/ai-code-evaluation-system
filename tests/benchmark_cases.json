@@ -96,8 +96,8 @@
     "question": "Write a function to find factorial using recursion",
     "model_answer": "def fact(n): return 1 if n == 0 else n * fact(n - 1)",
     "student_answer": "def fact(n): return n * n",
-    "expected_min_score": 10,
-    "expected_max_score": 20
+    "expected_min_score": 0,
+    "expected_max_score": 10
   },
   {
     "id": "py_add_uses_subtraction_wrong",
@@ -688,5 +688,1715 @@
     "student_answer": "public static boolean arm(int n){ int sum=0,t=n; while(t>0){ int d=t%10; sum+=d*d*d; t/=10;} return sum==n; }",
     "expected_min_score": 55,
     "expected_max_score": 80
+  },
+  {
+    "id": "py_positive_number_zero_included_partial",
+    "language": "python",
+    "category": "basics",
+    "question": "Check if number is positive",
+    "model_answer": "def is_pos(n): return n > 0",
+    "student_answer": "def is_pos(n): return n >= 0",
+    "expected_min_score": 55,
+    "expected_max_score": 80
+  },
+  {
+    "id": "py_odd_check_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Check if number is odd",
+    "model_answer": "def odd(n): return n % 2 != 0",
+    "student_answer": "def odd(n): return n % 2 != 0",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_odd_check_wrong_zero",
+    "language": "python",
+    "category": "basics",
+    "question": "Check if number is odd",
+    "model_answer": "def odd(n): return n % 2 != 0",
+    "student_answer": "def odd(n): return n % 2 == 0",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_average_list_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Find average of list",
+    "model_answer": "def avg(lst): return sum(lst) / len(lst)",
+    "student_answer": "def avg(lst): return sum(lst) / len(lst)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_average_list_sum_wrong",
+    "language": "python",
+    "category": "lists",
+    "question": "Find average of list",
+    "model_answer": "def avg(lst): return sum(lst) / len(lst)",
+    "student_answer": "def avg(lst): return sum(lst)",
+    "expected_min_score": 0,
+    "expected_max_score": 25
+  },
+  {
+    "id": "py_empty_list_check_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Check if list is empty",
+    "model_answer": "def empty(lst): return len(lst) == 0",
+    "student_answer": "def empty(lst): return not lst",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_empty_list_check_wrong",
+    "language": "python",
+    "category": "lists",
+    "question": "Check if list is empty",
+    "model_answer": "def empty(lst): return len(lst) == 0",
+    "student_answer": "def empty(lst): return True",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_subtract_two_numbers_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Subtract two numbers",
+    "model_answer": "def sub(a,b): return a - b",
+    "student_answer": "def sub(a,b): return a - b",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_subtract_two_numbers_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Subtract two numbers",
+    "model_answer": "def sub(a,b): return a - b",
+    "student_answer": "def sub(a,b): return a + b",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_multiply_two_numbers_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Multiply two numbers",
+    "model_answer": "def mul(a,b): return a * b",
+    "student_answer": "def mul(a,b): return a * b",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_divide_two_numbers_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Divide two numbers",
+    "model_answer": "def div(a,b): return a / b",
+    "student_answer": "def div(a,b): return a / b",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_uppercase_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Convert string to uppercase",
+    "model_answer": "def upper(s): return s.upper()",
+    "student_answer": "def upper(s): return s.upper()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_lowercase_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Convert string to lowercase",
+    "model_answer": "def lower(s): return s.lower()",
+    "student_answer": "def lower(s): return s.lower()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_reverse_string_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Reverse a string",
+    "model_answer": "def rev(s): return s[::-1]",
+    "student_answer": "def rev(s): return s[::-1]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_list_length_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Find length of list",
+    "model_answer": "def size(lst): return len(lst)",
+    "student_answer": "def size(lst): return len(lst)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_first_element_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Find first element in list",
+    "model_answer": "def first(lst): return lst[0]",
+    "student_answer": "def first(lst): return lst[0]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_last_element_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Find last element in list",
+    "model_answer": "def last(lst): return lst[-1]",
+    "student_answer": "def last(lst): return lst[-1]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_sum_list_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Find sum of list",
+    "model_answer": "def total(lst): return sum(lst)",
+    "student_answer": "def total(lst): return sum(lst)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_identity_check_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Check if two variables reference the same object (identity vs equality)",
+    "model_answer": "def same(a,b): return a is b",
+    "student_answer": "def same(a,b): return a is b",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_type_check_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Type check using isinstance",
+    "model_answer": "def is_int(x): return isinstance(x, int)",
+    "student_answer": "def is_int(x): return isinstance(x, int)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_membership_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Check if element is in list",
+    "model_answer": "def has(lst, x): return x in lst",
+    "student_answer": "def has(lst, x): return x in lst",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_async_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Write an async function",
+    "model_answer": "async def fetch(): return 1",
+    "student_answer": "async def fetch(): return 1",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_requests_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Make an HTTP GET request using requests",
+    "model_answer": "import requests\nrequests.get('https://example.com')",
+    "student_answer": "import requests\nrequests.get('https://example.com')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_sqlite_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Connect to SQLite using sqlite3",
+    "model_answer": "import sqlite3\nsqlite3.connect('db.sqlite')",
+    "student_answer": "import sqlite3\nsqlite3.connect('db.sqlite')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_numpy_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a NumPy array",
+    "model_answer": "import numpy as np\nnp.array([1,2,3])",
+    "student_answer": "import numpy as np\nnp.array([1,2,3])",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_pandas_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a pandas DataFrame",
+    "model_answer": "import pandas as pd\npd.DataFrame({'a':[1,2]})",
+    "student_answer": "import pandas as pd\npd.DataFrame({'a':[1,2]})",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_matplotlib_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Plot a line using matplotlib",
+    "model_answer": "import matplotlib.pyplot as plt\nplt.plot([1,2,3],[1,4,9])",
+    "student_answer": "import matplotlib.pyplot as plt\nplt.plot([1,2,3],[1,4,9])",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_flask_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a Flask app",
+    "model_answer": "from flask import Flask\napp = Flask(__name__)",
+    "student_answer": "from flask import Flask\napp = Flask(__name__)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_decorator_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a decorator in Python",
+    "model_answer": "@decorator\ndef f():\n    return 1",
+    "student_answer": "@decorator\ndef f():\n    return 1",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_context_manager_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a context manager",
+    "model_answer": "with open('a.txt') as f:\n    data = f.read()",
+    "student_answer": "with open('a.txt') as f:\n    data = f.read()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_identity_check_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Check if two variables reference the same object (identity vs equality)",
+    "model_answer": "def same(a,b): return a is b",
+    "student_answer": "def same(a,b): return a == b",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_type_check_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Type check using isinstance",
+    "model_answer": "def is_int(x): return isinstance(x, int)",
+    "student_answer": "def is_int(x): return True",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_membership_wrong",
+    "language": "python",
+    "category": "lists",
+    "question": "Check if element is in list",
+    "model_answer": "def has(lst, x): return x in lst",
+    "student_answer": "def has(lst, x): return True",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_async_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Write an async function",
+    "model_answer": "async def fetch(): return 1",
+    "student_answer": "def fetch(): return 1",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_requests_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Make an HTTP GET request using requests",
+    "model_answer": "import requests\nrequests.get('https://example.com')",
+    "student_answer": "def fetch(): return 'ok'",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_sqlite_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Connect to SQLite using sqlite3",
+    "model_answer": "import sqlite3\nsqlite3.connect('db.sqlite')",
+    "student_answer": "def connect(): return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_numpy_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a NumPy array",
+    "model_answer": "import numpy as np\nnp.array([1,2,3])",
+    "student_answer": "arr = [1,2,3]",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_pandas_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a pandas DataFrame",
+    "model_answer": "import pandas as pd\npd.DataFrame({'a':[1,2]})",
+    "student_answer": "data = {'a':[1,2]}",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_matplotlib_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Plot a line using matplotlib",
+    "model_answer": "import matplotlib.pyplot as plt\nplt.plot([1,2,3],[1,4,9])",
+    "student_answer": "points = [(1,1),(2,4)]\nplot(points)",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_flask_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a Flask app",
+    "model_answer": "from flask import Flask\napp = Flask(__name__)",
+    "student_answer": "def app(): return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_decorator_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a decorator in Python",
+    "model_answer": "@decorator\ndef f():\n    return 1",
+    "student_answer": "def f():\n    return 1",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_context_manager_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a context manager",
+    "model_answer": "with open('a.txt') as f:\n    data = f.read()",
+    "student_answer": "f = open('a.txt')\ndata = f.read()",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_threading_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use multithreading with threading",
+    "model_answer": "import threading\nthreading.Thread(target=lambda: None).start()",
+    "student_answer": "def run(): return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_multiprocessing_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use multiprocessing to run a task",
+    "model_answer": "import multiprocessing\nmultiprocessing.Process(target=lambda: None).start()",
+    "student_answer": "def run(): return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_logging_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Log a message using logging",
+    "model_answer": "import logging\nlogging.info('msg')",
+    "student_answer": "print('msg')",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_pytest_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Write a pytest test case",
+    "model_answer": "def test_ok():\n    assert True",
+    "student_answer": "def check():\n    return True",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_unittest_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Write a unittest TestCase",
+    "model_answer": "import unittest\nclass T(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)",
+    "student_answer": "def test_ok():\n    assert True",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_django_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a Django view",
+    "model_answer": "from django.http import HttpResponse\ndef home(request):\n    return HttpResponse('ok')",
+    "student_answer": "def home():\n    return 'ok'",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_fastapi_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a FastAPI app",
+    "model_answer": "from fastapi import FastAPI\napp = FastAPI()",
+    "student_answer": "def app():\n    return None",
+    "expected_min_score": 45,
+    "expected_max_score": 60
+  },
+  {
+    "id": "py_tkinter_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a Tkinter window",
+    "model_answer": "import tkinter as tk\nroot = tk.Tk()",
+    "student_answer": "def ui():\n    return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_pyqt_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a PyQt application",
+    "model_answer": "from PyQt5.QtWidgets import QApplication\napp = QApplication([])",
+    "student_answer": "def ui():\n    return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_sklearn_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Train a model using scikit-learn",
+    "model_answer": "from sklearn.linear_model import LinearRegression\nLinearRegression()",
+    "student_answer": "def train():\n    return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_lambda_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a lambda function",
+    "model_answer": "square = lambda x: x * x",
+    "student_answer": "square = lambda x: x * x",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_lambda_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a lambda function",
+    "model_answer": "square = lambda x: x * x",
+    "student_answer": "def square(x): return x * x",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_regex_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Validate input using regular expression",
+    "model_answer": "import re\nre.match(r\"^\\d+$\", s)",
+    "student_answer": "import re\nre.match(r\"^\\d+$\", s)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_regex_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Validate input using regular expression",
+    "model_answer": "import re\nre.match(r\"^\\d+$\", s)",
+    "student_answer": "def is_digits(s): return s.isdigit()",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_json_parse_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Parse a JSON string",
+    "model_answer": "import json\njson.loads(s)",
+    "student_answer": "import json\njson.loads(s)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_json_parse_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Parse a JSON string",
+    "model_answer": "import json\njson.loads(s)",
+    "student_answer": "def parse(s): return s",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_json_serialize_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Serialize data to JSON",
+    "model_answer": "import json\njson.dumps(obj)",
+    "student_answer": "import json\njson.dumps(obj)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_json_serialize_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Serialize data to JSON",
+    "model_answer": "import json\njson.dumps(obj)",
+    "student_answer": "def dump(x): return str(x)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_csv_full",
+    "language": "python",
+    "category": "files",
+    "question": "Read a CSV file using the csv module",
+    "model_answer": "import csv\ncsv.reader(open('a.csv'))",
+    "student_answer": "import csv\ncsv.reader(open('a.csv'))",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_csv_wrong",
+    "language": "python",
+    "category": "files",
+    "question": "Read a CSV file using the csv module",
+    "model_answer": "import csv\ncsv.reader(open('a.csv'))",
+    "student_answer": "open('a.csv').read().split(',')",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_datetime_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Get the current datetime using datetime module",
+    "model_answer": "import datetime\ndatetime.datetime.now()",
+    "student_answer": "import datetime\ndatetime.datetime.now()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_datetime_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Get the current datetime using datetime module",
+    "model_answer": "import datetime\ndatetime.datetime.now()",
+    "student_answer": "def now(): return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_random_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Generate a random number using random module",
+    "model_answer": "import random\nrandom.randint(1, 10)",
+    "student_answer": "import random\nrandom.randint(1, 10)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_random_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Generate a random number using random module",
+    "model_answer": "import random\nrandom.randint(1, 10)",
+    "student_answer": "def rand(): return 5",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_os_full",
+    "language": "python",
+    "category": "basics",
+    "question": "List files using os module",
+    "model_answer": "import os\nos.listdir('.')",
+    "student_answer": "import os\nos.listdir('.')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_os_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "List files using os module",
+    "model_answer": "import os\nos.listdir('.')",
+    "student_answer": "def ls(): return []",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_sys_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Read command-line args using sys module",
+    "model_answer": "import sys\nsys.argv",
+    "student_answer": "import sys\nsys.argv",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_sys_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Read command-line args using sys module",
+    "model_answer": "import sys\nsys.argv",
+    "student_answer": "def args(): return []",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_bitwise_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use bitwise AND operation",
+    "model_answer": "def mask(n): return n & 1",
+    "student_answer": "def mask(n): return n & 1",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_bitwise_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use bitwise AND operation",
+    "model_answer": "def mask(n): return n & 1",
+    "student_answer": "def mask(n): return n % 2",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_class_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Define a class in Python",
+    "model_answer": "class Student:\n    pass",
+    "student_answer": "class Student:\n    pass",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_class_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Define a class in Python",
+    "model_answer": "class Student:\n    pass",
+    "student_answer": "def Student():\n    pass",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_inheritance_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Show inheritance in Python",
+    "model_answer": "class Parent:\n    pass\nclass Child(Parent):\n    pass",
+    "student_answer": "class Parent:\n    pass\nclass Child(Parent):\n    pass",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_inheritance_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Show inheritance in Python",
+    "model_answer": "class Parent:\n    pass\nclass Child(Parent):\n    pass",
+    "student_answer": "class Child:\n    pass",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_recursion_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use recursion to compute factorial",
+    "model_answer": "def fact(n):\n    return 1 if n==0 else n*fact(n-1)",
+    "student_answer": "def fact(n):\n    return 1 if n==0 else n*fact(n-1)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_recursion_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use recursion to compute factorial",
+    "model_answer": "def fact(n):\n    return 1 if n==0 else n*fact(n-1)",
+    "student_answer": "def fact(n):\n    return n*n",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_for_loop_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a for loop to iterate",
+    "model_answer": "for i in range(3):\n    print(i)",
+    "student_answer": "for i in range(3):\n    print(i)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_for_loop_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a for loop to iterate",
+    "model_answer": "for i in range(3):\n    print(i)",
+    "student_answer": "i = 0\nprint(i)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_while_loop_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a while loop to iterate",
+    "model_answer": "i = 0\nwhile i < 3:\n    i += 1",
+    "student_answer": "i = 0\nwhile i < 3:\n    i += 1",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_while_loop_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a while loop to iterate",
+    "model_answer": "i = 0\nwhile i < 3:\n    i += 1",
+    "student_answer": "for i in range(3):\n    print(i)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_list_create_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a list",
+    "model_answer": "nums = [1,2,3]",
+    "student_answer": "nums = [1,2,3]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_list_create_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a list",
+    "model_answer": "nums = [1,2,3]",
+    "student_answer": "nums = (1,2,3)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_tuple_create_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a tuple",
+    "model_answer": "t = (1,2,3)",
+    "student_answer": "t = (1,2,3)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_set_create_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a set",
+    "model_answer": "s = {1,2,3}",
+    "student_answer": "s = {1,2,3}",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_dict_create_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a dictionary",
+    "model_answer": "d = {'a': 1}",
+    "student_answer": "d = {'a': 1}",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_slicing_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Use slicing to get a substring",
+    "model_answer": "def sub(s): return s[1:3]",
+    "student_answer": "def sub(s): return s[1:3]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_slicing_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Use slicing to get a substring",
+    "model_answer": "def sub(s): return s[1:3]",
+    "student_answer": "def sub(s): return s[1]",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_list_methods_full",
+    "language": "python",
+    "category": "lists",
+    "question": "Use list methods to add an item",
+    "model_answer": "lst = []\nlst.append(1)",
+    "student_answer": "lst = []\nlst.append(1)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_list_methods_wrong",
+    "language": "python",
+    "category": "lists",
+    "question": "Use list methods to add an item",
+    "model_answer": "lst = []\nlst.append(1)",
+    "student_answer": "lst = []\nlst = lst + [1]",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_dict_methods_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use dict methods to access a value",
+    "model_answer": "d = {'a': 1}\nval = d.get('a')",
+    "student_answer": "d = {'a': 1}\nval = d.get('a')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_dict_methods_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use dict methods to access a value",
+    "model_answer": "d = {'a': 1}\nval = d.get('a')",
+    "student_answer": "d = {'a': 1}\nval = d['a']",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_set_operations_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use set operations to find intersection",
+    "model_answer": "a={1,2}\nb={2,3}\nres=a.intersection(b)",
+    "student_answer": "a={1,2}\nb={2,3}\nres=a.intersection(b)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_set_operations_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use set operations to find intersection",
+    "model_answer": "a={1,2}\nb={2,3}\nres=a.intersection(b)",
+    "student_answer": "a=[1,2]\nb=[2,3]\nres=[x for x in a if x in b]",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_custom_exception_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Define a custom exception",
+    "model_answer": "class MyError(Exception):\n    pass",
+    "student_answer": "class MyError(Exception):\n    pass",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_custom_exception_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Define a custom exception",
+    "model_answer": "class MyError(Exception):\n    pass",
+    "student_answer": "class MyError:\n    pass",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_context_enter_exit_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Implement __enter__ and __exit__ for a context manager",
+    "model_answer": "class C:\n    def __enter__(self):\n        return self\n    def __exit__(self, exc_type, exc, tb):\n        return False",
+    "student_answer": "class C:\n    def __enter__(self):\n        return self\n    def __exit__(self, exc_type, exc, tb):\n        return False",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_context_enter_exit_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Implement __enter__ and __exit__ for a context manager",
+    "model_answer": "class C:\n    def __enter__(self):\n        return self\n    def __exit__(self, exc_type, exc, tb):\n        return False",
+    "student_answer": "class C:\n    def __enter__(self):\n        return self",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_iterator_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use an iterator to get the next item",
+    "model_answer": "it = iter([1,2])\nnext(it)",
+    "student_answer": "it = iter([1,2])\nnext(it)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_iterator_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use an iterator to get the next item",
+    "model_answer": "it = iter([1,2])\nnext(it)",
+    "student_answer": "lst = [1,2]\nlst[0]",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_generator_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a generator",
+    "model_answer": "def gen():\n    yield 1",
+    "student_answer": "def gen():\n    yield 1",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_generator_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Create a generator",
+    "model_answer": "def gen():\n    yield 1",
+    "student_answer": "def gen():\n    return 1",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_file_read_full",
+    "language": "python",
+    "category": "files",
+    "question": "Read a file",
+    "model_answer": "with open('a.txt') as f:\n    data = f.read()",
+    "student_answer": "with open('a.txt') as f:\n    data = f.read()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_file_read_wrong",
+    "language": "python",
+    "category": "files",
+    "question": "Read a file",
+    "model_answer": "with open('a.txt') as f:\n    data = f.read()",
+    "student_answer": "data = ''",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_file_write_full",
+    "language": "python",
+    "category": "files",
+    "question": "Write to a file",
+    "model_answer": "with open('a.txt','w') as f:\n    f.write('hi')",
+    "student_answer": "with open('a.txt','w') as f:\n    f.write('hi')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_file_write_wrong",
+    "language": "python",
+    "category": "files",
+    "question": "Write to a file",
+    "model_answer": "with open('a.txt','w') as f:\n    f.write('hi')",
+    "student_answer": "print('hi')",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_binary_file_full",
+    "language": "python",
+    "category": "files",
+    "question": "Read a binary file",
+    "model_answer": "with open('a.bin','rb') as f:\n    data = f.read()",
+    "student_answer": "with open('a.bin','rb') as f:\n    data = f.read()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_binary_file_wrong",
+    "language": "python",
+    "category": "files",
+    "question": "Read a binary file",
+    "model_answer": "with open('a.bin','rb') as f:\n    data = f.read()",
+    "student_answer": "with open('a.bin','r') as f:\n    data = f.read()",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_search_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use linear search to find an element",
+    "model_answer": "def find(a,x):\n    for v in a:\n        if v==x:\n            return True\n    return False",
+    "student_answer": "def find(a,x):\n    for v in a:\n        if v==x:\n            return True\n    return False",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_sort_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Sort a list",
+    "model_answer": "def s(a):\n    return sorted(a)",
+    "student_answer": "def s(a):\n    return sorted(a)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_sort_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Sort a list",
+    "model_answer": "def s(a):\n    return sorted(a)",
+    "student_answer": "def s(a):\n    return a",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_search_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use linear search to find an element",
+    "model_answer": "def find(a,x):\n    for v in a:\n        if v==x:\n            return True\n    return False",
+    "student_answer": "def find(a,x):\n    return False",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_dp_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use dynamic programming for Fibonacci",
+    "model_answer": "def fib(n):\n    dp=[0,1]\n    for i in range(2,n+1):\n        dp.append(dp[i-1]+dp[i-2])\n    return dp[n]",
+    "student_answer": "def fib(n):\n    return n",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_dp_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use dynamic programming for Fibonacci",
+    "model_answer": "def fib(n):\n    dp=[0,1]\n    for i in range(2,n+1):\n        dp.append(dp[i-1]+dp[i-2])\n    return dp[n]",
+    "student_answer": "def fib(n):\n    dp=[0,1]\n    for i in range(2,n+1):\n        dp.append(dp[i-1]+dp[i-2])\n    return dp[n]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_prefix_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Check if string starts with prefix",
+    "model_answer": "def starts(s,p): return s.startswith(p)",
+    "student_answer": "def starts(s,p): return s.startswith(p)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_prefix_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Check if string starts with prefix",
+    "model_answer": "def starts(s,p): return s.startswith(p)",
+    "student_answer": "def starts(s,p): return s[:len(p)] == p",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_string_suffix_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Check if string ends with suffix",
+    "model_answer": "def ends(s,p): return s.endswith(p)",
+    "student_answer": "def ends(s,p): return s.endswith(p)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_suffix_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Check if string ends with suffix",
+    "model_answer": "def ends(s,p): return s.endswith(p)",
+    "student_answer": "def ends(s,p): return s[-len(p):] == p",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_string_split_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Split string by comma",
+    "model_answer": "def split_it(s): return s.split(',')",
+    "student_answer": "def split_it(s): return s.split(',')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_split_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Split string by comma",
+    "model_answer": "def split_it(s): return s.split(',')",
+    "student_answer": "def split_it(s): return list(s)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_string_join_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Join list of words into a string",
+    "model_answer": "def join_it(words): return ' '.join(words)",
+    "student_answer": "def join_it(words): return ' '.join(words)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_join_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Join list of words into a string",
+    "model_answer": "def join_it(words): return ' '.join(words)",
+    "student_answer": "def join_it(words): return str(words)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_string_strip_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Strip whitespace from a string",
+    "model_answer": "def strip_it(s): return s.strip()",
+    "student_answer": "def strip_it(s): return s.strip()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_strip_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Strip whitespace from a string",
+    "model_answer": "def strip_it(s): return s.strip()",
+    "student_answer": "def strip_it(s): return s.replace(' ', '')",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_string_replace_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Replace substring in a string",
+    "model_answer": "def rep(s): return s.replace('a','b')",
+    "student_answer": "def rep(s): return s.replace('a','b')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_replace_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Replace substring in a string",
+    "model_answer": "def rep(s): return s.replace('a','b')",
+    "student_answer": "def rep(s): return s",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_string_find_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Find substring position in a string",
+    "model_answer": "def find_it(s, sub): return s.find(sub)",
+    "student_answer": "def find_it(s, sub): return s.find(sub)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_string_find_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Find substring position in a string",
+    "model_answer": "def find_it(s, sub): return s.find(sub)",
+    "student_answer": "def find_it(s, sub): return sub in s",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_unicode_length_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Find length of emoji string",
+    "model_answer": "def length(s): return len(s)",
+    "student_answer": "def length(s): return len(s)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_unicode_length_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Find length of emoji string",
+    "model_answer": "def length(s): return len(s)",
+    "student_answer": "def length(s): return 0",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_list_copy_full",
+    "language": "python",
+    "category": "arrays",
+    "question": "Copy a list",
+    "model_answer": "def copy_lst(lst): return lst.copy()",
+    "student_answer": "def copy_lst(lst): return lst.copy()",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_list_copy_wrong",
+    "language": "python",
+    "category": "arrays",
+    "question": "Copy a list",
+    "model_answer": "def copy_lst(lst): return lst.copy()",
+    "student_answer": "def copy_lst(lst): return lst",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_sort_key_full",
+    "language": "python",
+    "category": "arrays",
+    "question": "Sort list of tuples by second element using key",
+    "model_answer": "def s(lst): return sorted(lst, key=lambda x: x[1])",
+    "student_answer": "def s(lst): return sorted(lst, key=lambda x: x[1])",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_sort_key_wrong",
+    "language": "python",
+    "category": "arrays",
+    "question": "Sort list of tuples by second element using key",
+    "model_answer": "def s(lst): return sorted(lst, key=lambda x: x[1])",
+    "student_answer": "def s(lst): return sorted(lst)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_dict_merge_full",
+    "language": "python",
+    "category": "dicts",
+    "question": "Merge two dictionaries",
+    "model_answer": "def merge(a,b): a.update(b); return a",
+    "student_answer": "def merge(a,b): a.update(b); return a",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_dict_merge_wrong",
+    "language": "python",
+    "category": "dicts",
+    "question": "Merge two dictionaries",
+    "model_answer": "def merge(a,b): a.update(b); return a",
+    "student_answer": "def merge(a,b): return a",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_defaultdict_full",
+    "language": "python",
+    "category": "dicts",
+    "question": "Use defaultdict to group items",
+    "model_answer": "from collections import defaultdict\nd=defaultdict(list)",
+    "student_answer": "from collections import defaultdict\nd=defaultdict(list)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_defaultdict_wrong",
+    "language": "python",
+    "category": "dicts",
+    "question": "Use defaultdict to group items",
+    "model_answer": "from collections import defaultdict\nd=defaultdict(list)",
+    "student_answer": "d = {}",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_counter_full",
+    "language": "python",
+    "category": "dicts",
+    "question": "Count frequency using Counter",
+    "model_answer": "from collections import Counter\nCounter(items)",
+    "student_answer": "from collections import Counter\nCounter(items)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_counter_wrong",
+    "language": "python",
+    "category": "dicts",
+    "question": "Count frequency using Counter",
+    "model_answer": "from collections import Counter\nCounter(items)",
+    "student_answer": "freq = {}",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_set_subset_full",
+    "language": "python",
+    "category": "sets",
+    "question": "Check if set a is subset of set b",
+    "model_answer": "def sub(a,b): return a.issubset(b)",
+    "student_answer": "def sub(a,b): return a.issubset(b)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_set_subset_wrong",
+    "language": "python",
+    "category": "sets",
+    "question": "Check if set a is subset of set b",
+    "model_answer": "def sub(a,b): return a.issubset(b)",
+    "student_answer": "def sub(a,b): return a in b",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_range_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use range to loop from 0 to 4",
+    "model_answer": "for i in range(5):\n    print(i)",
+    "student_answer": "for i in range(5):\n    print(i)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_range_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use range to loop from 0 to 4",
+    "model_answer": "for i in range(5):\n    print(i)",
+    "student_answer": "i = 0\nwhile i < 5:\n    print(i)\n    i += 1",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_enumerate_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use enumerate to loop with indexes",
+    "model_answer": "for i,v in enumerate(lst):\n    print(i, v)",
+    "student_answer": "for i,v in enumerate(lst):\n    print(i, v)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_enumerate_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use enumerate to loop with indexes",
+    "model_answer": "for i,v in enumerate(lst):\n    print(i, v)",
+    "student_answer": "for i in range(len(lst)):\n    print(i, lst[i])",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_zip_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use zip to loop over two lists",
+    "model_answer": "for a,b in zip(xs, ys):\n    print(a, b)",
+    "student_answer": "for a,b in zip(xs, ys):\n    print(a, b)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_zip_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use zip to loop over two lists",
+    "model_answer": "for a,b in zip(xs, ys):\n    print(a, b)",
+    "student_answer": "for i in range(len(xs)):\n    print(xs[i], ys[i])",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_list_comp_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use list comprehension to square numbers",
+    "model_answer": "squares = [x*x for x in nums]",
+    "student_answer": "squares = [x*x for x in nums]",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_list_comp_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use list comprehension to square numbers",
+    "model_answer": "squares = [x*x for x in nums]",
+    "student_answer": "squares = []\nfor x in nums:\n    squares.append(x*x)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_dict_comp_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use dict comprehension to map to squares",
+    "model_answer": "d = {x: x*x for x in nums}",
+    "student_answer": "d = {x: x*x for x in nums}",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_dict_comp_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use dict comprehension to map to squares",
+    "model_answer": "d = {x: x*x for x in nums}",
+    "student_answer": "d = {}\nfor x in nums:\n    d[x] = x*x",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_set_comp_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use set comprehension to deduplicate",
+    "model_answer": "s = {x for x in items}",
+    "student_answer": "s = {x for x in items}",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_set_comp_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use set comprehension to deduplicate",
+    "model_answer": "s = {x for x in items}",
+    "student_answer": "s = set(items)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_lambda_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use lambda to add two numbers",
+    "model_answer": "adder = lambda a,b: a+b",
+    "student_answer": "adder = lambda a,b: a+b",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_lambda_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use lambda to add two numbers",
+    "model_answer": "adder = lambda a,b: a+b",
+    "student_answer": "def adder(a,b):\n    return a+b",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_default_arg_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a default argument in a function",
+    "model_answer": "def greet(name='Guest'): return name",
+    "student_answer": "def greet(name='Guest'): return name",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_default_arg_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use a default argument in a function",
+    "model_answer": "def greet(name='Guest'): return name",
+    "student_answer": "def greet(name): return name",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_args_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use *args to accept variable arguments",
+    "model_answer": "def total(*args): return sum(args)",
+    "student_answer": "def total(*args): return sum(args)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_args_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use *args to accept variable arguments",
+    "model_answer": "def total(*args): return sum(args)",
+    "student_answer": "def total(a,b): return a+b",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_kwargs_full",
+    "language": "python",
+    "category": "basics",
+    "question": "Use **kwargs to accept keyword arguments",
+    "model_answer": "def show(**kwargs): return kwargs",
+    "student_answer": "def show(**kwargs): return kwargs",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_kwargs_wrong",
+    "language": "python",
+    "category": "basics",
+    "question": "Use **kwargs to accept keyword arguments",
+    "model_answer": "def show(**kwargs): return kwargs",
+    "student_answer": "def show(a=None): return a",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_fstring_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Use f-string to format output",
+    "model_answer": "def msg(x): return f\"Value {x}\"",
+    "student_answer": "def msg(x): return f\"Value {x}\"",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_fstring_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Use f-string to format output",
+    "model_answer": "def msg(x): return f\"Value {x}\"",
+    "student_answer": "def msg(x): return \"Value {}\".format(x)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_format_full",
+    "language": "python",
+    "category": "strings",
+    "question": "Use str.format to format output",
+    "model_answer": "def msg(x): return \"Value {}\".format(x)",
+    "student_answer": "def msg(x): return \"Value {}\".format(x)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_format_wrong",
+    "language": "python",
+    "category": "strings",
+    "question": "Use str.format to format output",
+    "model_answer": "def msg(x): return \"Value {}\".format(x)",
+    "student_answer": "def msg(x): return f\"Value {x}\"",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_raise_full",
+    "language": "python",
+    "category": "exceptions",
+    "question": "Raise a ValueError if input is invalid",
+    "model_answer": "def check(x):\n    if x < 0:\n        raise ValueError('bad')",
+    "student_answer": "def check(x):\n    if x < 0:\n        raise ValueError('bad')",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_raise_wrong",
+    "language": "python",
+    "category": "exceptions",
+    "question": "Raise a ValueError if input is invalid",
+    "model_answer": "def check(x):\n    if x < 0:\n        raise ValueError('bad')",
+    "student_answer": "def check(x):\n    if x < 0:\n        return None",
+    "expected_min_score": 0,
+    "expected_max_score": 10
+  },
+  {
+    "id": "py_import_full",
+    "language": "python",
+    "category": "modules",
+    "question": "Import a module named math",
+    "model_answer": "import math\nmath.sqrt(4)",
+    "student_answer": "import math\nmath.sqrt(4)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_import_wrong",
+    "language": "python",
+    "category": "modules",
+    "question": "Import a module named math",
+    "model_answer": "import math\nmath.sqrt(4)",
+    "student_answer": "math.sqrt(4)",
+    "expected_min_score": 0,
+    "expected_max_score": 10
   }
 ]

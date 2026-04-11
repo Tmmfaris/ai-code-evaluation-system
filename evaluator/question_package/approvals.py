@@ -2,14 +2,21 @@ from evaluator.question_profile_store import get_question_profile, list_question
 from evaluator.question_package.validator import validate_question_package
 
 
-def approve_question_package(question_id, approved_by="faculty"):
+def approve_question_package(question_id, approved_by="faculty", edits=None):
     profile = get_question_profile(question_id)
     if not profile:
         return None
 
+    if edits:
+        profile = dict(profile)
+        profile.update(edits)
+
     profile["approval_status"] = "approved"
     profile["approved_by"] = approved_by
     prepared = validate_question_package(profile)
+    prepared["approval_status"] = "approved"
+    prepared["approved_by"] = approved_by
+    prepared["review_required"] = False
     return upsert_question_profile(prepared)
 
 

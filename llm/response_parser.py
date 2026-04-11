@@ -174,4 +174,5 @@ def fallback_response(message="The solution was evaluated with a safe fallback b
             "readability": 5,
             "structure": 10,
         },
+        "_llm_fallback": True,
     }

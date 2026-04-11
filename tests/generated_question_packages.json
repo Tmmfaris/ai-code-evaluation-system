@@ -1,0 +1,286 @@
+[
+  {
+    "question_id": "q1",
+    "question": "Check if number is even",
+    "model_answer": "def even(n): return n % 2 == 0",
+    "language": "python",
+    "question_signature": "python::check if number is even",
+    "template_family": "python::even_check",
+    "accepted_solutions": [
+      "def even(n): return n % 2 == 0",
+      "return n % 2 == 0;",
+      "return (n & 1) == 0;"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[2]",
+          "expected_output": "true",
+          "description": "positive even",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[0]",
+          "expected_output": "true",
+          "description": "zero is even",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        }
+      ],
+      "negative": [
+        {
+          "input": "[3]",
+          "expected_output": "false",
+          "description": "positive odd",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[-5]",
+          "expected_output": "false",
+          "description": "negative odd",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        },
+        {
+          "input": "[-2]",
+          "expected_output": "true",
+          "description": "negative even",
+          "kind": "trap",
+          "weight": 1.2,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "% 2 == 1",
+        "match_type": "contains",
+        "feedback": "This checks odd numbers instead of even numbers.",
+        "suggestion": "Use a modulo check against 0 for evenness.",
+        "score_cap": 20
+      },
+      {
+        "pattern": "return true;",
+        "match_type": "contains",
+        "feedback": "Always returning true does not check whether the number is even.",
+        "suggestion": "Return the result of an actual even-number check.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 5/5 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 3,
+    "reused_from_questions": [
+      "Check if number is even"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "basics_math",
+      "task_type": "basic_logic",
+      "risk": "low",
+      "markers": [
+        "math",
+        "basics"
+      ]
+    }
+  },
+  {
+    "question_id": "q2",
+    "question": "Add two numbers",
+    "model_answer": "def add(a,b): return a + b",
+    "language": "python",
+    "question_signature": "python::add two numbers",
+    "template_family": "python::add_two_numbers",
+    "accepted_solutions": [
+      "def add(a,b): return a + b",
+      "def add(a,b): return a+b",
+      "return a + b;"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[1,2]",
+          "expected_output": "3",
+          "description": "basic",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[0,5]",
+          "expected_output": "5",
+          "description": "zero plus positive",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        }
+      ],
+      "negative": [
+        {
+          "input": "[-1,1]",
+          "expected_output": "0",
+          "description": "edge",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[-2,3]",
+          "expected_output": "1",
+          "description": "mixed sign values",
+          "kind": "edge",
+          "weight": 1.2,
+          "required": true
+        },
+        {
+          "input": "[10,15]",
+          "expected_output": "25",
+          "description": "larger integers",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[100,-100]",
+          "expected_output": "0",
+          "description": "sum to zero",
+          "kind": "trap",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return a;",
+        "match_type": "contains",
+        "feedback": "Returning only the first argument does not add the two inputs.",
+        "suggestion": "Return the sum of both input values.",
+        "score_cap": 20
+      },
+      {
+        "pattern": "return b;",
+        "match_type": "contains",
+        "feedback": "Returning only the second argument does not add the two inputs.",
+        "suggestion": "Return the sum of both input values.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 6/6 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 4,
+    "reused_from_questions": [
+      "Write a function to add two numbers",
+      "Add two numbers"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "basics_math",
+      "task_type": "basic_logic",
+      "risk": "low",
+      "markers": [
+        "math",
+        "basics"
+      ]
+    }
+  },
+  {
+    "question_id": "q3",
+    "question": "Find length of string",
+    "model_answer": "def length(s): return len(s)",
+    "language": "python",
+    "question_signature": "python::find length of string",
+    "template_family": "python::string_length",
+    "accepted_solutions": [
+      "def length(s): return len(s)",
+      "return len(s)"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[\"hello\"]",
+          "expected_output": "5",
+          "description": "basic string length",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[\"\"]",
+          "expected_output": "0",
+          "description": "empty string length",
+          "kind": "edge",
+          "weight": 1.2,
+          "required": true
+        }
+      ],
+      "negative": [
+        {
+          "input": "[\"a\"]",
+          "expected_output": "1",
+          "description": "single character length",
+          "kind": "trap",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[\"hello world\"]",
+          "expected_output": "11",
+          "description": "string with space length",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return 0",
+        "match_type": "contains",
+        "feedback": "Returning 0 does not calculate the string length for non-empty inputs.",
+        "suggestion": "Return the length of the input string, for example with len(s).",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 4/4 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 2,
+    "reused_from_questions": [
+      "Find length of string"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "strings",
+      "task_type": "string_processing",
+      "risk": "low",
+      "markers": [
+        "strings",
+        "length"
+      ]
+    }
+  }
+]

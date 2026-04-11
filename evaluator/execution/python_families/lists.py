@@ -93,6 +93,30 @@ def evaluate_list_family(question, question_text, families, normalized_student, 
             "suggestion": "Add only the values where x % 2 == 0, for example with sum(x for x in lst if x % 2 == 0).",
         }
 
+    if (_contains(question_text, "average") or _contains(question_text, "mean")) and (_contains(question_text, "list") or _contains(question_text, "array")):
+        if "returnsum(lst)/len(lst)" in normalized_student or "returnsum(arr)/len(arr)" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly computes the average of the collection.",
+            }
+        if "returnsum(lst)" in normalized_student or "returnsum(arr)" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning the sum alone does not compute the average.",
+                "suggestion": "Divide the sum by the number of elements to get the average.",
+            }
+        if normalized_student.endswith("return0"):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning 0 does not compute the average of the list.",
+                "suggestion": "Sum the list and divide by the number of elements.",
+            }
+
     if _contains(question_text, "remove", "duplicates") and _contains(question_text, "list") and "preserve order" in (question or "").lower() and normalized_student.endswith("returnlst"):
         return {
             "result_type": "zero_pass",
@@ -214,6 +238,30 @@ def evaluate_list_family(question, question_text, families, normalized_student, 
             "feedback": "Returning 1 does not calculate the length of the list.",
             "suggestion": "Return the number of elements in the list, for example with len(lst).",
         }
+
+    if (_contains(question_text, "empty", "list") or _contains(question_text, "empty", "array")):
+        if "returnnotlst" in normalized_student or "returnlen(lst)==0" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly checks whether the collection is empty.",
+            }
+        if normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The function always returns True instead of checking whether the collection is empty.",
+                "suggestion": "Return True only when the collection has no elements.",
+            }
+        if normalized_student.endswith("returnfalse") and "returntrue" not in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The function always returns False instead of checking whether the collection is empty.",
+                "suggestion": "Return True only when the collection has no elements.",
+            }
 
     if _contains(question_text, "append item to list") and "returnlst+[x]" in normalized_student:
         return {

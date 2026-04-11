@@ -543,6 +543,28 @@ def _generic_requirement_findings(question, student_answer, language):
                 "suggestion": "Return JSX that includes the requested Hello text."
             })
 
+    if language == "java":
+        normalized_java = code.replace(" ", "")
+        if "reverse" in question_text and ("list" in question_text or "array" in question_text):
+            if ("collections.sort" in code or "arrays.sort" in code) and "reverse" not in code:
+                findings.append({
+                    "type": "hard_fail",
+                    "correctness_max": 10,
+                    "efficiency_max": 10,
+                    "readability_max": 10,
+                    "structure_max": 12,
+                    "feedback": "Sorting the list does not reverse its order.",
+                    "suggestion": "Use Collections.reverse(...) or reverse iteration to return the list in reverse order."
+                })
+            if "returnlist;" in normalized_java and "reverse" not in code:
+                findings.append({
+                    "type": "correctness_cap",
+                    "correctness_max": 16,
+                    "efficiency_max": 12,
+                    "feedback": "Returning the original list does not reverse its order.",
+                    "suggestion": "Reverse the list before returning it."
+                })
+
     if language == "mysql":
         if "select all rows" in question_text and "select *" not in code and "select" in code:
             findings.append({
@@ -625,6 +647,25 @@ def _generic_requirement_findings(question, student_answer, language):
             "feedback": "The function always returns false instead of checking whether the object has any keys.",
             "suggestion": "Check Object.keys(obj).length === 0 or use an equivalent emptiness check."
         })
+    if language == "javascript" and "reverse" in question_text and ("list" in question_text or "array" in question_text):
+        if "sort(" in normalized_js_answer and "reverse(" not in normalized_js_answer:
+            findings.append({
+                "type": "hard_fail",
+                "correctness_max": 10,
+                "efficiency_max": 10,
+                "readability_max": 10,
+                "structure_max": 12,
+                "feedback": "Sorting the array does not reverse its order.",
+                "suggestion": "Use reverse() on the array (or a copied array) to return the elements in reverse order."
+            })
+        if "returnlst;" in normalized_js_answer and "reverse(" not in normalized_js_answer:
+            findings.append({
+                "type": "correctness_cap",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "feedback": "Returning the original list does not reverse its order.",
+                "suggestion": "Reverse the list before returning it."
+            })
     if language == "javascript" and "array is empty" in question_text and re.search(r"return\s*!arr\s*;", student_answer or "", re.IGNORECASE):
         findings.append({
             "type": "hard_fail",

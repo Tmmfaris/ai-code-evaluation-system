@@ -23,6 +23,16 @@ class QuestionSubmission(BaseModel):
 
 class StudentEvaluationRequest(BaseModel):
     student_id: str = Field(..., example="123")
+    llm_review: Optional[bool] = Field(
+        default=None,
+        example=True,
+        description="Force LLM review of score/feedback for this student.",
+    )
+    llm_review_max_attempts: Optional[int] = Field(
+        default=None,
+        example=3,
+        description="Max LLM review attempts per question for this student.",
+    )
     submissions: List[QuestionSubmission] = Field(
         ...,
         example=[
@@ -58,6 +68,16 @@ class MultiStudentEvaluationRequest(BaseModel):
                 ]
             }
         ]
+    )
+    llm_review: Optional[bool] = Field(
+        default=None,
+        example=True,
+        description="Force LLM review of score/feedback for all students.",
+    )
+    llm_review_max_attempts: Optional[int] = Field(
+        default=None,
+        example=3,
+        description="Max LLM review attempts per question for all students.",
     )
 
 
@@ -135,9 +155,51 @@ class QuestionPackageResponse(BaseModel):
     package_summary: Optional[str] = None
     package_confidence: Optional[float] = None
     review_required: Optional[bool] = None
+    approval_status: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[str] = None
+    approval_checklist: Optional[List[dict]] = None
+    approval_notes: Optional[str] = None
     positive_test_count: Optional[int] = None
     negative_test_count: Optional[int] = None
     reused_from_questions: Optional[List[str]] = None
+    validation_options: Optional[dict] = None
+
+
+class ApprovalChecklistItem(BaseModel):
+    key: str = Field(..., example="question_intent_clear")
+    label: str = Field(..., example="Question intent is clear and unambiguous")
+    status: bool = Field(..., example=True)
+    notes: Optional[str] = Field(None, example="Clarified wording with faculty")
+
+
+class ApprovalRequest(BaseModel):
+    approved_by: Optional[str] = Field("faculty", example="faculty")
+    checklist: Optional[List[ApprovalChecklistItem]] = None
+    approval_notes: Optional[str] = Field(None, example="Mentor confirmed edge cases")
+    question: Optional[str] = None
+    model_answer: Optional[str] = None
+    language: Optional[str] = None
+    accepted_solutions: Optional[List[str]] = None
+    test_sets: Optional[dict] = None
+    incorrect_patterns: Optional[List[dict]] = None
+    package_summary: Optional[str] = None
+    package_confidence: Optional[float] = None
+
+
+class QuestionPackageEditRequest(BaseModel):
+    question: Optional[str] = None
+    model_answer: Optional[str] = None
+    language: Optional[str] = None
+    accepted_solutions: Optional[List[str]] = None
+    test_sets: Optional[dict] = None
+    incorrect_patterns: Optional[List[dict]] = None
+    package_status: Optional[str] = None
+    package_summary: Optional[str] = None
+    package_confidence: Optional[float] = None
+    review_required: Optional[bool] = None
+    approval_status: Optional[str] = None
+    approved_by: Optional[str] = None
 
 
 class EvaluationHistoryItem(BaseModel):

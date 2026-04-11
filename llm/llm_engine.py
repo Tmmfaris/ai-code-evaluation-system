@@ -38,6 +38,18 @@ _PROMPT_CACHE = OrderedDict()
 _PROMPT_CACHE_MAXSIZE = 256
 _INFLIGHT_REQUESTS = {}
 
+
+def is_llm_available():
+    if LLM_PROVIDER == "llama_cpp":
+        try:
+            from llama_cpp import Llama  # noqa: F401
+            return True
+        except Exception:
+            return False
+    if LLM_PROVIDER == "ollama":
+        return requests is not None
+    return False
+
 def _get_llm_instance():
     """
     Load the GGUF model once using a singleton pattern.
@@ -84,21 +96,27 @@ def _call_llama_cpp(prompt):
         llm = _get_llm_instance()
         print("[LLM] Running GGUF inference...")
 
-        with _llm_inference_lock:
-            output = llm(
-                prompt,
-                max_tokens=LLM_MAX_TOKENS,
-                temperature=LLM_TEMPERATURE,
-                top_k=1,
-                top_p=1.0,
-                repeat_penalty=1.0,
-                stop=["\n"],
-                echo=False,
-            )
+        for attempt in range(MAX_RETRIES):
+            with _llm_inference_lock:
+                output = llm(
+                    prompt,
+                    max_tokens=LLM_MAX_TOKENS,
+                    temperature=LLM_TEMPERATURE,
+                    top_k=1,
+                    top_p=1.0,
+                    repeat_penalty=1.0,
+                    stop=["<|end|>", "</s>"],
+                    echo=False,
+                )
 
-        text = output["choices"][0]["text"].strip()
-        print("[LLM] GGUF inference complete")
-        return text if text else _FALLBACK_JSON
+            text = output["choices"][0]["text"].strip()
+            if text:
+                print("[LLM] GGUF inference complete")
+                return text
+            print(f"[LLM] Empty GGUF response (attempt {attempt + 1}), retrying...")
+
+        print("[LLM] GGUF inference complete with empty response, using fallback")
+        return _FALLBACK_JSON
 
     except Exception as exc:
         print(f"[LLM] GGUF ERROR: {exc}")
@@ -157,6 +175,9 @@ def call_llm(prompt):
     """
     prompt = (prompt or "").strip()
     if not prompt:
+        return _FALLBACK_JSON
+
+    if LLM_PROVIDER == "llama_cpp" and not is_llm_available():
         return _FALLBACK_JSON
 
     with _PROMPT_CACHE_LOCK:

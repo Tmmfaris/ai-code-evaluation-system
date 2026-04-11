@@ -1,0 +1,275 @@
+[
+  {
+    "question_id": "q1",
+    "question": "Check if number is positive",
+    "model_answer": "def is_pos(n): return n > 0",
+    "language": "python",
+    "question_signature": "python::check if number is positive",
+    "template_family": "python::positive_number",
+    "accepted_solutions": [
+      "def is_pos(n): return n > 0",
+      "return n > 0"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[1]",
+          "expected_output": "true",
+          "description": "small positive",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[10]",
+          "expected_output": "true",
+          "description": "larger positive",
+          "kind": "normal",
+          "weight": 1.1,
+          "required": false
+        }
+      ],
+      "negative": [
+        {
+          "input": "[0]",
+          "expected_output": "false",
+          "description": "zero is not positive",
+          "kind": "edge",
+          "weight": 1.2,
+          "required": true
+        },
+        {
+          "input": "[-5]",
+          "expected_output": "false",
+          "description": "negative value",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return n >= 0",
+        "match_type": "contains",
+        "feedback": "Treating zero as positive does not satisfy the strict positive-number requirement.",
+        "suggestion": "Return true only when the number is strictly greater than zero.",
+        "score_cap": 20
+      },
+      {
+        "pattern": "return n < 0",
+        "match_type": "contains",
+        "feedback": "Checking for negative numbers does not identify positive values.",
+        "suggestion": "Use a strict greater-than-zero check instead.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 4/4 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 2,
+    "reused_from_questions": [
+      "Check if number is positive"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "basics_math",
+      "task_type": "basic_logic",
+      "risk": "low",
+      "markers": [
+        "math",
+        "basics"
+      ]
+    }
+  },
+  {
+    "question_id": "q2",
+    "question": "Reverse a list",
+    "model_answer": "def rev(lst): return lst[::-1]",
+    "language": "python",
+    "question_signature": "python::reverse a list",
+    "template_family": "python::reverse_list",
+    "accepted_solutions": [
+      "def rev(lst): return lst[::-1]",
+      "return lst[::-1]",
+      "return list(reversed(lst))"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[[1,2,3]]",
+          "expected_output": "[3,2,1]",
+          "description": "basic list reversal",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[[]]",
+          "expected_output": "[]",
+          "description": "empty list reversal",
+          "kind": "edge",
+          "weight": 1.2,
+          "required": true
+        }
+      ],
+      "negative": [
+        {
+          "input": "[[5]]",
+          "expected_output": "[5]",
+          "description": "single element list",
+          "kind": "edge",
+          "weight": 1.0,
+          "required": false
+        },
+        {
+          "input": "[[1,1,2]]",
+          "expected_output": "[2,1,1]",
+          "description": "list with duplicates",
+          "kind": "trap",
+          "weight": 1.1,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return lst;",
+        "match_type": "contains",
+        "feedback": "Returning the original list does not reverse its order.",
+        "suggestion": "Reverse the list order before returning it.",
+        "score_cap": 20
+      },
+      {
+        "pattern": "return sorted(",
+        "match_type": "contains",
+        "feedback": "Sorting the list is not the same as reversing its order.",
+        "suggestion": "Reverse the list instead of sorting it.",
+        "score_cap": 20
+      },
+      {
+        "pattern": "return lst.sort",
+        "match_type": "contains",
+        "feedback": "Calling sort returns the list in sorted order, not reversed order.",
+        "suggestion": "Use a reverse operation such as slicing or reversed(...).",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 4/4 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 2,
+    "reused_from_questions": [
+      "Reverse a list"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "arrays_lists",
+      "task_type": "data_processing",
+      "risk": "medium",
+      "markers": [
+        "arrays",
+        "lists"
+      ]
+    }
+  },
+  {
+    "question_id": "q3",
+    "question": "Find sum of list",
+    "model_answer": "def total(lst): return sum(lst)",
+    "language": "python",
+    "question_signature": "python::find sum of list",
+    "template_family": "python::sum_collection",
+    "accepted_solutions": [
+      "def total(lst): return sum(lst)",
+      "return sum(lst)"
+    ],
+    "test_sets": {
+      "positive": [
+        {
+          "input": "[[1,2,3]]",
+          "expected_output": "6",
+          "description": "small integer list",
+          "kind": "normal",
+          "weight": 1.0,
+          "required": true
+        },
+        {
+          "input": "[[0,5,7]]",
+          "expected_output": "12",
+          "description": "includes zero",
+          "kind": "edge",
+          "weight": 1.1,
+          "required": false
+        }
+      ],
+      "negative": [
+        {
+          "input": "[[-2,3,-1]]",
+          "expected_output": "0",
+          "description": "mixed sign values",
+          "kind": "edge",
+          "weight": 1.2,
+          "required": true
+        },
+        {
+          "input": "[[]]",
+          "expected_output": "0",
+          "description": "empty input collection",
+          "kind": "edge",
+          "weight": 1.3,
+          "required": false
+        },
+        {
+          "input": "[[5]]",
+          "expected_output": "5",
+          "description": "single value collection",
+          "kind": "trap",
+          "weight": 0.9,
+          "required": false
+        }
+      ]
+    },
+    "incorrect_patterns": [
+      {
+        "pattern": "return arr[0];",
+        "match_type": "contains",
+        "feedback": "Returning only the first element does not compute the sum of the whole collection.",
+        "suggestion": "Accumulate all values before returning the result.",
+        "score_cap": 20
+      }
+    ],
+    "package_status": "validated",
+    "package_summary": "Python package ready. Validated 5/5 generated tests.",
+    "package_confidence": 1.0,
+    "review_required": false,
+    "approval_status": "pending",
+    "approved_by": null,
+    "exam_ready": false,
+    "positive_test_count": 2,
+    "negative_test_count": 3,
+    "reused_from_questions": [
+      "Find sum of list"
+    ],
+    "profile": {
+      "language": "python",
+      "category": "arrays_lists",
+      "task_type": "data_processing",
+      "risk": "medium",
+      "markers": [
+        "arrays",
+        "lists"
+      ]
+    }
+  }
+]

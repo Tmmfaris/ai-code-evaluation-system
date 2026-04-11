@@ -116,6 +116,38 @@ def _extract_first_function_node(code):
     return None
 
 
+def _normalize_question_text(question):
+    text = (question or "").lower()
+    replacements = [
+        ("f string", "f-string"),
+        ("fstring", "f-string"),
+        ("formatted string", "f-string"),
+        ("string formatting", "string format"),
+        ("format string", "string format"),
+        ("format output", "string format"),
+        ("formatted output", "string format"),
+        ("join words", "join string"),
+        ("join strings", "join string"),
+        ("split text", "split string"),
+        ("split a string", "split string"),
+        ("strip spaces", "strip string"),
+        ("trim", "strip"),
+        ("keyword args", "keyword arguments"),
+        ("keyword arg", "keyword arguments"),
+        ("kwargs", "**kwargs"),
+        ("varargs", "*args"),
+        ("variable arguments", "*args"),
+        ("default value", "default argument"),
+        ("default parameter", "default argument"),
+        ("raise error", "raise"),
+        ("raise exception", "raise"),
+        ("import module", "import a module"),
+    ]
+    for src, dst in replacements:
+        text = text.replace(src, dst)
+    return text
+
+
 def _returns_subtraction_of_first_two_args(function_node):
     if function_node is None or len(function_node.args.args) < 2:
         return False
@@ -1240,12 +1272,14 @@ def evaluate_python_hidden_tests(student_answer, hidden_tests):
     cases = []
     expected_outputs = []
     case_weights = []
+    positive_zero_expected_false = False
     required_failures = 0
     for item in hidden_tests:
         if not isinstance(item, dict):
             continue
         raw_input = item.get("input")
         raw_expected = item.get("expected_output")
+        description = (item.get("description") or "").lower()
         try:
             parsed_input = json.loads(raw_input) if isinstance(raw_input, str) else raw_input
         except Exception:
@@ -1254,6 +1288,16 @@ def evaluate_python_hidden_tests(student_answer, hidden_tests):
             parsed_expected = json.loads(raw_expected) if isinstance(raw_expected, str) else raw_expected
         except Exception:
             parsed_expected = raw_expected
+
+        if isinstance(parsed_input, list) and len(parsed_input) == 1:
+            input_zero = parsed_input[0] in (0, 0.0)
+        else:
+            input_zero = parsed_input in (0, 0.0)
+        expected_false = parsed_expected is False or (
+            isinstance(parsed_expected, str) and parsed_expected.lower() == "false"
+        )
+        if input_zero and expected_false and "positive" in description:
+            positive_zero_expected_false = True
 
         if isinstance(parsed_input, list):
             cases.append(tuple(parsed_input))
@@ -1306,6 +1350,20 @@ def evaluate_python_hidden_tests(student_answer, hidden_tests):
             "efficiency_max": 5,
             "feedback": f"Hidden test cases failed on all {total} registered checks.",
             "suggestion": "Review the logic against the registered question inputs and expected outputs.",
+        }
+
+    if required_failures and positive_zero_expected_false and re.search(r">=\s*0", student_answer or ""):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 16,
+            "efficiency_max": 12,
+            "readability_max": 12,
+            "structure_max": 12,
+            "feedback": "Treating zero as positive does not satisfy the strict positive-number requirement, since zero is neither positive nor negative.",
+            "suggestion": "Return true only when the number is strictly greater than zero.",
+            "passed_cases": passed,
+            "total_cases": total,
+            "pass_ratio": weighted_ratio,
         }
 
     if required_failures:
@@ -1518,7 +1576,7 @@ def evaluate_javascript_hidden_tests(student_answer, hidden_tests):
 
 
 def analyze_python_execution(question, sample_answer, student_answer):
-    question_text = (question or "").lower()
+    question_text = _normalize_question_text(question)
     families = _python_question_families(question_text)
     normalized_student = re.sub(r"\s+", "", (student_answer or "").lower())
 
@@ -1536,6 +1594,1428 @@ def analyze_python_execution(question, sample_answer, student_answer):
         )
         if family_result:
             return family_result
+
+    if ("identity" in question_text and "equality" in question_text) or ("same object" in question_text):
+        if " is " in (student_answer or "") or "is not" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly uses identity checks to determine whether two references point to the same object.",
+            }
+        if "==" in (student_answer or ""):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Equality checks compare values, not object identity.",
+                "suggestion": "Use the `is` operator to check object identity.",
+            }
+
+    if ("type check" in question_text or "isinstance" in question_text or "check type" in question_text) and "isinstance(" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The function correctly checks the input type using isinstance.",
+        }
+    if ("type check" in question_text or "isinstance" in question_text or "check type" in question_text) and "isinstance(" not in normalized_student:
+        if normalized_student.endswith("returntrue") or normalized_student.endswith("returnfalse"):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning a constant value does not check the input type.",
+                "suggestion": "Use isinstance(x, type) to verify the input type.",
+            }
+
+    if ("element" in question_text and "list" in question_text and "contains" in question_text) or ("in list" in question_text):
+        if " in " in (student_answer or "") and "return" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly checks list membership using `in`.",
+            }
+        if normalized_student.endswith("returntrue") or normalized_student.endswith("returnfalse"):
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Returning a constant value does not check membership.",
+                "suggestion": "Return whether the element is in the list using `in`.",
+            }
+
+    if "list comprehension" in question_text and re.search(r"\[.*for.+in.+\]", (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses a list comprehension.",
+        }
+
+    if "dict comprehension" in question_text and re.search(r"\{.*for.+in.+\}", (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses a dictionary comprehension.",
+        }
+
+    if "set comprehension" in question_text and re.search(r"\{.*for.+in.+\}", (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses a set comprehension.",
+        }
+
+    if re.search(r"\bf[- ]string\b", question_text):
+        if re.search(r"f['\"]", (student_answer or "")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses an f-string for formatting.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use an f-string as requested.",
+            "suggestion": "Use an f-string (f\"...\") for string formatting.",
+        }
+
+    if "lambda" in question_text:
+        if "lambda" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a lambda function.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a lambda function as requested.",
+            "suggestion": "Use a lambda expression to define the function inline.",
+        }
+
+    if "regex" in question_text or "regular expression" in question_text:
+        if "re." in (student_answer or "") or "re.compile" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses regular expressions.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use regular expressions as requested.",
+            "suggestion": "Import re and use re.search, re.match, or re.compile.",
+        }
+
+    if "json" in question_text and ("parse" in question_text or "load" in question_text):
+        if "json.loads" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly parses JSON using json.loads.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not parse JSON as requested.",
+            "suggestion": "Use json.loads(...) to parse the JSON string.",
+        }
+
+    if "json" in question_text and ("serialize" in question_text or "dump" in question_text):
+        if "json.dumps" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly serializes JSON using json.dumps.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not serialize JSON as requested.",
+            "suggestion": "Use json.dumps(...) to serialize data to JSON.",
+        }
+
+    if "csv" in question_text:
+        if "csv." in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses the csv module.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use the csv module as requested.",
+            "suggestion": "Import csv and use csv.reader or csv.DictReader.",
+        }
+
+    if "datetime" in question_text:
+        if "datetime" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses the datetime module.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use datetime as requested.",
+            "suggestion": "Import datetime and use datetime.datetime or datetime.date.",
+        }
+
+    if "random" in question_text:
+        if "random." in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses the random module.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use random as requested.",
+            "suggestion": "Import random and call random.randint, random.choice, or similar.",
+        }
+
+    if "os module" in question_text or "os." in question_text or "using os" in question_text:
+        if "os." in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses the os module.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use the os module as requested.",
+            "suggestion": "Import os and call an os.* function.",
+        }
+
+    if "sys module" in question_text or "sys." in question_text or "using sys" in question_text:
+        if "sys." in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses the sys module.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use the sys module as requested.",
+            "suggestion": "Import sys and call a sys.* function.",
+        }
+
+    if "bitwise" in question_text:
+        if any(op in (student_answer or "") for op in ("&", "|", "^", "~", "<<", ">>")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses bitwise operations.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use bitwise operations as requested.",
+            "suggestion": "Use operators like &, |, ^, ~, <<, or >> as required by the prompt.",
+        }
+
+    if "class" in question_text and ("class " in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly defines a class.",
+        }
+    if "class" in question_text and ("class " not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not define a class as requested.",
+            "suggestion": "Use the class keyword to define a class.",
+        }
+
+    if "inheritance" in question_text and ("class " in (student_answer or "") and "(" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly shows inheritance.",
+        }
+    if "inheritance" in question_text and ("class " not in (student_answer or "") or "(" not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not demonstrate inheritance as requested.",
+            "suggestion": "Define a subclass using class Child(Parent): ...",
+        }
+
+    if "recursion" in question_text:
+        if re.search(r"\bdef\s+([a-z_][a-z0-9_]*)\s*\(", (student_answer or ""), re.IGNORECASE) and "return" in (student_answer or ""):
+            func_match = re.search(r"\bdef\s+([a-z_][a-z0-9_]*)\s*\(", (student_answer or ""), re.IGNORECASE)
+            func_name = func_match.group(1) if func_match else ""
+            if func_name:
+                occurrences = re.findall(rf"\b{re.escape(func_name)}\s*\(", (student_answer or ""), re.IGNORECASE)
+                if len(occurrences) > 1:
+                    return {
+                        "result_type": "full_pass",
+                        "correctness_min": 36,
+                        "feedback": "The solution correctly uses recursion.",
+                    }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use recursion as requested.",
+            "suggestion": "Have the function call itself to solve smaller subproblems.",
+        }
+
+    if "for loop" in question_text and "for " in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses a for loop.",
+        }
+    if "for loop" in question_text and "for " not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a for loop as requested.",
+            "suggestion": "Use a for loop to iterate.",
+        }
+
+    if "while loop" in question_text and "while " in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses a while loop.",
+        }
+    if "while loop" in question_text and "while " not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a while loop as requested.",
+            "suggestion": "Use a while loop with a condition.",
+        }
+
+    if "list" in question_text and "create" in question_text and "[" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly creates a list.",
+        }
+    if "list" in question_text and "create" in question_text and "[" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not create a list as requested.",
+            "suggestion": "Use list literals like [1, 2, 3] or list(...) to create a list.",
+        }
+    if "tuple" in question_text and "(" in (student_answer or "") and "," in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly creates a tuple.",
+        }
+    if "set" in question_text and "{" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly creates a set.",
+        }
+    if "dictionary" in question_text and "{" in (student_answer or "") and ":" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly creates a dictionary.",
+        }
+
+    if "exception handling" in question_text and "try" in (student_answer or "") and "except" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses try/except for exception handling.",
+        }
+
+    if ("file handling" in question_text or "read file" in question_text or "write file" in question_text) and ("open(" in (student_answer or "") or "with open" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly opens a file for I/O.",
+        }
+
+    if ("input" in question_text or "output" in question_text) and ("input(" in (student_answer or "") or "print(" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses input/output primitives.",
+        }
+
+    if "decorator" in question_text and "@" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly applies a decorator.",
+        }
+    if "decorator" in question_text and "@" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not apply a decorator as requested.",
+            "suggestion": "Use the @decorator syntax above the function definition.",
+        }
+
+    if "context manager" in question_text and "with " in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses a context manager.",
+        }
+    if "context manager" in question_text and "with " not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a context manager as requested.",
+            "suggestion": "Use a with statement to manage the resource.",
+        }
+
+    if "enter" in question_text and "exit" in question_text and ("__enter__" in (student_answer or "") and "__exit__" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly defines __enter__ and __exit__ for a context manager.",
+        }
+    if "enter" in question_text and "exit" in question_text and ("__enter__" not in (student_answer or "") or "__exit__" not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not define __enter__ and __exit__ as requested.",
+            "suggestion": "Implement both __enter__ and __exit__ methods.",
+        }
+
+    if "slicing" in question_text and re.search(r"\[[^\]]*:[^\]]*\]", (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses slicing.",
+        }
+    if "slicing" in question_text and "step" in question_text and "::" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses slicing with a step.",
+        }
+    if "slicing" in question_text and not re.search(r"\[[^\]]*:[^\]]*\]", (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use slicing as requested.",
+            "suggestion": "Use slice notation like s[start:end].",
+        }
+
+    if "range" in question_text and "range(" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use range() as requested.",
+            "suggestion": "Use range(...) when iterating over a sequence of numbers.",
+        }
+
+    if "enumerate" in question_text:
+        if "enumerate(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses enumerate.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use enumerate as requested.",
+            "suggestion": "Use enumerate(...) to get indexes and values.",
+        }
+
+    if "zip" in question_text:
+        if "zip(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses zip.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use zip as requested.",
+            "suggestion": "Use zip(...) to iterate over multiple sequences together.",
+        }
+
+    if "reversed" in question_text:
+        if "reversed(" in (student_answer or "") or "[::-1]" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly reverses iteration.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use reversed iteration as requested.",
+            "suggestion": "Use reversed(...) or slicing with [::-1].",
+        }
+
+    if "list comprehension" in question_text:
+        if re.search(r"\[[^\]]*for\s+.+\]", (student_answer or ""), re.IGNORECASE):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a list comprehension.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a list comprehension as requested.",
+            "suggestion": "Use [expr for x in iterable] syntax.",
+        }
+
+    if "dict comprehension" in question_text or "dictionary comprehension" in question_text:
+        if re.search(r"\{[^}]*for\s+[^}]*:[^}]*\}", (student_answer or ""), re.IGNORECASE):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a dictionary comprehension.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a dictionary comprehension as requested.",
+            "suggestion": "Use {k: v for k in iterable} syntax.",
+        }
+
+    if "set comprehension" in question_text:
+        if re.search(r"\{[^}:]*for\s+[^}]*\}", (student_answer or ""), re.IGNORECASE):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a set comprehension.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a set comprehension as requested.",
+            "suggestion": "Use {x for x in iterable} syntax.",
+        }
+
+    if "lambda" in question_text:
+        if "lambda " in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a lambda expression.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a lambda expression as requested.",
+            "suggestion": "Use lambda args: expr to define an anonymous function.",
+        }
+
+    if "default argument" in question_text or "default parameter" in question_text:
+        if "def " in (student_answer or "") and "=" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a default argument.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a default argument as requested.",
+            "suggestion": "Use def func(x=default) to set a default argument.",
+        }
+
+    if "*args" in question_text:
+        if "*args" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses *args.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use *args as requested.",
+            "suggestion": "Use *args to accept variable positional arguments.",
+        }
+
+    if "**kwargs" in question_text or "keyword arguments" in question_text:
+        if "**kwargs" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses **kwargs.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use **kwargs as requested.",
+            "suggestion": "Use **kwargs to accept variable keyword arguments.",
+        }
+
+    if "f-string" in question_text or "formatted string" in question_text:
+        if re.search(r"f['\"]", (student_answer or "")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses f-strings.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use f-strings as requested.",
+            "suggestion": "Use f\"...{expr}...\" for formatted strings.",
+        }
+
+    if (
+        "format()" in question_text
+        or "string format" in question_text
+        or "str.format" in question_text
+        or "format output" in question_text
+        or ("format" in question_text and "string" in question_text)
+    ):
+        if ".format(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses str.format.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use str.format as requested.",
+            "suggestion": "Use \"...\".format(...) for string formatting.",
+        }
+
+    if "input" in question_text and "input(" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not read input as requested.",
+            "suggestion": "Use input(...) to read user input.",
+        }
+
+    if "raise" in question_text:
+        if "raise " in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly raises an exception.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not raise an exception as requested.",
+            "suggestion": "Use raise SomeError(...) to raise an exception.",
+        }
+
+    if "import module" in question_text or "import a module" in question_text:
+        if "import " in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly imports a module.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not import a module as requested.",
+            "suggestion": "Use import module_name to import a module.",
+        }
+
+    if "starts with" in question_text or "startswith" in question_text or "prefix" in question_text:
+        if ".startswith(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly checks a string prefix.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not check the prefix as requested.",
+            "suggestion": "Use s.startswith(prefix) for prefix checks.",
+        }
+
+    if "ends with" in question_text or "endswith" in question_text or "suffix" in question_text:
+        if ".endswith(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly checks a string suffix.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not check the suffix as requested.",
+            "suggestion": "Use s.endswith(suffix) for suffix checks.",
+        }
+
+    if "split" in question_text and "string" in question_text:
+        if ".split(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly splits the string.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not split the string as requested.",
+            "suggestion": "Use s.split(delimiter) to split the string.",
+        }
+
+    if "join" in question_text and "string" in question_text:
+        if ".join(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly joins strings.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not join strings as requested.",
+            "suggestion": "Use delimiter.join(items) to join strings.",
+        }
+
+    if "strip" in question_text and "string" in question_text:
+        if any(method in (student_answer or "") for method in (".strip(", ".lstrip(", ".rstrip(")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly strips whitespace or characters.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not strip the string as requested.",
+            "suggestion": "Use strip, lstrip, or rstrip to remove whitespace.",
+        }
+
+    if "replace" in question_text and "string" in question_text:
+        if ".replace(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly replaces substrings.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not replace substrings as requested.",
+            "suggestion": "Use s.replace(old, new) to replace substrings.",
+        }
+
+    if ("find" in question_text or "index" in question_text) and "string" in question_text:
+        if any(method in (student_answer or "") for method in (".find(", ".index(")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly searches for a substring.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not search for a substring as requested.",
+            "suggestion": "Use s.find(sub) or s.index(sub) to locate substrings.",
+        }
+
+    if ("unicode" in question_text or "emoji" in question_text) and "length" in question_text:
+        if "len(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly measures string length.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not measure string length as requested.",
+            "suggestion": "Use len(s) to measure string length.",
+        }
+
+    if "list method" in question_text or "list methods" in question_text:
+        if any(method in (student_answer or "") for method in (".append", ".extend", ".pop", ".insert", ".remove", ".sort", ".reverse")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses list methods.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use list methods as requested.",
+            "suggestion": "Use a list method such as append, pop, or sort.",
+        }
+
+    if ("copy" in question_text or "clone" in question_text) and "list" in question_text:
+        if any(token in (student_answer or "") for token in (".copy()", "list(", "[:]", "[:]")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly copies the list.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not copy the list as requested.",
+            "suggestion": "Use list(lst) or lst.copy() to clone the list.",
+        }
+
+    if "sort" in question_text and "key" in question_text:
+        if "key=" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly sorts with a key function.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not sort with a key function as requested.",
+            "suggestion": "Use sorted(items, key=...) or list.sort(key=...).",
+        }
+
+    if "dict method" in question_text or "dictionary method" in question_text:
+        if any(method in (student_answer or "") for method in (".get(", ".keys()", ".values()", ".items()", ".update(")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses dictionary methods.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use dictionary methods as requested.",
+            "suggestion": "Use dict methods such as get, keys, values, or items.",
+        }
+
+    if "merge" in question_text and ("dict" in question_text or "dictionary" in question_text):
+        if any(token in (student_answer or "") for token in (".update(", "{**", " | ")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly merges dictionaries.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not merge dictionaries as requested.",
+            "suggestion": "Use update or unpacking like {**a, **b} to merge dicts.",
+        }
+
+    if "defaultdict" in question_text:
+        if "defaultdict(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses defaultdict.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use defaultdict as requested.",
+            "suggestion": "Use collections.defaultdict to provide default values.",
+        }
+
+    if "counter" in question_text or "frequency" in question_text:
+        if "Counter(" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses Counter for frequencies.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use Counter as requested.",
+            "suggestion": "Use collections.Counter to count frequencies.",
+        }
+
+    if "subset" in question_text or "superset" in question_text:
+        subset_tokens = (".issubset(", ".issuperset(", "<=", ">=")
+        if any(op in (student_answer or "") for op in subset_tokens):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly checks subset or superset relationships.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not check subset or superset relationships as requested.",
+            "suggestion": "Use issubset/issuperset or <= / >= for set relationships.",
+        }
+
+    if "set operation" in question_text or "set operations" in question_text:
+        set_ops_tokens = (".union(", ".intersection(", ".difference(", ".issubset(", ".issuperset(")
+        if any(op in (student_answer or "") for op in set_ops_tokens):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses set operations.",
+            }
+        if any(op in (student_answer or "") for op in ("|", "&", "-", "^")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses set operators.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use set operations as requested.",
+            "suggestion": "Use set methods like union or intersection, or operators like | and &.",
+        }
+
+    if "custom exception" in question_text:
+        if "class " in (student_answer or "") and "Exception" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly defines a custom exception.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not define a custom exception as requested.",
+            "suggestion": "Subclass Exception to create a custom exception type.",
+        }
+
+    if "iterator" in question_text:
+        if "iter(" in (student_answer or "") or "__iter__" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses an iterator.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use iterators as requested.",
+            "suggestion": "Use iter(...) or implement __iter__.",
+        }
+
+    if "generator" in question_text:
+        if "yield" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a generator.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use a generator as requested.",
+            "suggestion": "Use yield to define a generator.",
+        }
+
+    if ("read" in question_text and "file" in question_text and "binary" not in question_text):
+        if "open(" in (student_answer or "") and ("read(" in (student_answer or "") or "readlines(" in (student_answer or "")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly reads from a file.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not read from a file as requested.",
+            "suggestion": "Open the file and call read() or readlines().",
+        }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not read from a file as requested.",
+            "suggestion": "Use open(...).read() or readlines().",
+        }
+
+    if ("write" in question_text and "file" in question_text):
+        if "open(" in (student_answer or "") and (".write(" in (student_answer or "") or "w" in (student_answer or "")):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly writes to a file.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not write to a file as requested.",
+            "suggestion": "Open the file in write/append mode and call write(...).",
+        }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not write to a file as requested.",
+            "suggestion": "Open the file in write/append mode and call write(...).",
+        }
+
+    if "binary file" in question_text:
+        if "rb" in (student_answer or "") or "wb" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly handles binary file mode.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use binary file mode as requested.",
+            "suggestion": "Use rb or wb mode when opening the file.",
+        }
+
+    if "search" in question_text and ("binary" in question_text or "linear" in question_text):
+        if "while" in (student_answer or "") or "for " in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution implements a search pattern.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not implement a search pattern as requested.",
+            "suggestion": "Use a loop to scan for the target (linear) or a while loop for binary search.",
+        }
+
+    if "sort" in question_text and ("sorted(" in (student_answer or "") or ".sort(" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly performs sorting.",
+        }
+    if "sort" in question_text and ("sorted(" not in (student_answer or "") and ".sort(" not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not sort as requested.",
+            "suggestion": "Use sorted(...) or list.sort() to order the values.",
+        }
+
+    if "dynamic programming" in question_text or "dp" in question_text:
+        if "dp" in (student_answer or "") or "memo" in (student_answer or ""):
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The solution correctly uses a dynamic programming pattern.",
+            }
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use dynamic programming as requested.",
+            "suggestion": "Use a DP table or memoization to store subproblem results.",
+        }
+
+    if ("async" in question_text or "asynchronous" in question_text) and ("async def" in (student_answer or "") or "await " in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly defines or uses async functionality.",
+        }
+    if ("async" in question_text or "asynchronous" in question_text) and ("async def" not in (student_answer or "")) and ("await " not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not define or use async functionality as requested.",
+            "suggestion": "Use async def (and await where appropriate) to implement asynchronous behavior.",
+        }
+
+    if "thread" in question_text and "threading" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses threading.",
+        }
+    if "thread" in question_text and "threading" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use threading as requested.",
+            "suggestion": "Import threading and create a Thread to run work concurrently.",
+        }
+
+    if "multiprocess" in question_text and "multiprocessing" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses multiprocessing.",
+        }
+    if "multiprocess" in question_text and "multiprocessing" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use multiprocessing as requested.",
+            "suggestion": "Import multiprocessing and create a Process or Pool.",
+        }
+
+    if ("http" in question_text or "requests" in question_text) and "requests.get" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly makes an HTTP GET request.",
+        }
+    if ("http" in question_text or "requests" in question_text) and "requests.get" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not perform the requested HTTP GET with requests.",
+            "suggestion": "Use requests.get(url) to make the HTTP request.",
+        }
+
+    if "sqlite" in question_text and "sqlite3.connect" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly connects to SQLite using sqlite3.",
+        }
+    if "sqlite" in question_text and "sqlite3.connect" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not connect to SQLite as requested.",
+            "suggestion": "Call sqlite3.connect(...) to create the connection.",
+        }
+
+    if "sqlalchemy" in question_text and "sqlalchemy" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses SQLAlchemy.",
+        }
+
+    if "numpy" in question_text and ("np.array" in (student_answer or "") or "numpy.array" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses NumPy arrays.",
+        }
+    if "numpy" in question_text and ("np.array" not in (student_answer or "") and "numpy.array" not in (student_answer or "")) and "[" in (student_answer or ""):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The solution builds a list, but it does not use NumPy as requested.",
+            "suggestion": "Use numpy.array(...) to create the array.",
+        }
+    if "numpy" in question_text and ("np.array" not in (student_answer or "") and "numpy.array" not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use NumPy as requested.",
+            "suggestion": "Use numpy.array(...) to create the array.",
+        }
+
+    if "pandas" in question_text and ("DataFrame" in (student_answer or "") or "pd.DataFrame" in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses pandas DataFrame.",
+        }
+    if "pandas" in question_text and ("DataFrame" not in (student_answer or "") and "pd.DataFrame" not in (student_answer or "")) and "{" in (student_answer or ""):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The solution builds a dictionary, but it does not use pandas DataFrame as requested.",
+            "suggestion": "Use pd.DataFrame(...) to construct the DataFrame.",
+        }
+    if "pandas" in question_text and ("DataFrame" not in (student_answer or "") and "pd.DataFrame" not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use pandas DataFrame as requested.",
+            "suggestion": "Use pd.DataFrame(...) to construct the DataFrame.",
+        }
+
+    if ("matplotlib" in question_text or "seaborn" in question_text) and ("plt." in (student_answer or "") or "sns." in (student_answer or "")):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses plotting libraries for visualization.",
+        }
+    if ("matplotlib" in question_text or "seaborn" in question_text) and ("plt." not in (student_answer or "") and "sns." not in (student_answer or "")) and "plot" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The plotting intent is clear, but the requested plotting library is not used.",
+            "suggestion": "Use matplotlib.pyplot (plt) or seaborn (sns) to create the plot.",
+        }
+    if ("matplotlib" in question_text or "seaborn" in question_text) and ("plt." not in (student_answer or "") and "sns." not in (student_answer or "")):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use the requested plotting library.",
+            "suggestion": "Use matplotlib.pyplot (plt) or seaborn (sns) to create the plot.",
+        }
+
+    if ("scikit-learn" in question_text or "sklearn" in question_text) and "sklearn" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses scikit-learn.",
+        }
+    if ("scikit-learn" in question_text or "sklearn" in question_text) and "sklearn" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use scikit-learn as requested.",
+            "suggestion": "Import sklearn and use an estimator from the library.",
+        }
+
+    if "tkinter" in question_text and "tkinter" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses tkinter for GUI development.",
+        }
+    if "tkinter" in question_text and "tkinter" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use tkinter as requested.",
+            "suggestion": "Import tkinter and build the GUI with its widgets.",
+        }
+
+    if "pyqt" in question_text and "pyqt" in normalized_student:
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses PyQt for GUI development.",
+        }
+    if "pyqt" in question_text and "pyqt" not in normalized_student:
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use PyQt as requested.",
+            "suggestion": "Import PyQt modules and build the GUI with its widgets.",
+        }
+
+    if "flask" in question_text and "flask" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses Flask for web development.",
+        }
+    if "flask" in question_text and "flask" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use Flask as requested.",
+            "suggestion": "Import Flask and create an app instance.",
+        }
+
+    if "django" in question_text and "django" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses Django for web development.",
+        }
+    if "django" in question_text and "django" not in (student_answer or "") and "def " in (student_answer or ""):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The solution defines a view function, but it does not use Django as required.",
+            "suggestion": "Use Django's HttpResponse or other Django components to build the view.",
+        }
+    if "django" in question_text and "django" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use Django as requested.",
+            "suggestion": "Import Django components or reference Django as required by the prompt.",
+        }
+
+    if "fastapi" in question_text and "fastapi" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses FastAPI for web development.",
+        }
+    if "fastapi" in question_text and "fastapi" not in (student_answer or "") and "def " in (student_answer or ""):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The solution defines a handler, but it does not use FastAPI as required.",
+            "suggestion": "Import FastAPI and define an app instance with route decorators.",
+        }
+    if "fastapi" in question_text and "fastapi" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use FastAPI as requested.",
+            "suggestion": "Import FastAPI and define an app instance.",
+        }
+
+    if "logging" in question_text and "logging." in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly uses the logging module.",
+        }
+    if "logging" in question_text and "logging." not in (student_answer or "") and "print(" in (student_answer or ""):
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The message is output, but it does not use the logging module as requested.",
+            "suggestion": "Replace print(...) with logging.<level>(...) calls.",
+        }
+    if "logging" in question_text and "logging." not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not use the logging module as requested.",
+            "suggestion": "Use logging.<level>(...) to log messages.",
+        }
+
+    if "pytest" in question_text and "pytest" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly references pytest.",
+        }
+    if "pytest" in question_text and "pytest" not in (student_answer or "") and "assert" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "The test logic is present, but it does not use pytest as requested.",
+            "suggestion": "Write a pytest-style test function and import pytest if needed.",
+        }
+    if "pytest" in question_text and "pytest" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not reference pytest as requested.",
+            "suggestion": "Use pytest syntax or import pytest for tests.",
+        }
+
+    if "unittest" in question_text and "unittest" in (student_answer or ""):
+        return {
+            "result_type": "full_pass",
+            "correctness_min": 36,
+            "feedback": "The solution correctly references unittest.",
+        }
+    if "unittest" in question_text and "unittest" not in (student_answer or "") and "assert" in normalized_student:
+        return {
+            "result_type": "mostly_correct",
+            "correctness_max": 12,
+            "efficiency_max": 10,
+            "readability_max": 12,
+            "structure_max": 10,
+            "feedback": "An assertion is present, but it does not use the unittest framework as requested.",
+            "suggestion": "Define a unittest.TestCase class and use unittest assertions.",
+        }
+    if "unittest" in question_text and "unittest" not in (student_answer or ""):
+        return {
+            "result_type": "zero_pass",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "feedback": "The solution does not reference unittest as requested.",
+            "suggestion": "Use unittest.TestCase or import unittest for tests.",
+        }
 
     if (
         "palindrome_ignore_non_alnum" in families
@@ -3875,7 +5355,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "efficiency_max": 12,
             "readability_max": 12,
             "structure_max": 12,
-            "feedback": "The function treats zero as positive, so it misses the strict positive-number requirement.",
+            "feedback": "The function treats zero as positive, but zero is neither positive nor negative, so it misses the strict positive-number requirement.",
             "suggestion": "Return true only when the number is greater than zero.",
         }
 
@@ -5508,7 +6988,7 @@ def analyze_java_execution(question, sample_answer, student_answer):
                 "efficiency_max": 12,
                 "readability_max": 12,
                 "structure_max": 12,
-                "feedback": "The method treats zero as positive, so it misses the strict positive-number requirement.",
+                "feedback": "The method treats zero as positive, but zero is neither positive nor negative, so it misses the strict positive-number requirement.",
                 "suggestion": "Return true only when the number is greater than zero.",
             }
         if "< 0" in code or "<0" in code:

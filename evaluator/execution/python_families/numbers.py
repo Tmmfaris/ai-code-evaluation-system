@@ -3,6 +3,102 @@ def _contains(question_text, *parts):
 
 
 def evaluate_number_family(question, question_text, families, normalized_student, student_answer):
+    if _contains(question_text, "subtract", "two", "numbers"):
+        if "returna-b" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly subtracts the second number from the first.",
+            }
+        if "returna+b" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Adding the two numbers does not perform subtraction.",
+                "suggestion": "Return a - b to compute the difference.",
+            }
+        if "returnb-a" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Reversing the operands changes the subtraction result.",
+                "suggestion": "Subtract the second number from the first: a - b.",
+            }
+
+    if _contains(question_text, "multiply", "two", "numbers") or _contains(question_text, "product", "two", "numbers"):
+        if "returna*b" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly computes the product of the two numbers.",
+            }
+        if "returna+b" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Adding the numbers does not compute their product.",
+                "suggestion": "Use multiplication: a * b.",
+            }
+        if "returna-b" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Subtracting the numbers does not compute their product.",
+                "suggestion": "Use multiplication: a * b.",
+            }
+
+    if _contains(question_text, "divide", "two", "numbers") or _contains(question_text, "division", "two", "numbers"):
+        if "returna/b" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly divides the first number by the second.",
+            }
+        if "returna*b" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Multiplication does not compute the quotient.",
+                "suggestion": "Use division: a / b.",
+            }
+        if "returna+b" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "Adding the numbers does not compute the quotient.",
+                "suggestion": "Use division: a / b.",
+            }
+
+    if _contains(question_text, "odd") and _contains(question_text, "number"):
+        if "returnn%2!=0" in normalized_student or "returnn%2==1" in normalized_student:
+            return {
+                "result_type": "full_pass",
+                "correctness_min": 36,
+                "feedback": "The function correctly checks whether the number is odd.",
+            }
+        if "returnn%2==0" in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "This checks even numbers instead of odd numbers.",
+                "suggestion": "Use a modulo check for oddness, such as n % 2 != 0.",
+            }
+        if normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+            return {
+                "result_type": "zero_pass",
+                "correctness_max": 5,
+                "efficiency_max": 5,
+                "feedback": "The function always returns True instead of checking whether the number is odd.",
+                "suggestion": "Return the result of an actual odd-number check.",
+            }
+
     if _contains(question_text, "even") and "returnn%2==0ifn>0elsefalse" in normalized_student:
         return {
             "result_type": "mostly_correct",
