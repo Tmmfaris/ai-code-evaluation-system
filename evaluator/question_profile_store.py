@@ -34,19 +34,19 @@ def upsert_question_profile(payload: dict) -> dict:
 
 
 @lru_cache(maxsize=512)
-def _get_question_profile_cached(question_id: str):
-    return _REPOSITORY.get(question_id)
+def _get_question_profile_cached(question_signature: str):
+    return _REPOSITORY.get(question_signature)
 
 
-def get_question_profile(question_id: str):
-    profile = _get_question_profile_cached(question_id)
+def get_question_profile(question_signature: str):
+    profile = _get_question_profile_cached(question_signature)
     return deepcopy(profile) if profile else profile
 
 
-def get_question_profile_fresh(question_id: str):
-    if not question_id:
+def get_question_profile_fresh(question_signature: str):
+    if not question_signature:
         return None
-    profile = _REPOSITORY.get(question_id)
+    profile = _REPOSITORY.get(question_signature)
     _get_question_profile_cached.cache_clear()
     _list_question_profiles_cached.cache_clear()
     return deepcopy(profile) if profile else profile

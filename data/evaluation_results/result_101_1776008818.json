@@ -1,0 +1,161 @@
+{
+  "execution_time": 143.39,
+  "students": [
+    {
+      "student_id": "101",
+      "question_count": 3,
+      "total_score": 300,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
+            "feedback": "The student answer exactly matches the expected function for adding two numbers."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
+            "feedback": "The student answer exactly matches the expected function for checking even numbers."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student used a different approach, but the logic is correct.",
+            "feedback": "The function correctly reverses the input string and matches the expected output on representative test cases."
+          }
+        }
+      ]
+    },
+    {
+      "student_id": "102",
+      "question_count": 3,
+      "total_score": 102,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 0,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The function subtracts the second number from the first instead of adding the two inputs. Use the addition operator so the function returns a + b."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The function returns the square of the input instead of the factorial. Use a base case and a recursive or iterative factorial calculation."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student used a different approach, but the logic is correct.",
+            "feedback": "The function correctly removes spaces from the input string on representative test cases."
+          }
+        }
+      ]
+    },
+    {
+      "student_id": "103",
+      "question_count": 3,
+      "total_score": 193,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The function returns a constant boolean instead of checking whether the string is a palindrome. Compare the original string with its reverse or an equivalent mirrored check."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 91,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Average",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student used a different approach, but the logic is correct.",
+            "feedback": "The result is correct, but sorting the full list is less efficient than finding the minimum directly. Use min(lst) or a single-pass comparison instead of sorting the entire list."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
+            "feedback": "The student answer exactly matches the expected function for converting text to lowercase."
+          }
+        }
+      ]
+    }
+  ]
+}

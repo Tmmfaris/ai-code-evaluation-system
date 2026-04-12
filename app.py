@@ -1,9 +1,31 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import ast
 import hashlib
 import importlib
+import json
+from utils.logger import log_warning
+import os
 import re
 import time
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+
+# --- FastAPI App Initialization ---
+app = FastAPI(
+    title="AI Intelligent Evaluation Model",
+    description="LLM-based multi-language code evaluation system",
+    version="1.0",
+)
+
+# Registered via middleware() for correct ordering
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -22,12 +44,17 @@ from schemas import (
 )
 
 from evaluator.question_profile_store import get_question_profile_fresh
+from evaluator.question_profile_repository import build_question_signature
 from evaluator.question_package import (
     approve_registered_question,
     get_registered_question_package,
     list_pending_question_packages,
     prepare_question_profiles,
+    prepare_question_profiles_until_correct,
+    refresh_pending_question_packages,
 )
+from evaluator.bulk_processor import process_bulk_evaluations
+from evaluator.bulk_file_processor import discover_and_process_files, attempt_json_repair
 from evaluator.evaluation_history_store import save_evaluation_record
 from evaluator.question_learning_store import save_learning_signal
 from evaluator.comparison.feedback_generator import sanitize_text_or_fallback, choose_safe_improvement
@@ -41,7 +68,6 @@ from config import (
     AUTO_REPAIR_BAD_PACKAGES,
     REQUIRE_FACULTY_APPROVAL_FOR_LIVE,
 )
-
 
 _EVALUATOR_MODULE_NAMES = [
     "evaluator.execution.shared",
@@ -62,7 +88,7 @@ _EVALUATOR_FINGERPRINT_PATHS = [
     Path("evaluator/main_evaluator.py"),
 ]
 _ACTIVE_EVALUATOR_FINGERPRINT = None
-APP_RUNTIME_MARKER = "app-runtime-2026-04-07-js-package-fix-v1"
+APP_RUNTIME_MARKER = "app-runtime-2026-04-12-hyper-robust-v3"
 
 
 def _build_evaluator_fingerprint():
@@ -93,6 +119,59 @@ def _get_live_evaluate_submission():
 def _normalize_feedback_text(text):
     return " ".join((text or "").strip().lower().split())
 
+
+_YAML_AVAILABILITY_CHECKED = False
+
+
+def _warn_if_yaml_missing():
+    global _YAML_AVAILABILITY_CHECKED
+    if _YAML_AVAILABILITY_CHECKED:
+        return
+    try:
+        import yaml  # noqa: F401
+        _YAML_AVAILABILITY_CHECKED = True
+        return
+    except Exception:
+        log_warning(
+            "PyYAML is not installed. JSON auto-repair for unquoted keys and shell-mangled bodies "
+            "will be limited. Install pyyaml to enable the hyper-robust repair path."
+        )
+        _YAML_AVAILABILITY_CHECKED = True
+
+
+def _extract_json_block(text):
+    if not text:
+        return text
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return text
+    return text[start : end + 1]
+
+
+def _normalize_json_whitespace(text):
+    if not text:
+        return text
+    replacements = {
+        "\u00a0": " ",  # no-break space
+        "\u2000": " ",
+        "\u2001": " ",
+        "\u2002": " ",
+        "\u2003": " ",
+        "\u2004": " ",
+        "\u2005": " ",
+        "\u2006": " ",
+        "\u2007": " ",
+        "\u2008": " ",
+        "\u2009": " ",
+        "\u200a": " ",
+        "\u202f": " ",
+        "\u205f": " ",
+        "\u3000": " ",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text
 
 def _feedback_tokens(text):
     return {token for token in _normalize_feedback_text(text).split() if len(token) > 2}
@@ -171,7 +250,8 @@ def _is_bad_question_package(profile, require_approval=None):
     if bool(profile.get("review_required", True)):
         return True
     template_family = (profile.get("template_family") or "").strip().lower()
-    if template_family.endswith("::generic") or template_family == "python::generic":
+    confidence = float(profile.get("package_confidence", 0.0) or 0.0)
+    if (template_family.endswith("::generic") or template_family == "python::generic") and confidence < 1.0:
         return True
     if _has_placeholder_tests(profile.get("test_sets") or {}):
         return True
@@ -868,10 +948,15 @@ def _evaluate_single_submission(
     llm_review=False,
     llm_review_max_attempts=None,
 ):
-    profile = get_question_profile_fresh(submission.question_id) if submission.question_id else None
-    direct_question = (submission.question or "").strip()
+    question_text = (submission.question or "").strip()
+    language_text = (submission.language or "").strip().lower()
+    
+    signature = build_question_signature(question_text, language_text) if question_text and language_text else None
+    profile = get_question_profile_fresh(signature) if signature else None
+    
+    direct_question = question_text
     direct_model_answer = (submission.model_answer or "").strip()
-    direct_language = (submission.language or "").strip().lower()
+    direct_language = language_text
     has_inline_question_context = bool(
         direct_question
         and direct_model_answer
@@ -1249,75 +1334,113 @@ def build_multi_student_evaluation_response(req: MultiStudentEvaluationRequest):
     if len(req.students) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 students per request")
 
-    start_time = time.time()
-    results = [None] * len(req.students)
+    # Process evaluations
+    results = process_bulk_evaluations(req, _evaluate_single_submission)
+    
+    # Persistent storage on the server
+    try:
+        from evaluator.bulk_file_processor import RESULTS_DIR
+        from fastapi.encoders import jsonable_encoder
+        import time
+        from pathlib import Path
+        
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        timestamp = int(time.time())
+        # Use first student ID as a hint for the filename
+        hint = req.students[0].student_id if req.students else "api"
+        filename = f"result_{hint}_{timestamp}.json"
+        save_path = Path(RESULTS_DIR) / filename
+        
+        with open(save_path, "w") as f:
+            json.dump(jsonable_encoder(results), f, indent=2)
+        log_info(f"Evaluation results persisted to server: {save_path}")
+    except Exception as e:
+        log_error(f"Failed to persist evaluation results: {str(e)}")
 
-    def _evaluate_one_student(index, student_req):
+    return MultiStudentEvaluationResponse(**results)
+
+
+
+@app.post("/evaluate/bulk-file")
+async def evaluate_bulk_file(file_path: str, background_tasks: BackgroundTasks):
+    """
+    Triggers an evaluation for a file already stored on the server's disk.
+    This is much more stable than sending large payloads via terminal CURL.
+    """
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+    
+    # Validation will happen inside the processor
+    from pathlib import Path
+    from evaluator.bulk_file_processor import process_single_file
+    
+    evaluate_submission_func = _get_live_evaluate_submission()
+    # We run this in the foreground so the user gets immediate feedback/results
+    import time
+    from evaluator.bulk_file_processor import RESULTS_DIR
+    
+    # We essentially reuse the queue processing logic but targeting this specific file
+    source_path = Path(file_path)
+    process_single_file(source_path, _evaluate_single_submission)
+    
+    return {"status": "success", "message": f"Processed {source_path.name}. Results available in {RESULTS_DIR}"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Performs startup tasks:
+    1. Registers Pydantic models in OpenAPI components to fix Swagger UI resolver errors.
+    2. Starts the background file monitor.
+    """
+    # 1. Register schemas to prevent "$defs" reference errors in Swagger UI
+    from fastapi.openapi.utils import get_openapi
+    from pydantic import TypeAdapter
+
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            openapi_version=app.openapi_version,
+            description=app.description,
+            routes=app.routes,
+        )
+        # Inject our complex model into components/schemas
+        adapter = TypeAdapter(MultiStudentEvaluationRequest)
+        model_schema = adapter.json_schema(ref_template="#/components/schemas/{model}")
+        defs = model_schema.pop("$defs", {})
+        if "components" not in openapi_schema:
+            openapi_schema["components"] = {"schemas": {}}
+        elif "schemas" not in openapi_schema["components"]:
+            openapi_schema["components"]["schemas"] = {}
+        openapi_schema["components"]["schemas"].update(defs)
+        openapi_schema["components"]["schemas"]["MultiStudentEvaluationRequest"] = model_schema
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
+
+    # 2. Start background monitor
+    async def refresh_pending_packages_once():
         try:
-            review_flag = (
-                student_req.llm_review
-                if student_req.llm_review is not None
-                else req.llm_review
-            )
-            if review_flag is None:
-                review_flag = ALWAYS_LLM_REVIEW
-            review_attempts = (
-                student_req.llm_review_max_attempts
-                if student_req.llm_review_max_attempts is not None
-                else req.llm_review_max_attempts
-            )
-            if review_attempts is None:
-                review_attempts = LLM_REVIEW_MAX_ATTEMPTS
-            return index, build_student_evaluation_response(
-                student_req,
-                force_llm_when_not_deterministic=True,
-                llm_review=bool(review_flag),
-                llm_review_max_attempts=review_attempts,
-            )
-        except HTTPException as exc:
-            return index, StudentEvaluationResponse(
-                student_id=student_req.student_id,
-                questions=[StudentQuestionResultItem(question_id=None, error=exc.detail)],
-            )
-        except Exception as exc:
-            log_error(f"Multi-student evaluation error | Student: {student_req.student_id} | {str(exc)}")
-            return index, StudentEvaluationResponse(
-                student_id=student_req.student_id,
-                questions=[StudentQuestionResultItem(question_id=None, error="Internal evaluation error")],
-            )
+            refreshed = refresh_pending_question_packages()
+            log_info(f"Startup pending-package refresh completed. Refreshed/checked {len(refreshed)} package(s).")
+        except Exception as e:
+            log_error(f"Startup pending-package refresh failed: {str(e)}")
 
-    max_workers = min(3, len(req.students)) or 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(_evaluate_one_student, i, student_req): i
-            for i, student_req in enumerate(req.students)
-        }
+    async def monitor_queue():
+        while True:
+            try:
+                discover_and_process_files(_evaluate_single_submission)
+            except Exception as e:
+                from utils.logger import log_error
+                log_error(f"Background queue monitor error: {str(e)}")
+            await asyncio.sleep(30) # Check every 30 seconds
 
-        for future in as_completed(futures):
-            index, item = future.result()
-            results[index] = item
-
-    execution_time = round(time.time() - start_time, 3)
-
-    return MultiStudentEvaluationResponse(
-        execution_time=execution_time,
-        students=results,
-    )
-
-
-app = FastAPI(
-    title="AI Intelligent Evaluation Model",
-    description="LLM-based multi-language code evaluation system",
-    version="1.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    asyncio.create_task(refresh_pending_packages_once())
+    asyncio.create_task(monitor_queue())
 
 
 @app.get("/")
@@ -1339,9 +1462,111 @@ def health():
     }
 
 
-@app.post("/evaluate/students", response_model=MultiStudentEvaluationResponse, response_model_exclude_none=True)
-def evaluate_students(req: MultiStudentEvaluationRequest):
+@app.post(
+    "/evaluate/students",
+    response_model=MultiStudentEvaluationResponse,
+    response_model_exclude_none=True,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/MultiStudentEvaluationRequest"}
+                }
+            },
+        }
+    },
+)
+async def evaluate_students(request: Request):
+    """
+    Evaluate multiple students' submissions.
+    This endpoint is hyper-robust: it accepts raw request bodies to handle 
+    malformed JSON (e.g., shell-mangled quotes or unquoted keys) by attempting 
+    automatic repair before parsing.
+    """
+    _warn_if_yaml_missing()
+    raw_body = await request.body()
+    text = _normalize_json_whitespace(_extract_json_block(raw_body.decode("utf-8", errors="replace")))
+    log_info(f"Raw request preview (trimmed to 200 chars): {text[:200]}")
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        log_info(f"JSON parse failed, attempting repair. Raw body preview: {text[:200]}...")
+        # Attempt repair
+        from evaluator.bulk_file_processor import attempt_json_repair
+        try:
+            data = attempt_json_repair(text)
+        except Exception as repair_err:
+            log_error(f"Repair attempt also failed: {str(repair_err)}")
+            data = None
+            
+        if not data:
+            log_error(f"Hyper-Robust Parsing Failed for body: {text}")
+            raise HTTPException(
+                status_code=422,
+                detail=f"JSON body could not be parsed or repaired. Error during original parse: {str(e)}"
+            )
+    
+    try:
+        req = MultiStudentEvaluationRequest(**data)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Data validation failed after JSON repair: {str(e)}")
+
     return build_multi_student_evaluation_response(req)
+
+
+@app.post("/evaluate/robust", response_model=MultiStudentEvaluationResponse)
+async def evaluate_students_robust(request: Request):
+    """
+    Accepts raw request body and attempts to repair malformed JSON 
+    (e.g., Windows shell quote mangling) before processing.
+    Saves a persistent copy of results to the server.
+    """
+    _warn_if_yaml_missing()
+    raw_body = await request.body()
+    try:
+        text = _normalize_json_whitespace(_extract_json_block(raw_body.decode("utf-8")))
+        log_info(f"Robust raw request preview (trimmed to 200 chars): {text[:200]}")
+        data = json.loads(text)
+    except Exception:
+        # Fallback to repair logic
+        from evaluator.bulk_file_processor import attempt_json_repair
+        data = attempt_json_repair(
+            _normalize_json_whitespace(_extract_json_block(raw_body.decode("utf-8", errors="replace")))
+        )
+        if not data:
+            raise HTTPException(
+                status_code=422, 
+                detail="JSON body could not be parsed or repaired. Please check your syntax."
+            )
+            
+    try:
+        req = MultiStudentEvaluationRequest(**data)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Validation failed after repair: {str(e)}")
+        
+    return build_multi_student_evaluation_response(req)
+
+
+@app.get("/evaluation/results")
+def list_evaluation_results():
+    """Returns a list of all evaluation result files stored on the server."""
+    from evaluator.bulk_file_processor import RESULTS_DIR
+    if not os.path.exists(RESULTS_DIR):
+        return []
+    files = os.listdir(RESULTS_DIR)
+    return sorted([f for f in files if f.endswith(".json")], reverse=True)
+
+
+@app.get("/evaluation/results/{filename}")
+def get_evaluation_result(filename: str):
+    """Retrieves a specific evaluation result file."""
+    from evaluator.bulk_file_processor import RESULTS_DIR
+    from fastapi.responses import FileResponse
+    file_path = os.path.join(RESULTS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Result file not found")
+    return FileResponse(file_path)
 
 
 @app.post("/questions/register", response_model=list[QuestionPackageResponse], response_model_exclude_none=True)
@@ -1352,7 +1577,7 @@ def register_question_profiles(req: MultiQuestionPackageRequest):
     if len(req.questions) > 50:
         raise HTTPException(status_code=400, detail="Maximum 50 questions per request")
 
-    saved = prepare_question_profiles([item.model_dump() for item in req.questions], force_llm=True)
+    saved = prepare_question_profiles_until_correct([item.model_dump() for item in req.questions], force_llm=True)
     bad = [item for item in saved if _is_bad_question_package(item, require_approval=False)]
     if bad:
         detail = [
@@ -1361,6 +1586,7 @@ def register_question_profiles(req: MultiQuestionPackageRequest):
                 "question": item.get("question"),
                 "package_status": item.get("package_status"),
                 "package_confidence": item.get("package_confidence"),
+                "package_summary": item.get("package_summary"),
                 "review_required": item.get("review_required"),
                 "template_family": item.get("template_family"),
             }
@@ -1390,41 +1616,55 @@ def register_question_profiles(req: MultiQuestionPackageRequest):
     return responses
 
 
-@app.post("/questions/{question_id}/approve", response_model=QuestionPackageResponse, response_model_exclude_none=True)
-def approve_question_profile(question_id: str, req: ApprovalRequest):
+@app.post("/questions/approve", response_model=QuestionPackageResponse, response_model_exclude_none=True)
+def approve_question_profile(req: ApprovalRequest):
+    question_text = (req.question or "").strip()
+    language_text = (req.language or "").strip().lower()
+    
+    if not (question_text and language_text):
+        raise HTTPException(status_code=400, detail="Question text and language are required to identify the package for approval.")
+
+    signature = build_question_signature(question_text, language_text)
+    
     edits = req.model_dump(exclude_unset=True)
     approved_by = edits.pop("approved_by", "faculty")
     edits.pop("checklist", None)
     edits.pop("approval_notes", None)
-    profile = approve_registered_question(question_id, approved_by=approved_by, edits=edits)
+    
+    profile = approve_registered_question(signature, approved_by=approved_by, edits=edits)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Question profile not found for the provided signature.")
+    return QuestionPackageResponse(**profile)
+
+
+@app.get("/questions/get", response_model=QuestionPackageResponse, response_model_exclude_none=True)
+def get_question_package(question: str, language: str):
+    signature = build_question_signature(question, language)
+    profile = get_registered_question_package(signature, force_llm=True)
     if not profile:
         raise HTTPException(status_code=404, detail="Question profile not found")
     return QuestionPackageResponse(**profile)
 
 
-@app.get("/questions/{question_id}", response_model=QuestionPackageResponse, response_model_exclude_none=True)
-def get_question_package(question_id: str):
-    profile = get_registered_question_package(question_id)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Question profile not found")
-    return QuestionPackageResponse(**profile)
+@app.patch("/questions/edit", response_model=QuestionPackageResponse, response_model_exclude_none=True)
+def edit_question_package(req: QuestionPackageEditRequest):
+    question_text = (req.question or "").strip()
+    language_text = (req.language or "").strip().lower()
+    
+    if not (question_text and language_text):
+        raise HTTPException(status_code=400, detail="Question text and language are required to identify the package for editing.")
 
-
-@app.patch("/questions/{question_id}/edit", response_model=QuestionPackageResponse, response_model_exclude_none=True)
-def edit_question_package(question_id: str, req: QuestionPackageEditRequest):
-    profile = get_registered_question_package(question_id)
+    signature = build_question_signature(question_text, language_text)
+    profile = get_registered_question_package(signature, force_llm=True)
     if not profile:
         raise HTTPException(status_code=404, detail="Question profile not found")
 
     updates = req.model_dump(exclude_unset=True)
-    if not updates:
-        return QuestionPackageResponse(**profile)
-
     patched = dict(profile)
     patched.update(updates)
 
     # If faculty edits content, require re-validation and re-approval.
-    content_keys = {"question", "model_answer", "language", "accepted_solutions", "test_sets", "incorrect_patterns"}
+    content_keys = {"model_answer", "accepted_solutions", "test_sets", "incorrect_patterns"}
     if content_keys & set(updates.keys()):
         patched["approval_status"] = "pending"
         patched["review_required"] = True
@@ -1435,19 +1675,19 @@ def edit_question_package(question_id: str, req: QuestionPackageEditRequest):
 
 @app.get("/questions/review/pending", response_model=list[QuestionPackageResponse], response_model_exclude_none=True)
 def get_pending_question_packages():
-    profiles = list_pending_question_packages()
+    profiles = list_pending_question_packages(force_llm=True)
     return [QuestionPackageResponse(**item) for item in profiles]
 
 
 @app.post("/questions/approve-all", response_model=list[QuestionPackageResponse], response_model_exclude_none=True)
 def approve_all_question_packages(approved_by: str = "faculty"):
-    profiles = list_pending_question_packages()
+    profiles = list_pending_question_packages(force_llm=True)
     approved = []
     for item in profiles:
-        question_id = item.get("question_id")
-        if not question_id:
+        signature = item.get("question_signature")
+        if not signature:
             continue
-        profile = approve_registered_question(question_id, approved_by=approved_by)
+        profile = approve_registered_question(signature, approved_by=approved_by)
         if profile:
             approved.append(QuestionPackageResponse(**profile))
     return approved

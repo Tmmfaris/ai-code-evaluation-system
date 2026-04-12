@@ -141,12 +141,12 @@ class MultiQuestionPackageRequest(BaseModel):
 
 
 class QuestionPackageResponse(BaseModel):
-    question_id: str
+    question_id: Optional[str] = None
     question: str
     model_answer: str
     language: str
     profile: dict
-    question_signature: Optional[str] = None
+    question_signature: str
     template_family: Optional[str] = None
     accepted_solutions: Optional[List[str]] = None
     test_sets: Optional[dict] = None

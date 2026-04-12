@@ -1,6 +1,8 @@
 from evaluator.orchestration import apply_confidence_bounds
 from llm.llm_engine import call_llm
-from llm.prompt_builder import build_audit_prompt, build_comparison_prompt
+import json
+import re
+from llm.prompt_builder import build_audit_prompt, build_comparison_prompt, build_rephrase_prompt
 from llm.response_parser import parse_llm_response
 
 from .feedback_generator import (
@@ -167,3 +169,41 @@ def should_audit_with_llm(confidence, execution_finding, rule_findings, feedback
         return False
 
     return True
+
+
+def _parse_rephrase_json(response_text):
+    cleaned = (response_text or "").strip()
+    if not cleaned:
+        return None
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if "feedback" not in parsed and "improvements" not in parsed:
+        return None
+    return parsed
+
+
+def rephrase_feedback_with_llm(question, language, feedback, improvements):
+    if not feedback:
+        return feedback, improvements
+
+    prompt = build_rephrase_prompt(
+        question=question,
+        language=language,
+        feedback=feedback,
+        improvements=improvements,
+    )
+    raw_llm_output = call_llm(prompt)
+    parsed = _parse_rephrase_json(raw_llm_output)
+    if not parsed:
+        return feedback, improvements
+
+    rephrased_feedback = choose_safe_feedback(parsed.get("feedback"), feedback)
+    rephrased_improvements = choose_safe_improvement(parsed.get("improvements"), improvements)
+    return rephrased_feedback, rephrased_improvements

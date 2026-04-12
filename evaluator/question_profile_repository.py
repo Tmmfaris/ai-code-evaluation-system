@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from evaluator.question_classifier import classify_question
 
 
-def _build_question_signature(question: str, language: str) -> str:
+def build_question_signature(question: str, language: str) -> str:
     normalized_question = " ".join((question or "").strip().lower().split())
     return f"{(language or '').strip().lower()}::{normalized_question}"
 
@@ -61,8 +61,10 @@ class JsonQuestionProfileRepository(QuestionProfileRepository):
         question = payload["question"].strip()
         model_answer = payload["model_answer"].strip()
         language = payload["language"].strip().lower()
-        question_signature = (payload.get("question_signature") or "").strip() or _build_question_signature(question, language)
-        question_id = (payload.get("question_id") or "").strip() or _build_package_key(question_signature)
+        question_signature = (payload.get("question_signature") or "").strip() or build_question_signature(question, language)
+        # question_id is now purely optional metadata
+        question_id = (payload.get("question_id") or "").strip() or None
+        
         profile = classify_question(question, language)
         accepted_solutions = [
             answer.strip()
@@ -75,11 +77,11 @@ class JsonQuestionProfileRepository(QuestionProfileRepository):
         incorrect_patterns = [item for item in (payload.get("incorrect_patterns") or []) if isinstance(item, dict)]
 
         return {
+            "question_signature": question_signature,
             "question_id": question_id,
             "question": question,
             "model_answer": model_answer,
             "language": language,
-            "question_signature": question_signature,
             "template_family": (payload.get("template_family") or "").strip() or None,
             "accepted_solutions": accepted_solutions,
             "test_sets": {
@@ -108,16 +110,17 @@ class JsonQuestionProfileRepository(QuestionProfileRepository):
         built = self._build_profile(payload)
         with self._lock:
             profiles = self._load_profiles()
-            profiles[built["question_id"]] = built
+            # Signature is now the storage key
+            profiles[built["question_signature"]] = built
             self._save_profiles(profiles)
         return built
 
-    def get(self, question_id: str) -> Optional[dict]:
-        if not question_id:
+    def get(self, question_signature: str) -> Optional[dict]:
+        if not question_signature:
             return None
         with self._lock:
             profiles = self._load_profiles()
-            return profiles.get(question_id)
+            return profiles.get(question_signature)
 
     def list_all(self) -> List[dict]:
         with self._lock:
@@ -147,14 +150,21 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
         self._ensure_parent_dir()
         with self._lock:
             with self._connect() as conn:
+                # 🚀 Migration Logic: Remove question_id as PK if it exists
+                columns = {row[1]: row for row in conn.execute("PRAGMA table_info(question_profiles)").fetchall()}
+                if columns and "question_id" in columns and columns["question_id"][5] == 1:
+                    log_info("Migrating question_profiles: Changing PK from question_id to question_signature")
+                    # SQLite doesn't support DROP COLUMN or CHANGE PK well, so we do the 'rename and copy' dance
+                    conn.execute("ALTER TABLE question_profiles RENAME TO question_profiles_old")
+                    
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS question_profiles (
-                        question_id TEXT PRIMARY KEY,
+                        question_signature TEXT PRIMARY KEY,
+                        question_id TEXT,
                         question TEXT NOT NULL,
                         model_answer TEXT NOT NULL,
                         language TEXT NOT NULL,
-                        question_signature TEXT,
                         template_family TEXT,
                         accepted_solutions_json TEXT NOT NULL DEFAULT '[]',
                         test_sets_json TEXT NOT NULL DEFAULT '{}',
@@ -173,8 +183,41 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                     )
                     """
                 )
+                
+                # If we just renamed the old table, migrate data and drop it
+                if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='question_profiles_old'").fetchone():
+                    conn.execute(
+                        """
+                        INSERT INTO question_profiles (
+                            question_signature, question_id, question, model_answer, language,
+                            template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
+                            package_status, package_summary, package_confidence, review_required,
+                            approval_status, approved_by, exam_ready,
+                            positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
+                        )
+                        SELECT 
+                            COALESCE(question_signature, language || '::' || LOWER(TRIM(question))), 
+                            question_id, question, model_answer, language,
+                            template_family, 
+                            COALESCE(accepted_solutions_json, '[]'), 
+                            COALESCE(test_sets_json, '{}'), 
+                            COALESCE(incorrect_patterns_json, '[]'),
+                            package_status, package_summary, package_confidence, review_required,
+                            approval_status, approved_by, exam_ready,
+                            positive_test_count, negative_test_count, 
+                            COALESCE(reused_from_question_ids_json, '[]'), 
+                            profile_json
+                        FROM question_profiles_old
+                        """
+                    )
+                    conn.execute("DROP TABLE question_profiles_old")
+                    log_info("Successfully migrated question_profiles to signature-based PK")
+
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_question_profiles_language ON question_profiles(language)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_question_profiles_id ON question_profiles(question_id)"
                 )
                 conn.commit()
                 self._ensure_column(conn, "question_profiles", "question_signature", "TEXT")
@@ -206,8 +249,10 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
         question = payload["question"].strip()
         model_answer = payload["model_answer"].strip()
         language = payload["language"].strip().lower()
-        question_signature = (payload.get("question_signature") or "").strip() or _build_question_signature(question, language)
-        question_id = (payload.get("question_id") or "").strip() or _build_package_key(question_signature)
+        question_signature = (payload.get("question_signature") or "").strip() or build_question_signature(question, language)
+        # question_id is now purely optional metadata
+        question_id = (payload.get("question_id") or "").strip() or None
+        
         profile = classify_question(question, language)
         accepted_solutions = [
             answer.strip()
@@ -220,11 +265,11 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
         incorrect_patterns = [item for item in (payload.get("incorrect_patterns") or []) if isinstance(item, dict)]
 
         return {
+            "question_signature": question_signature,
             "question_id": question_id,
             "question": question,
             "model_answer": model_answer,
             "language": language,
-            "question_signature": question_signature,
             "template_family": (payload.get("template_family") or "").strip() or None,
             "accepted_solutions": accepted_solutions,
             "test_sets": {
@@ -251,11 +296,11 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
 
     def _row_to_profile(self, row) -> dict:
         return {
-            "question_id": row[0],
-            "question": row[1],
-            "model_answer": row[2],
-            "language": row[3],
-            "question_signature": row[4],
+            "question_signature": row[0],
+            "question_id": row[1],
+            "question": row[2],
+            "model_answer": row[3],
+            "language": row[4],
             "template_family": row[5],
             "accepted_solutions": json.loads(row[6]) if row[6] else [],
             "test_sets": json.loads(row[7]) if row[7] else {"positive": [], "negative": []},
@@ -344,8 +389,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO question_profiles (
-                        question_id, question, model_answer, language,
-                        question_signature, template_family,
+                        question_signature, question_id, question, model_answer, language,
+                        template_family,
                         accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                         package_status, package_summary, package_confidence, review_required,
                         approval_status, approved_by, exam_ready,
@@ -353,11 +398,11 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
+                        built["question_signature"],
                         built["question_id"],
                         built["question"],
                         built["model_answer"],
                         built["language"],
-                        built["question_signature"],
                         built["template_family"],
                         json.dumps(built["accepted_solutions"], ensure_ascii=True),
                         json.dumps(built["test_sets"], ensure_ascii=True),
@@ -378,22 +423,22 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                 conn.commit()
         return built
 
-    def get(self, question_id: str) -> Optional[dict]:
-        if not question_id:
+    def get(self, question_signature: str) -> Optional[dict]:
+        if not question_signature:
             return None
         with self._lock:
             with self._connect() as conn:
                 row = conn.execute(
                     """
-                    SELECT question_id, question, model_answer, language,
-                           question_signature, template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
+                    SELECT question_signature, question_id, question, model_answer, language,
+                           template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                            package_status, package_summary, package_confidence, review_required,
                            approval_status, approved_by, exam_ready,
                            positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
                     FROM question_profiles
-                    WHERE question_id = ?
+                    WHERE question_signature = ?
                     """,
-                    (question_id,),
+                    (question_signature,),
                 ).fetchone()
         return self._row_to_profile(row) if row else None
 
@@ -402,13 +447,13 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
             with self._connect() as conn:
                 rows = conn.execute(
                     """
-                    SELECT question_id, question, model_answer, language,
-                           question_signature, template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
+                    SELECT question_signature, question_id, question, model_answer, language,
+                           template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                            package_status, package_summary, package_confidence, review_required,
                            approval_status, approved_by, exam_ready,
                            positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
                     FROM question_profiles
-                    ORDER BY question_id
+                    ORDER BY question_signature
                     """
                 ).fetchall()
         return [self._row_to_profile(row) for row in rows]

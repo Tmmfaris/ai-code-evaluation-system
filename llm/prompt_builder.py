@@ -235,3 +235,31 @@ Return:
 """
 
     return prompt
+
+
+def build_rephrase_prompt(question, language, feedback, improvements):
+    prompt = f"""<|user|>
+You are a rewrite assistant. Rephrase the feedback to be clearer and more helpful, without changing its meaning or correctness.
+
+Rules:
+- Do NOT change the verdict.
+- Do NOT introduce new errors or new requirements.
+- Keep feedback concise: 1-2 sentences.
+- Improvements can be a short sentence or empty string.
+- Return ONLY compact single-line JSON.
+
+Language: {language}
+Question: {question}
+
+Original feedback:
+{feedback}
+
+Original improvements:
+{improvements}
+
+Return:
+{{"feedback":"<rephrased feedback>","improvements":"<rephrased improvements or empty>"}}
+<|end|>
+<|assistant|>
+"""
+    return prompt

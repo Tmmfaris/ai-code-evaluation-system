@@ -1,0 +1,36 @@
+{
+  "execution_time": 0.05,
+  "students": [
+    {
+      "student_id": "TEST_ROBUST_001",
+      "question_count": 1,
+      "total_score": 0,
+      "questions": [
+        {
+          "question_id": null,
+          "data": {
+            "question_id": null,
+            "question": "Simple addition",
+            "model_answer": "1+1",
+            "student_answer": "2",
+            "language": "python",
+            "question_metadata": {
+              "question_id": null,
+              "accepted_solutions": [],
+              "hidden_tests": [],
+              "test_sets": {
+                "positive": [],
+                "negative": []
+              },
+              "package_status": null,
+              "package_confidence": 0.0,
+              "review_required": false,
+              "approval_status": null,
+              "exam_ready": false,
+              "positive_test_count": 0,
+              "negative_test_count": 0,
+              "question_signature": "python::simple addition",
+              "template_family": null,
+              "incorrect_patterns": []
+            },
+            "data": 

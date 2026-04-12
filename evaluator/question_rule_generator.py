@@ -18,11 +18,13 @@ from analysis.syntax_checker.react_checker import check_react_syntax
 from evaluator.execution.shared import (
     _extract_first_function_name,
     _run_code_with_timeout,
+    _wrap_python_snippet,
     evaluate_java_hidden_tests,
     evaluate_javascript_hidden_tests,
 )
 from evaluator.question_learning_store import list_recent_learning_signals
 from llm.llm_engine import call_llm
+from utils.helpers import normalize_python_structure
 
 
 def _extract_first_json_object(text):
@@ -58,6 +60,8 @@ def _infer_template_family(question, language):
         return f"{language}::multiply_two_numbers"
     if _contains_all(question_text, "divide", "two", "numbers") or _contains_all(question_text, "division", "two", "numbers"):
         return f"{language}::divide_two_numbers"
+    if "cube of a number" in question_text or "return cube of a number" in question_text or _contains_all(question_text, "cube", "number"):
+        return f"{language}::cube_number"
     if "square of a number" in question_text or "return square of a number" in question_text or _contains_all(question_text, "square", "number"):
         return f"{language}::square_number"
     if "length of string" in question_text or "find length of string" in question_text:
@@ -75,6 +79,12 @@ def _infer_template_family(question, language):
         return f"{language}::reverse_list"
     if "uppercase" in question_text and "string" in question_text:
         return f"{language}::uppercase_string"
+    if (
+        _contains_all(question_text, "check", "lowercase")
+        or _contains_all(question_text, "string", "lowercase")
+        and ("check" in question_text or "is " in question_text or " if " in question_text)
+    ):
+        return f"{language}::lowercase_check"
     if "lowercase" in question_text and "string" in question_text:
         return f"{language}::lowercase_string"
     if "palindrome" in question_text:
@@ -427,9 +437,29 @@ def _infer_template_family(question, language):
 def _normalize_test_case(item):
     if not isinstance(item, dict):
         return None
+    raw_input = item.get("input")
+    raw_expected = item.get("expected_output")
+    if isinstance(raw_input, str):
+        normalized_input = raw_input
+        try:
+            normalized_input = json.dumps(json.loads(raw_input), separators=(",", ":"))
+        except Exception:
+            pass
+    else:
+        normalized_input = json.dumps(raw_input, separators=(",", ":")) if raw_input is not None else None
+
+    if isinstance(raw_expected, str):
+        normalized_expected = raw_expected
+        try:
+            normalized_expected = json.dumps(json.loads(raw_expected), separators=(",", ":"))
+        except Exception:
+            pass
+    else:
+        normalized_expected = json.dumps(raw_expected, separators=(",", ":")) if raw_expected is not None else None
+
     return {
-        "input": item.get("input"),
-        "expected_output": item.get("expected_output"),
+        "input": normalized_input,
+        "expected_output": normalized_expected,
         "description": item.get("description"),
         "kind": (item.get("kind") or "normal").strip().lower() if isinstance(item.get("kind"), str) else "normal",
         "weight": float(item.get("weight", 1.0) or 1.0),
@@ -454,9 +484,40 @@ def _dedupe_tests_by_io(test_cases):
         new_kind = normalized.get("kind", "normal")
         if existing_kind == "normal" and new_kind in {"edge", "trap"}:
             existing["kind"] = new_kind
-        if not existing.get("description") and normalized.get("description"):
+        existing_desc = (existing.get("description") or "").strip()
+        new_desc = (normalized.get("description") or "").strip()
+        if (
+            (not existing_desc and new_desc)
+            or ("auto-generated deterministic oracle test" in existing_desc.lower() and new_desc)
+        ):
             existing["description"] = normalized.get("description")
     return deduped
+
+
+def _trim_oracle_positive_tests(test_cases):
+    normalized_cases = [_normalize_test_case(item) for item in test_cases if _normalize_test_case(item)]
+    if not normalized_cases:
+        return []
+
+    handcrafted = []
+    oracle = []
+    for item in normalized_cases:
+        description = (item.get("description") or "").strip().lower()
+        if "auto-generated deterministic oracle test" in description:
+            oracle.append(item)
+        else:
+            handcrafted.append(item)
+
+    if not handcrafted:
+        return normalized_cases[:AUTO_GENERATE_MAX_HIDDEN_TESTS]
+
+    target_count = max(3, len(handcrafted))
+    trimmed = list(handcrafted)
+    for item in oracle:
+        if len(trimmed) >= min(target_count, AUTO_GENERATE_MAX_HIDDEN_TESTS):
+            break
+        trimmed.append(item)
+    return trimmed[:AUTO_GENERATE_MAX_HIDDEN_TESTS]
 
 
 def _normalize_incorrect_pattern(item):
@@ -1032,6 +1093,53 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    if "cube of a number" in question_text or "return cube of a number" in question_text or _contains_all(question_text, "cube", "number"):
+        return {
+            "accepted_solutions": [
+                "return n ** 3" if language == "python" else "",
+                "return n*n*n" if language == "python" else "",
+                "return n * n * n" if language == "python" else "",
+                "return n * n * n;" if language == "java" else "",
+                "return n * n * n;" if language == "javascript" else "",
+                "return Math.pow(n, 3);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([2], 8, "positive cube case", kind="normal", weight=1.0, required=True),
+                    _build_case([-3], -27, "negative cube case", kind="edge", weight=1.2, required=True),
+                    _build_case([0], 0, "zero cube case", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([1], 1, "identity value trap", kind="trap", weight=0.8),
+                    _build_case([4], 64, "distinguishes cube from square", kind="trap", weight=1.2, required=True),
+                    _build_case([-2], -8, "preserves sign for odd power", kind="trap", weight=1.1, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n * n",
+                    "match_type": "contains",
+                    "feedback": "Multiplying the number by itself only computes the square, not the cube.",
+                    "suggestion": "Multiply the number by itself three times, for example with n * n * n or n ** 3.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return n + n + n",
+                    "match_type": "contains",
+                    "feedback": "Adding the number three times does not compute the cube.",
+                    "suggestion": "Multiply the number by itself three times, for example with n * n * n or n ** 3.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return abs(n) * abs(n) * abs(n)",
+                    "match_type": "contains",
+                    "feedback": "Using absolute values removes the negative sign, so negative inputs produce the wrong cube.",
+                    "suggestion": "Cube the original value directly so negative inputs stay negative.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
     if "square of a number" in question_text or "return square of a number" in question_text or _contains_all(question_text, "square", "number"):
         return {
             "accepted_solutions": [
@@ -1302,6 +1410,47 @@ def _deterministic_code_baselines(question, language):
                     "suggestion": suggestion,
                     "score_cap": 20,
                 }
+            ],
+        }
+
+    if (
+        _contains_all(question_text, "check", "lowercase")
+        or (_contains_all(question_text, "string", "lowercase") and ("check" in question_text or "is " in question_text or " if " in question_text))
+    ):
+        return {
+            "accepted_solutions": [
+                "return s.islower()" if language == "python" else "",
+                "return any(c.isalpha() for c in s) and s == s.lower()" if language == "python" else "",
+                "return s.equals(s.toLowerCase()) && !s.equals(s.toUpperCase());" if language == "java" else "",
+                "return s === s.toLowerCase() && s !== s.toUpperCase();" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["hello"], True, "lowercase word", kind="normal", weight=1.0, required=True),
+                    _build_case(["python"], True, "another lowercase word", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case(["Hello"], False, "mixed-case string", kind="normal", weight=1.1, required=True),
+                    _build_case(["ABC"], False, "uppercase string", kind="normal", weight=1.1, required=True),
+                    _build_case(["123"], False, "digits only are not lowercase letters", kind="trap", weight=1.0),
+                    _build_case([""], False, "empty string is not lowercase", kind="edge", weight=1.0),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s.lower()",
+                    "match_type": "contains",
+                    "feedback": "Converting the string to lowercase returns a transformed string instead of checking whether it is already lowercase.",
+                    "suggestion": "Return a boolean check such as s.islower().",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not check whether the string is lowercase.",
+                    "suggestion": "Return a boolean expression that verifies the string is already lowercase.",
+                    "score_cap": 20,
+                },
             ],
         }
 
@@ -2972,7 +3121,9 @@ def _deterministic_code_baselines(question, language):
                     _build_case([[7]], 7, "single element list", kind="edge", weight=1.1, required=True),
                 ],
                 "negative": [
-                    _build_case([[9, 3]], 3, "two-element list", kind="trap", weight=1.0),
+                    _build_case([[9, 3]], 3, "two-element list trap", kind="trap", weight=1.0, required=True),
+                    _build_case([[4, 5, 6, 1]], 1, "catches first-element confusion", kind="trap", weight=1.1, required=True),
+                    _build_case([[-1, 0, 1]], 1, "mixed-sign list", kind="edge", weight=1.0),
                 ],
             },
             "incorrect_patterns": [
@@ -2981,6 +3132,20 @@ def _deterministic_code_baselines(question, language):
                     "match_type": "contains",
                     "feedback": "Returning the first element does not satisfy the last-element requirement.",
                     "suggestion": "Return the last item, for example with lst[-1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return sorted(lst)[-1]",
+                    "match_type": "contains",
+                    "feedback": "Sorting and returning the largest value is different from returning the last item in the original list order.",
+                    "suggestion": "Return the element at the last position of the original list, for example with lst[-1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return max(lst)",
+                    "match_type": "contains",
+                    "feedback": "Returning the maximum value is different from returning the last item in the list.",
+                    "suggestion": "Return the element at the last position of the original list, for example with lst[-1].",
                     "score_cap": 20,
                 }
             ],
@@ -3815,6 +3980,14 @@ def enrich_question_profile(payload, force_llm=False):
     if not AUTO_GENERATE_QUESTION_RULES and not force_llm:
         return enriched
 
+    oracle_package = None
+    if language == "python":
+        from evaluator.execution.shared import generate_universal_oracle_test_package_for_registration
+        oracle_package = generate_universal_oracle_test_package_for_registration(question, model_answer)
+        if oracle_package:
+            # Keep handcrafted trap/negative tests and merge oracle positives on top.
+            enriched = _merge_generated_package(enriched, oracle_package)
+
     raw = call_llm(_build_generation_prompt(question, model_answer, language))
     parsed = _extract_first_json_object(raw)
     if not isinstance(parsed, dict):
@@ -3828,11 +4001,13 @@ def enrich_question_profile(payload, force_llm=False):
                 accepted.append(cleaned)
 
     test_sets = {"positive": [], "negative": []}
-    for bucket in ("positive", "negative"):
-        for item in (parsed.get("test_sets") or {}).get(bucket, []):
-            normalized = _normalize_test_case(item)
-            if normalized:
-                test_sets[bucket].append(normalized)
+    # Use LLM test sets only if the Oracle didn't provide deterministic tests
+    if not oracle_package:
+        for bucket in ("positive", "negative"):
+            for item in (parsed.get("test_sets") or {}).get(bucket, []):
+                normalized = _normalize_test_case(item)
+                if normalized:
+                    test_sets[bucket].append(normalized)
 
     incorrect_patterns = []
     for item in parsed.get("incorrect_patterns", []):
@@ -3999,15 +4174,15 @@ def finalize_question_profile(payload):
     finalized["accepted_solutions"] = dedup_accepted[: AUTO_GENERATE_MAX_ALTERNATIVES + 1]
 
     test_sets = finalized.get("test_sets") or {"positive": [], "negative": []}
-    positive_tests = [_normalize_test_case(item) for item in test_sets.get("positive", []) if _normalize_test_case(item)]
+    positive_tests = _trim_oracle_positive_tests(test_sets.get("positive", []))
     negative_tests = [_normalize_test_case(item) for item in test_sets.get("negative", []) if _normalize_test_case(item)]
     positive_keys = {
-        (item.get("input"), item.get("expected_output")) for item in positive_tests if item
+        (str(item.get("input")), str(item.get("expected_output"))) for item in positive_tests if item
     }
     negative_tests = [
         item
         for item in negative_tests
-        if (item.get("input"), item.get("expected_output")) not in positive_keys
+        if (str(item.get("input")), str(item.get("expected_output"))) not in positive_keys
     ]
     finalized["test_sets"] = {"positive": positive_tests, "negative": negative_tests}
     finalized["positive_test_count"] = len(positive_tests)
@@ -4127,28 +4302,54 @@ def finalize_question_profile(payload):
         return finalized
 
     if language == "python":
-        function_name = _extract_first_function_name(model_answer)
+        # Attempt auto-repair/normalization for Python indentation/structure
+        repaired_answer = normalize_python_structure(model_answer)
+        
+        actual_code, function_name = _wrap_python_snippet(repaired_answer, finalized.get("question", ""))
         if not function_name:
             finalized["package_status"] = "draft"
-            finalized["package_summary"] = "Could not validate the registered model answer because no Python function was found."
+            finalized["package_summary"] = "Could not validate the registered model answer because no Python function or valid snippet was found."
             finalized["package_confidence"] = 0.15
             finalized["exam_ready"] = False
             return finalized
 
         cases = [_parse_hidden_test_input(item.get("input")) for item in all_tests]
         expected_outputs = [_parse_expected_output(item.get("expected_output")) for item in all_tests]
-        run_result = _run_code_with_timeout(model_answer, function_name, cases)
+        
+        # Use the actual_code (which might be wrapped or repaired) for validation
+        run_result = _run_code_with_timeout(actual_code, function_name, cases)
+        
+        # If the repaired version still fails, try one last time with the raw input 
+        # just in case our normalization was too aggressive
+        if not run_result.get("ok") and repaired_answer != model_answer:
+            raw_code, raw_fn = _wrap_python_snippet(model_answer, finalized.get("question", ""))
+            if raw_fn:
+                run_result = _run_code_with_timeout(raw_code, raw_fn, cases)
+                if run_result.get("ok"):
+                    actual_code = raw_code
+                    function_name = raw_fn
+
         if not run_result.get("ok"):
             finalized["package_status"] = "draft"
-            finalized["package_summary"] = f"Model answer validation failed: {run_result.get('error', 'execution error')}."
+            error_msg = run_result.get('error', 'execution error')
+            finalized["package_summary"] = f"Model answer validation failed: {error_msg}. Check for unhashable types or syntax errors."
             finalized["package_confidence"] = 0.15
             finalized["exam_ready"] = False
             return finalized
 
+        # If we successfully validated a repaired version, swap the official model answer
+        if run_result.get("ok") and actual_code.startswith("def ") and "model_answer" in finalized:
+             # Update accepted solutions if it was auto-repaired into a valid function
+             finalized["model_answer"] = actual_code
+             if "accepted_solutions" in finalized:
+                 if actual_code not in finalized["accepted_solutions"]:
+                     finalized["accepted_solutions"].insert(0, actual_code)
+
         outputs = run_result.get("outputs", [])
         passed = 0
+        from evaluator.execution.shared import _smart_outputs_equal
         for expected, actual in zip(expected_outputs, outputs):
-            if actual.get("ok") and actual.get("result") == expected:
+            if actual.get("ok") and _smart_outputs_equal(actual.get("result"), expected):
                 passed += 1
         return _finalize_from_validation_result(finalized, len(all_tests), passed, "Python package ready.")
 

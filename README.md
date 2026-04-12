@@ -13,7 +13,7 @@ FastAPI service for evaluating student answers across coding, markup, query, and
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install fastapi uvicorn pydantic requests llama-cpp-python
+pip install -r requirements.txt
 python -m uvicorn app:app --reload
 ```
 
@@ -25,6 +25,8 @@ Sample request for `POST /evaluate/students`:
 
 ```json
 {
+  "llm_review": true,
+  "llm_review_max_attempts": 6,
   "students": [
     {
       "student_id": "demo-1",
@@ -58,7 +60,7 @@ Optional Ollama setup:
 
 - the project can be configured to use `ollama` as a fallback provider
 - default Ollama endpoint in config is `http://localhost:11434/api/generate`
-- default Ollama model name in config is `mistral`
+- default Ollama model name in config is `phi3-gguf`
 - this is optional when `llama_cpp` with the GGUF model is available
 
 ## Overview
@@ -89,10 +91,10 @@ The main design principle is:
 - `GET /health`
 - `POST /evaluate/students`
 - `POST /questions/register`
-- `GET /questions/{question_id}`
-- `PATCH /questions/{question_id}/edit`
+- `GET /questions/get`
+- `PATCH /questions/edit`
 - `GET /questions/review/pending`
-- `POST /questions/{question_id}/approve`
+- `POST /questions/approve`
 - `POST /questions/approve-all`
 
 Swagger UI:
@@ -148,6 +150,7 @@ Best for:
 - benchmarking
 - direct faculty-side scoring
 - batch exam evaluation with optional package reuse
+- LLM audit review can be forced per request via `llm_review` and `llm_review_max_attempts`
 
 ### `POST /questions/register`
 
@@ -178,16 +181,16 @@ Best for:
 - improving deterministic scoring before live usage
 - preparing packages for faculty review and approval
 
-### `GET /questions/{question_id}`
+### `GET /questions/get`
 
-Fetch a stored question package by ID.
+Fetch a stored question package by question text + language.
 
 Useful for:
 
 - verifying what is currently stored
 - reviewing approved vs pending packages
 
-### `PATCH /questions/{question_id}/edit`
+### `PATCH /questions/edit`
 
 Edit a stored package without approving it.
 
@@ -203,7 +206,7 @@ Best for:
 
 - building a lightweight faculty review queue
 
-### `POST /questions/{question_id}/approve`
+### `POST /questions/approve`
 
 Approve a package, optionally with edits.
 
@@ -260,6 +263,10 @@ Represents one student and all of that student's submissions.
 
 - `student_id`
   required student identifier
+- `llm_review`
+  optional per-student switch to force the LLM audit loop
+- `llm_review_max_attempts`
+  optional per-student cap for the audit loop
 - `submissions`
   required list of `QuestionSubmission`
 
@@ -269,6 +276,10 @@ Top-level request body for `POST /evaluate/students`.
 
 - `students`
   required list of `StudentEvaluationRequest`
+- `llm_review`
+  optional global switch to force the LLM audit loop
+- `llm_review_max_attempts`
+  optional global cap for the audit loop
 
 ### `QuestionPackageRequest`
 
@@ -316,13 +327,24 @@ At a high level, the evaluation pipeline runs through these layers:
 
 ## LLM Review Behavior
 
-LLM review is enabled by default and can be forced via config. The system attempts deterministic scoring first, then uses the LLM only when needed. If the LLM response is incomplete or unsafe, the evaluator uses deterministic scoring and labels the LLM result as a fallback internally without overwriting strong deterministic feedback.
+LLM review is enabled by default and can be forced per request. The system attempts deterministic scoring first, then uses the LLM to audit and correct the score/feedback when needed. If the LLM response is incomplete or unsafe, the evaluator uses deterministic scoring and marks the LLM result as a fallback internally without overwriting strong deterministic feedback.
 
 Key points:
 
 - deterministic output remains the source of truth when it is confident
 - LLM review is used to fill gaps, not override high-confidence deterministic matches
 - repeated fallback responses do not replace deterministic feedback
+- the audit loop continues until the LLM output stabilizes or the attempt cap is reached
+
+### LLM Feedback Rephrase (Hybrid)
+
+After deterministic scoring and any audit corrections, the system can optionally ask the LLM to rephrase feedback for clarity without changing the verdict. This keeps the correctness stable while improving readability.
+
+Rules:
+
+- deterministic rules still decide correctness and score
+- the LLM only rewrites the feedback and improvements text
+- any unsafe or low-quality rephrasing is discarded
 
 ## Runtime Behavior
 
@@ -386,7 +408,7 @@ Flow:
 
 1. register a question through `POST /questions/register`
 2. review `validation_options` for edits
-3. edit directly with `PATCH /questions/{question_id}/edit` or approve with edits using `POST /questions/{question_id}/approve`
+3. edit directly with `PATCH /questions/edit` or approve with edits using `POST /questions/approve`
 4. use approved packages for high-stakes or exam scoring
 
 ## Question Packages
@@ -464,6 +486,16 @@ Behavior:
 - if repair fails, evaluation falls back to direct-mode logic
 
 This behavior is controlled by `AUTO_REPAIR_BAD_PACKAGES` in `config.py`.
+
+## Pending Package Auto-Refresh
+
+Pending (not yet approved) packages are automatically refreshed when they are fetched or listed, and also once at startup. This keeps stored packages aligned with the latest generator improvements while preserving faculty-approved content.
+
+Key rules:
+
+- approved packages are never auto-rewritten
+- pending packages are regenerated only when stale or noisy
+- the refresh uses the LLM generation path and then revalidates
 
 ## Deterministic Coverage
 
@@ -950,7 +982,7 @@ When registration succeeds well, later evaluation can use:
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install fastapi uvicorn pydantic requests llama-cpp-python
+pip install -r requirements.txt
 python -m uvicorn app:app --reload
 ```
 
@@ -967,12 +999,14 @@ Configured LLM/runtime defaults from [config.py](/c:/DSA%20ICT/Internship/ai-int
 - provider: `llama_cpp`
 - fallback provider support: `ollama`
 - GGUF path: `models/Phi-3-mini-4k-instruct-q4.gguf`
-- context size: `1024`
+- context size: `512`
 - default execution timeout: `8` seconds
 - default score on evaluation error: `50`
 - strict JSON output enabled for LLM parsing
 - always-on LLM review enabled by default
 - auto-repair of weak packages enabled by default
+- feedback rephrase via LLM enabled by default
+- LLM review hard max attempts enabled for audit loops
 
 Runtime feature flags:
 
@@ -1066,6 +1100,16 @@ These are used when evaluation cannot complete normally.
 - `ALWAYS_LLM_REVIEW`
 - `LLM_REVIEW_MAX_ATTEMPTS`
 - `AUTO_REPAIR_BAD_PACKAGES`
+  auto-repair weak packages at evaluation time
+- `QUESTION_REGISTER_HARD_MAX_ATTEMPTS`
+  upper cap for LLM retries during `POST /questions/register`
+- `LLM_REVIEW_HARD_MAX_ATTEMPTS`
+  upper cap for LLM audit loop during evaluation
+- `LLM_REPHRASE_FEEDBACK`
+  enables LLM feedback rephrasing after deterministic scoring
+- `QUESTION_REGISTER_HARD_MAX_ATTEMPTS`
+- `LLM_REVIEW_HARD_MAX_ATTEMPTS`
+- `LLM_REPHRASE_FEEDBACK`
 
 ### Storage Paths
 
@@ -1366,7 +1410,7 @@ Common causes:
 Fixes:
 
 - re-register after improving the model answer or question prompt
-- edit the package via `PATCH /questions/{question_id}/edit` and then approve
+- edit the package via `PATCH /questions/edit` and then approve
 
 ### Hidden tests are not running for some languages
 

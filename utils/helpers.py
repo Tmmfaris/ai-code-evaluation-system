@@ -33,46 +33,70 @@ def normalize_code(code):
 
 def normalize_python_structure(code):
     """
-    Repairs a narrow Python payload formatting issue:
-    function headers written as `def f(...): stmt` followed by more indented lines.
+    Intelligently repairs Python indentation by mapping relative whitespace levels.
+    Handles 'merged' headers and messy copy-paste indentation.
     """
-    normalized = normalize_code(code)
-    if not normalized:
-        return normalized
+    if not code:
+        return ""
 
+    # If it already parses, don't touch it.
     try:
-        ast.parse(normalized)
-        return normalized
+        ast.parse(code)
+        return code
     except Exception:
         pass
 
-    lines = normalized.split("\n")
-    if len(lines) < 2:
-        return normalized
+    processed_lines = [line.rstrip() for line in code.split("\n")]
+    if not processed_lines:
+        return code
 
-    first_line = lines[0]
+    # Step 1: Split "def f(): stmt" into two lines
+    # This prepares the code for our block-level re-indenter
+    first_line = processed_lines[0]
     match = re.match(r"^(\s*(?:async\s+)?def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(.*\)\s*:)\s+(.+)$", first_line)
-    if not match:
-        return normalized
+    if match:
+        processed_lines[0] = match.group(1)
+        # We give the second line a slightly deeper indent than the header to mark it as body
+        header_indent = len(first_line) - len(first_line.lstrip())
+        processed_lines.insert(1, " " * (header_indent + 1) + match.group(2))
 
-    remaining = lines[1:]
-    indent = None
-    for line in remaining:
+    # Step 2: Relative Indentation Mapping
+    # 1. Identify all unique indentation levels used
+    # 2. Sort them and map them to 4-space multiples
+    line_data = [] # List of (indent_amount, text)
+    levels = set()
+    
+    for line in processed_lines:
         stripped = line.lstrip()
         if not stripped:
             continue
-        indent = line[: len(line) - len(stripped)]
-        if indent:
-            break
-    if indent is None:
-        indent = "    "
-
-    rebuilt = "\n".join([match.group(1), f"{indent}{match.group(2)}", *remaining])
+        indent_amount = len(line) - len(stripped)
+        line_data.append((indent_amount, stripped))
+        levels.add(indent_amount)
+    
+    sorted_levels = sorted(list(levels))
+    level_map = {val: i * 4 for i, val in enumerate(sorted_levels)}
+    
+    rebuilt_lines = []
+    for indent, text in line_data:
+        new_indent = level_map.get(indent, 0)
+        rebuilt_lines.append(" " * new_indent + text)
+        
+    rebuilt = "\n".join(rebuilt_lines)
+    
+    # Final check: if it still doesn't parse, try a brute-force trim
     try:
         ast.parse(rebuilt)
         return rebuilt
     except Exception:
-        return normalized
+        # Last resort: just strip everything and indent 4-spaces for everything after the first line
+        final_attempt = []
+        for i, (indent, text) in enumerate(line_data):
+            if i == 0:
+                final_attempt.append(text)
+            else:
+                final_attempt.append("    " + text)
+        return "\n".join(final_attempt)
 
 
 # =========================

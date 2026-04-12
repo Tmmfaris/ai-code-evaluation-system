@@ -1,0 +1,213 @@
+{
+  "execution_time": 89.95,
+  "students": [
+    {
+      "student_id": "PY201",
+      "question_count": 3,
+      "total_score": 300,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
+            "feedback": "The student answer exactly matches the expected function for calculating a cube."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
+            "feedback": "The student answer exactly matches the expected function for converting text to lowercase."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
+            "feedback": "The student answer exactly matches the expected function and is fully correct."
+          }
+        }
+      ]
+    },
+    {
+      "student_id": "PY202",
+      "question_count": 3,
+      "total_score": 200,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student used a different approach, but the logic is correct.",
+            "feedback": "Execution-based checks matched the expected outputs for representative test cases."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 0,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The student logic does not correctly solve the problem yet."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 100,
+            "concepts": {
+              "logic": "Strong",
+              "edge_cases": "Good",
+              "completeness": "High",
+              "efficiency": "Good",
+              "readability": "Good"
+            },
+            "logic_evaluation": "The student used a different approach, but the logic is correct.",
+            "feedback": "The function correctly returns the last element of the list."
+          }
+        }
+      ]
+    },
+    {
+      "student_id": "PY203",
+      "question_count": 3,
+      "total_score": 37,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 33,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic is partially correct, but the solution is not fully correct yet.",
+            "feedback": "Execution-based checks passed 1 out of 3 representative test cases, so the logic is only partially correct. Check the edge cases where the current logic differs from the expected output."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The answer does not use an f-string even though the question asks for one."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "Returning the first element does not satisfy the last-element requirement. Return the last list item, for example with lst[-1]."
+          }
+        }
+      ]
+    },
+    {
+      "student_id": "PY204",
+      "question_count": 3,
+      "total_score": 6,
+      "questions": [
+        {
+          "question_id": "q1",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "Execution-based checks failed on all 3 representative test cases. Review the core logic against simple sample inputs and edge cases."
+          }
+        },
+        {
+          "question_id": "q2",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The answer does not use an f-string even though the question asks for one."
+          }
+        },
+        {
+          "question_id": "q3",
+          "data": {
+            "score": 2,
+            "concepts": {
+              "logic": "Weak",
+              "edge_cases": "Needs Improvement",
+              "completeness": "Low",
+              "efficiency": "Poor",
+              "readability": "Needs Improvement"
+            },
+            "logic_evaluation": "The student logic does not correctly solve the problem yet.",
+            "feedback": "The function produces incorrect output for all test cases. Review the function logic completely \u2014 the algorithm does not match the expected behaviour."
+          }
+        }
+      ]
+    }
+  ]
+}

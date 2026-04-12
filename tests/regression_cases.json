@@ -2192,5 +2192,27 @@
     "student_answer": "math.sqrt(4)",
     "expected_min_score": 0,
     "expected_max_score": 0
+  },
+  {
+    "id": "python_add_subtraction_feedback_specific",
+    "student_id": "reg-py-187",
+    "language": "python",
+    "question": "Write a function to add two numbers",
+    "model_answer": "def add(a, b): return a + b",
+    "student_answer": "def add(a, b): return a - b",
+    "expected_min_score": 0,
+    "expected_max_score": 10,
+    "expected_feedback_contains": "subtracts the second number from the first"
+  },
+  {
+    "id": "python_factorial_square_feedback_specific",
+    "student_id": "reg-py-188",
+    "language": "python",
+    "question": "Write a function to find factorial using recursion",
+    "model_answer": "def fact(n): return 1 if n == 0 else n * fact(n - 1)",
+    "student_answer": "def fact(n): return n * n",
+    "expected_min_score": 0,
+    "expected_max_score": 10,
+    "expected_feedback_contains": "square of the input"
   }
 ]

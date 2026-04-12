@@ -215,6 +215,26 @@ def _returns_constant_true(function_node):
     )
 
 
+def _returns_constant_false(function_node):
+    if function_node is None:
+        return False
+
+    returns = [node for node in ast.walk(function_node) if isinstance(node, ast.Return)]
+    return bool(returns) and all(
+        isinstance(node.value, ast.Constant) and node.value.value is False
+        for node in returns
+    )
+
+
+def _returns_constant_number(function_node, value):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == value
+        for node in ast.walk(function_node)
+    )
+
+
 def _returns_constant_string(function_node, value):
     return any(
         isinstance(node, ast.Return)
@@ -230,6 +250,27 @@ def _returns_name(function_node, *names):
         isinstance(node, ast.Return)
         and isinstance(node.value, ast.Name)
         and node.value.id in wanted
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_subtraction(function_node):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.BinOp)
+        and isinstance(node.value.op, ast.Sub)
+        for node in ast.walk(function_node)
+    )
+
+
+def _returns_square_of_same_name(function_node):
+    return any(
+        isinstance(node, ast.Return)
+        and isinstance(node.value, ast.BinOp)
+        and isinstance(node.value.op, ast.Mult)
+        and isinstance(node.value.left, ast.Name)
+        and isinstance(node.value.right, ast.Name)
+        and node.value.left.id == node.value.right.id
         for node in ast.walk(function_node)
     )
 
@@ -1607,6 +1648,10 @@ def analyze_submission_rules(question, student_answer, language):
         "_contains_lowercase_vowel_membership": _contains_lowercase_vowel_membership,
         "_has_lower_or_casefold": _has_lower_or_casefold,
         "_returns_constant_bool": _returns_constant_bool,
+        "_returns_constant_true": _returns_constant_true,
+        "_returns_constant_false": _returns_constant_false,
+        "_returns_constant_number": _returns_constant_number,
+        "_returns_name": _returns_name,
         "_uses_sorted_call": _uses_sorted_call,
         "_returns_sorted_index": _returns_sorted_index,
         "_uses_set_call": _uses_set_call,
@@ -1637,6 +1682,17 @@ def analyze_submission_rules(question, student_answer, language):
             "readability_max": 8,
             "structure_max": 10,
             "feedback": "The function returns only one input value instead of adding the two numbers.",
+            "suggestion": "Return the sum of both inputs, such as a + b."
+        })
+
+    if "add two numbers" in question_text and _returns_subtraction(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function subtracts the second number from the first instead of adding the two inputs.",
             "suggestion": "Return the sum of both inputs, such as a + b."
         })
 
@@ -1710,7 +1766,23 @@ def analyze_submission_rules(question, student_answer, language):
                 "suggestion": "Check divisors only up to the square root of n for better efficiency."
             })
 
-    if "factorial" in question_text and _requires_recursion(question_text) and not _has_self_recursive_call(function_node):
+    if "factorial" in question_text and _returns_square_of_same_name(function_node):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 5,
+            "efficiency_max": 5,
+            "readability_max": 8,
+            "structure_max": 10,
+            "feedback": "The function returns the square of the input instead of the factorial.",
+            "suggestion": "Use a base case and a recursive or iterative factorial calculation."
+        })
+
+    if (
+        "factorial" in question_text
+        and _requires_recursion(question_text)
+        and not _has_self_recursive_call(function_node)
+        and not _returns_square_of_same_name(function_node)
+    ):
         findings.append({
             "type": "correctness_cap",
             "correctness_max": 24,

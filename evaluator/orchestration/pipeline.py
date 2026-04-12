@@ -27,13 +27,14 @@ from evaluator.orchestration.confidence import (
     infer_confidence_score,
 )
 from evaluator.question_learning_store import save_learning_signal
+from evaluator.question_profile_repository import build_question_signature
 from llm.llm_engine import is_llm_available
 
 from utils.logger import log_info, log_error, log_request, log_result
 from utils.formatter import format_final_output, format_error_response
 from utils.helpers import clean_text, normalize_code, normalize_python_structure, is_empty
 
-from config import ENABLE_SYNTAX_CHECK, SUPPORTED_LANGUAGES, FORCE_LLM_WHEN_NOT_DETERMINISTIC, LLM_REVIEW_MAX_ATTEMPTS
+from config import ENABLE_SYNTAX_CHECK, SUPPORTED_LANGUAGES, FORCE_LLM_WHEN_NOT_DETERMINISTIC, LLM_REVIEW_MAX_ATTEMPTS, LLM_REPHRASE_FEEDBACK
 import re
 
 
@@ -55,10 +56,8 @@ def _normalize_reference_answers(sample_answer, reference_answers):
     return refs
 
 
-def _normalize_question_signature(question, language):
-    normalized_question = re.sub(r"\s+", " ", (question or "").strip().lower())
-    normalized_question = re.sub(r"[^a-z0-9 ]", "", normalized_question)
-    return f"{(language or '').strip().lower()}::{normalized_question}"
+# Removed local _normalize_question_signature as we now use build_question_signature from repository
+
 
 
 def _save_learning_signal_safe(
@@ -75,15 +74,16 @@ def _save_learning_signal_safe(
     sample_answer,
 ):
     try:
+        signature = build_question_signature(question, language)
         metadata = {
-            "question_signature": _normalize_question_signature(question, language),
+            "question_signature": signature,
             "template_family": (question_metadata or {}).get("template_family"),
             "evaluation_mode": evaluation_mode,
             "question": question,
             "sample_answer": sample_answer,
         }
         payload = {
-            "question_id": (question_metadata or {}).get("question_id") or (question_metadata or {}).get("id"),
+            "question_signature": signature,
             "language": language,
             "package_status": (question_metadata or {}).get("package_status"),
             "package_confidence": (question_metadata or {}).get("package_confidence", 0.0),
@@ -149,7 +149,14 @@ def _package_rule_findings(student_answer, question_metadata):
     findings = []
     for item in (question_metadata or {}).get("incorrect_patterns") or []:
         if _match_package_incorrect_pattern(student_answer, item):
-            findings.append(dict(item))
+            normalized = dict(item)
+            score_cap = int(normalized.get("score_cap", 20) or 20)
+            normalized.setdefault("type", "hard_fail" if score_cap <= 20 else "correctness_cap")
+            normalized.setdefault("correctness_max", min(40, max(2, score_cap)))
+            normalized.setdefault("efficiency_max", 10 if score_cap <= 20 else 12)
+            normalized.setdefault("readability_max", 10 if score_cap <= 20 else 12)
+            normalized.setdefault("structure_max", 12)
+            findings.append(normalized)
     return findings
 
 
@@ -175,8 +182,6 @@ def should_use_deterministic_shortcut(language, syntax_result, execution_finding
         "full_pass",
         "mostly_correct",
         "correct_but_inefficient",
-        "zero_pass",
-        "execution_error",
     }:
         return True
 
@@ -333,6 +338,8 @@ def evaluate_submission(
             language = "general"
         elif language == "python":
             student_answer = normalize_python_structure(student_answer)
+            sample_answer = normalize_python_structure(sample_answer)
+            reference_answers = [normalize_python_structure(ref) for ref in reference_answers]
 
         log_info(f"Processing evaluation | Student: {student_id} | Language: {language}")
         question_profile = classify_question(question, language)
@@ -457,15 +464,7 @@ def evaluate_submission(
         if execution_finding:
             rule_findings.append(execution_finding)
 
-        if language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
-            log_info(
-                f"Evaluation path | Student: {student_id} | Language: {language} | Mode: syntax_error"
-            )
-            evaluation_mode = "syntax_error"
-            used_llm = False
-            parsed_llm = answer_comparator.build_syntax_error_result(syntax_result)
-            rubric_score = dict(parsed_llm["rubric"])
-        elif should_use_deterministic_shortcut(
+        if should_use_deterministic_shortcut(
             language,
             syntax_result,
             execution_finding,
@@ -667,6 +666,21 @@ def evaluate_submission(
             parsed_llm.get("improvements", ""),
             "",
         )
+        if LLM_REPHRASE_FEEDBACK:
+            rephrased_feedback, rephrased_improvements = llm_comparator.rephrase_feedback_with_llm(
+                question=question,
+                language=language,
+                feedback=parsed_llm.get("feedback", ""),
+                improvements=parsed_llm.get("improvements", ""),
+            )
+            parsed_llm["feedback"] = feedback_generator.sanitize_text_or_fallback(
+                rephrased_feedback,
+                parsed_llm.get("feedback", ""),
+            )
+            parsed_llm["improvements"] = feedback_generator.choose_safe_improvement(
+                rephrased_improvements,
+                parsed_llm.get("improvements", ""),
+            )
         log_info(
             f"Evaluation confidence | Student: {student_id} | Language: {language} | Confidence: {confidence}"
         )

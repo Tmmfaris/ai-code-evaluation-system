@@ -1,5 +1,75 @@
 [
   {
+    "id": "py_universal_oracle_math_gcd",
+    "language": "python",
+    "category": "math",
+    "question": "Write a function to compute GCD of two numbers",
+    "model_answer": "import math\ndef gcd(a, b):\n    return math.gcd(a, b)",
+    "student_answer": "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return abs(a)",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_universal_oracle_math_gcd_wrong",
+    "language": "python",
+    "category": "math",
+    "question": "Write a function to compute GCD of two numbers",
+    "model_answer": "import math\ndef gcd(a, b):\n    return math.gcd(a, b)",
+    "student_answer": "def gcd(a, b):\n    return a + b",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_algorithms_bubble_sort_full",
+    "language": "python",
+    "category": "algorithms",
+    "question": "Implement bubble sort on a list",
+    "model_answer": "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr",
+    "student_answer": "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_algorithms_bubble_sort_builtin_wrong",
+    "language": "python",
+    "category": "algorithms",
+    "question": "Implement bubble sort on a list",
+    "model_answer": "def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr",
+    "student_answer": "def bubble_sort(arr):\n    return sorted(arr)",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
+    "id": "py_oop_class_property",
+    "language": "python",
+    "category": "oop",
+    "question": "Create a User class with a username property",
+    "model_answer": "class User:\n    def __init__(self, username):\n        self._username = username\n    @property\n    def username(self):\n        return self._username",
+    "student_answer": "class User:\n    def __init__(self, username):\n        self._username = username\n    @property\n    def username(self):\n        return self._username",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_advanced_generator",
+    "language": "python",
+    "category": "advanced",
+    "question": "Write a generator function that yields squares of numbers up to n",
+    "model_answer": "def gen_squares(n):\n    for i in range(n):\n        yield i*i",
+    "student_answer": "def gen_squares(n):\n    for i in range(n):\n        yield i*i",
+    "expected_min_score": 95,
+    "expected_max_score": 100
+  },
+  {
+    "id": "py_advanced_generator_wrong_return",
+    "language": "python",
+    "category": "advanced",
+    "question": "Write a generator function that yields squares of numbers up to n",
+    "model_answer": "def gen_squares(n):\n    for i in range(n):\n        yield i*i",
+    "student_answer": "def gen_squares(n):\n    return [i*i for i in range(n)]",
+    "expected_min_score": 0,
+    "expected_max_score": 20
+  },
+  {
     "id": "py_filter_even_full",
     "language": "python",
     "category": "lists",

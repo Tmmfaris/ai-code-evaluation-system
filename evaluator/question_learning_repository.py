@@ -38,11 +38,17 @@ class SqliteQuestionLearningRepository(QuestionLearningRepository):
         self._ensure_parent_dir()
         with self._lock:
             with self._connect() as conn:
+                # 🚀 Migration Logic: Remove question_id column if it exists
+                columns = {row[1]: row for row in conn.execute("PRAGMA table_info(question_learning)").fetchall()}
+                if columns and "question_id" in columns:
+                    # Rename to old and migrate
+                    conn.execute("ALTER TABLE question_learning RENAME TO question_learning_old")
+
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS question_learning (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        question_id TEXT,
+                        question_signature TEXT NOT NULL,
                         language TEXT NOT NULL,
                         package_status TEXT,
                         package_confidence REAL NOT NULL DEFAULT 0.0,
@@ -57,13 +63,33 @@ class SqliteQuestionLearningRepository(QuestionLearningRepository):
                     )
                     """
                 )
+
+                if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='question_learning_old'").fetchone():
+                    # We need to extract the signature from metadata_json if question_signature is null in the old table
+                    # Or just use the question_id as a temporary signature if we have to.
+                    conn.execute(
+                        """
+                        INSERT INTO question_learning (
+                            question_signature, language, package_status, package_confidence,
+                            used_fallback, status, score, student_answer_text, normalized_student_answer,
+                            feedback, metadata_json, created_at
+                        )
+                        SELECT 
+                            COALESCE(question_id, 'migrated::' || id),
+                            language, package_status, package_confidence,
+                            used_fallback, status, score, student_answer_text, normalized_student_answer,
+                            feedback, metadata_json, created_at
+                        FROM question_learning_old
+                        """
+                    )
+                    conn.execute("DROP TABLE question_learning_old")
+
                 conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_question_learning_question ON question_learning(question_id)"
+                    "CREATE INDEX IF NOT EXISTS idx_question_learning_sig ON question_learning(question_signature)"
                 )
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_question_learning_language ON question_learning(language)"
                 )
-                self._ensure_column(conn, "question_learning", "student_answer_text", "TEXT NOT NULL DEFAULT ''")
                 conn.commit()
 
     def _ensure_column(self, conn, table_name: str, column_name: str, column_definition: str) -> None:
@@ -76,7 +102,7 @@ class SqliteQuestionLearningRepository(QuestionLearningRepository):
 
     def _build_record(self, payload: dict) -> dict:
         return {
-            "question_id": (payload.get("question_id") or "").strip() or None,
+            "question_signature": (payload.get("question_signature") or "").strip() or None,
             "language": ((payload.get("language") or "").strip().lower()),
             "package_status": (payload.get("package_status") or "").strip() or None,
             "package_confidence": float(payload.get("package_confidence", 0.0) or 0.0),
@@ -93,7 +119,7 @@ class SqliteQuestionLearningRepository(QuestionLearningRepository):
     def _row_to_record(self, row) -> dict:
         return {
             "id": row[0],
-            "question_id": row[1],
+            "question_signature": row[1],
             "language": row[2],
             "package_status": row[3],
             "package_confidence": row[4],
@@ -114,13 +140,13 @@ class SqliteQuestionLearningRepository(QuestionLearningRepository):
                 cursor = conn.execute(
                     """
                     INSERT INTO question_learning (
-                        question_id, language, package_status, package_confidence,
+                        question_signature, language, package_status, package_confidence,
                         used_fallback, status, score, student_answer_text, normalized_student_answer,
                         feedback, metadata_json, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        record["question_id"],
+                        record["question_signature"],
                         record["language"],
                         record["package_status"],
                         record["package_confidence"],
@@ -144,7 +170,7 @@ class SqliteQuestionLearningRepository(QuestionLearningRepository):
             with self._connect() as conn:
                 rows = conn.execute(
                     """
-                    SELECT id, question_id, language, package_status, package_confidence,
+                    SELECT id, question_signature, language, package_status, package_confidence,
                            used_fallback, status, score, student_answer_text, normalized_student_answer,
                            feedback, metadata_json, created_at
                     FROM question_learning

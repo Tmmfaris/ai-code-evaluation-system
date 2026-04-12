@@ -2,8 +2,8 @@ from evaluator.question_profile_store import get_question_profile, list_question
 from evaluator.question_package.validator import validate_question_package
 
 
-def approve_question_package(question_id, approved_by="faculty", edits=None):
-    profile = get_question_profile(question_id)
+def approve_question_package(question_signature, approved_by="faculty", edits=None):
+    profile = get_question_profile(question_signature)
     if not profile:
         return None
 
@@ -20,8 +20,8 @@ def approve_question_package(question_id, approved_by="faculty", edits=None):
     return upsert_question_profile(prepared)
 
 
-def get_question_package(question_id):
-    return get_question_profile(question_id)
+def get_question_package(question_signature):
+    return get_question_profile(question_signature)
 
 
 def list_pending_approval_packages():

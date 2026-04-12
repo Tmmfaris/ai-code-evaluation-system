@@ -1,6 +1,17 @@
 def analyze_list_rules(question_text, function_node, student_answer, helpers):
     findings = []
 
+    if "last" in question_text and "element" in question_text and helpers["_returns_name"](function_node, "lst", "arr", "items", "numbers"):
+        findings.append({
+            "type": "hard_fail",
+            "correctness_max": 2,
+            "efficiency_max": 2,
+            "readability_max": 5,
+            "structure_max": 8,
+            "feedback": "Returning the whole list does not satisfy the last-element requirement.",
+            "suggestion": "Return only the last item, for example with lst[-1]."
+        })
+
     if ("maximum" in question_text or "max" in question_text) and helpers["_uses_sorted_call"](function_node):
         findings.append({
             "type": "efficiency_cap",

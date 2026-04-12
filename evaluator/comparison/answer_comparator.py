@@ -21,6 +21,8 @@ def build_exact_match_feedback(question, language):
         return f"The student answer exactly matches the expected {noun} for removing spaces."
     if "remove duplicates" in lowered or "duplicate" in lowered:
         return f"The student answer exactly matches the expected {noun} for removing duplicates."
+    if "check" in lowered and "lowercase" in lowered:
+        return f"The student answer exactly matches the expected {noun} for checking lowercase text."
     if "lowercase" in lowered:
         return f"The student answer exactly matches the expected {noun} for converting text to lowercase."
     if "convert" in lowered and "uppercase" in lowered:
@@ -91,4 +93,3 @@ def choose_hybrid_feedback(llm_result, execution_finding, syntax_result, languag
         return execution_finding.get("feedback", ""), execution_finding.get("suggestion", "")
 
     return llm_result.get("feedback", ""), llm_result.get("improvements", "")
-
