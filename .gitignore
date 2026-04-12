@@ -8,9 +8,16 @@ logs/
 .env
 models/
 *.gguf
+scratch/
 data/*.db
 data/*.db-journal
 data/question_profiles.json
+data/evaluation_results/
+data/evaluation_archive/
 debug_llm.py
 debug_output.txt
+pytest_out.txt
+pytest_output.txt
+report.xml
+question_profiles.db
 tests/regression_candidates.json
