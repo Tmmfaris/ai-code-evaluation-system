@@ -7,7 +7,13 @@ from evaluator.question_package.approvals import (
 from evaluator.question_package.generator import generate_question_package
 from evaluator.question_package.reuser import reuse_existing_package_content
 from evaluator.question_package.validator import validate_question_package
-from config import QUESTION_REGISTER_HARD_MAX_ATTEMPTS, QUESTION_REGISTER_MAX_ATTEMPTS
+from config import (
+    QUESTION_REGISTER_HARD_MAX_ATTEMPTS,
+    QUESTION_REGISTER_MAX_ATTEMPTS,
+    REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION,
+    REGISTER_STRICT_VALIDATE,
+    REGISTER_STRICT_MIN_CONFIDENCE,
+)
 
 
 def _has_placeholder_tests(package):
@@ -30,6 +36,32 @@ def _has_fallback_feedback(package):
         ):
             return True
     return False
+
+
+def _has_required_case_coverage(package):
+    template_family = ((package or {}).get("template_family") or "").strip().lower()
+    test_sets = (package or {}).get("test_sets") or {}
+    positives = [item for item in (test_sets.get("positive") or []) if isinstance(item, dict)]
+    negatives = [item for item in (test_sets.get("negative") or []) if isinstance(item, dict)]
+    required_positive = [item for item in positives if item.get("required")]
+    required_negative = [item for item in negatives if item.get("required")]
+    incorrect_patterns = [item for item in ((package or {}).get("incorrect_patterns") or []) if isinstance(item, dict)]
+    accepted_solutions = [item for item in ((package or {}).get("accepted_solutions") or []) if isinstance(item, str) and item.strip()]
+    if template_family == "python::model_answer_derived":
+        return (
+            len(positives) >= 2
+            and len(required_positive) >= 1
+            and len(incorrect_patterns) >= 2
+            and len(accepted_solutions) >= 1
+        )
+    return (
+        len(positives) >= 2
+        and len(negatives) >= 1
+        and len(required_positive) >= 1
+        and len(required_negative) >= 1
+        and len(incorrect_patterns) >= 2
+        and len(accepted_solutions) >= 1
+    )
 
 
 def _candidate_rank(package):
@@ -67,6 +99,28 @@ def _is_fully_correct(package):
         and not is_generic_family
         and not _has_placeholder_tests(package)
         and not _has_fallback_feedback(package)
+    )
+
+
+def _is_register_ready(package):
+    if not REGISTER_STRICT_VALIDATE:
+        return _is_fully_correct(package)
+    status = (package or {}).get("package_status") or ""
+    status = status.strip().lower()
+    confidence = float((package or {}).get("package_confidence", 0.0) or 0.0)
+    review_required = bool((package or {}).get("review_required", True))
+    template_family = ((package or {}).get("template_family") or "").strip().lower()
+    is_generic_family = template_family.endswith("::generic") or template_family == "python::generic"
+    summary = ((package or {}).get("package_summary") or "").lower()
+    return (
+        status in {"validated", "live"}
+        and not review_required
+        and confidence >= float(REGISTER_STRICT_MIN_CONFIDENCE or 0.9)
+        and not is_generic_family
+        and not _has_placeholder_tests(package)
+        and not _has_fallback_feedback(package)
+        and (not REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION or _has_required_case_coverage(package))
+        and "review is recommended" not in summary
     )
 
 
@@ -133,9 +187,24 @@ def _generate_best_profile(prepared_base, force_llm=False, attempts=1):
         candidate = validate_question_package(candidate)
         if best is None or _candidate_rank(candidate) > _candidate_rank(best):
             best = candidate
-        if _is_fully_correct(candidate):
+        if _is_register_ready(candidate):
             best = candidate
             break
+        if force_llm:
+            repair_context = candidate.get("package_summary") or candidate.get("package_status") or ""
+            repair = generate_question_package(
+                dict(prepared_base),
+                force_llm=True,
+                repair_context=str(repair_context),
+            )
+            repair = validate_question_package(repair)
+            if _candidate_rank(repair) > _candidate_rank(best):
+                best = repair
+            if _is_register_ready(repair):
+                best = repair
+                break
+        if force_llm and best:
+            prepared_base = dict(best)
     return best
 
 

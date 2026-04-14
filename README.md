@@ -1,14 +1,174 @@
-# AI Intelligent Evaluation Model
+﻿# AI Intelligent Evaluation Model
 
-FastAPI service for evaluating student answers across coding, markup, query, and web-stack questions using deterministic rules first, execution checks where possible, reusable question packages, faculty validation hooks, and LLM review when deterministic coverage is insufficient.
+FastAPI service for deterministic-first evaluation of student answers across coding and selected static/web question types. The system is built for repeatable academic scoring with reusable question packages, hidden tests, incorrect-pattern matching, guarded feedback generation, suspicious-output monitoring, and regression protection.
+
+The project is no longer centered on free-form LLM grading. The current system is:
+- package-backed
+- deterministic-first
+- hidden-test-driven where supported
+- guarded against contradictory output
+- monitored for suspicious results
+- protected by CI and regression suites
+
+## Contents
+
+- Overview
+- Current Design Principles
+- What Changed Recently
+- Main Endpoints
+- Quick Start
+- Current Important Defaults
+- Question Package Lifecycle
+- Registration Deep Dive
+- Evaluation Deep Dive
+- Deterministic Guardrails
+- New Question Handling
+- Storage and Stores
+- Monitoring and Suspicious Evaluations
+- Testing and CI
+- Troubleshooting
+- Where to Change What
+- Limitations
+
+## Overview
+
+This project evaluates student answers using reusable question packages instead of relying on ad hoc comparison for every request.
+
+At a high level:
+1. a question is registered into a reusable package
+2. the package stores accepted solutions, tests, patterns, and readiness metadata
+3. later evaluations reuse that package for deterministic scoring
+4. final response guardrails repair weak or contradictory feedback before it is returned
+5. suspicious results are stored for later inspection
+
+This is especially useful for:
+- repeated assessments
+- academy-style exercises
+- benchmarkable question families
+- local/offline evaluation workflows
+
+## Current Design Principles
+
+The current architecture is guided by these rules:
+- deterministic evidence decides score whenever possible
+- validated question packages are the source of truth for live scoring
+- hidden tests, accepted solutions, and incorrect patterns matter more than LLM guesses
+- LLM score invention is disabled in the protected package-backed path
+- LLM is mainly used for package generation and safe wording improvements
+- generic template fallbacks are rejected during registration
+- final API output is guarded so correct score plus wrong feedback contradictions do not leak out
+
+## What Changed Recently
+
+The project was hardened significantly. The most important recent changes now reflected in the code are below.
+
+### Deterministic-first scoring
+
+- package-backed deterministic scoring is enforced
+- package-backed evaluations do not use LLM scoring as the source of truth
+- hidden tests are used directly in the evaluation pipeline for runnable languages
+- incorrect-pattern matches can cap or force low scores
+
+### Shared signature normalization
+
+- question signature normalization is centralized
+- registration and evaluation both use the same shared signature builder
+- this prevents register/evaluate drift from punctuation or wording normalization mismatches
+
+### Strict registration quality gates
+
+- weak generic package output is rejected
+- low-confidence reviewed packages do not silently pass as ready
+- registration checks required case coverage
+- placeholder or fallback-style feedback in incorrect patterns is rejected
+
+### Final response guardrails
+
+- `100` score cannot return corrective feedback
+- incorrect patterns cannot remain overscored
+- required hidden-test failures force low scores
+- specific deterministic feedback beats generic fallback feedback
+- weak package-backed feedback is repaired before the response is returned
+
+### Template-specific final feedback protection
+
+The final deterministic response layer now explicitly protects several Python families, including:
+- `python::zero_check`
+- `python::list_length`
+- `python::string_endswith`
+- `python::uppercase_string`
+- `python::lowercase_string`
+- `python::odd_check`
+- `python::empty_collection_check`
+- `python::greater_than_threshold`
+- `python::second_element`
+
+### New-question resilience
+
+New question handling is much stronger than before:
+- question-text family inference
+- model-answer-based family inference
+- deterministic model-answer-derived package baselines
+- non-generic fallback family `python::model_answer_derived`
+- automatic package bootstrap during evaluation when inline context is present
+
+### Monitoring and audit
+
+- suspicious evaluations are stored for review
+- package and evaluation history are persisted
+- low-quality patterns can be observed and later converted into better deterministic rules
+
+### CI and regression protection
+
+- focused CI suite for evaluation guardrails
+- regression tests for bug fixes
+- monitoring tests
+- deterministic guardrail tests
+- universal Python tests
+
+## Main Endpoints
+
+### `GET /`
+Simple availability check.
+
+### `GET /health`
+Health and runtime check.
+
+Useful for:
+- confirming the app is up
+- checking the runtime marker
+- checking the evaluator fingerprint
+
+### `POST /questions/register`
+Registers one or more reusable question packages.
+
+Use this before live evaluation whenever possible.
+
+### `GET /questions/get`
+Fetch a stored package by question text and language.
+
+### `PATCH /questions/edit`
+Edit a stored package.
+
+### `GET /questions/review/pending`
+List packages still pending review.
+
+### `POST /questions/approve`
+Approve a single package, optionally with edits.
+
+### `POST /questions/approve-all`
+Approve all pending packages.
+
+### `POST /evaluate/students`
+Evaluate one or more students and one or more submissions per student.
+
+### `GET /monitor/suspicious-evaluations`
+List evaluation history records marked suspicious.
+
+Swagger UI:
+- `http://127.0.0.1:8000/docs`
 
 ## Quick Start
-
-1. Create and activate a virtual environment.
-2. Install dependencies.
-3. Start the FastAPI server.
-4. Open Swagger at `http://127.0.0.1:8000/docs`.
-5. Try a sample evaluation request.
 
 ```powershell
 python -m venv .venv
@@ -18,291 +178,58 @@ python -m uvicorn app:app --reload
 ```
 
 Open:
-
 - `http://127.0.0.1:8000/docs`
 
-Sample request for `POST /evaluate/students`:
-
-```json
-{
-  "llm_review": true,
-  "llm_review_max_attempts": 6,
-  "students": [
-    {
-      "student_id": "demo-1",
-      "submissions": [
-        {
-          "question": "Write a function to add two numbers",
-          "model_answer": "def add(a, b): return a + b",
-          "student_answer": "def add(a, b): return a + b",
-          "language": "python"
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Environment And Requirements
+## Environment
 
 Recommended local environment:
-
 - Python `3.12`
-- Windows PowerShell commands in this README assume the current repository layout
-- local writable `data/` directory for SQLite databases
-- local `models/` directory for GGUF model files
+- Windows PowerShell
+- writable `data/` directory
+- local `models/` directory
 
-Required local model:
-
+Expected local GGUF model path:
 - `models/Phi-3-mini-4k-instruct-q4.gguf`
 
-Optional Ollama setup:
-
-- the project can be configured to use `ollama` as a fallback provider
-- default Ollama endpoint in config is `http://localhost:11434/api/generate`
-- default Ollama model name in config is `phi3-gguf`
-- this is optional when `llama_cpp` with the GGUF model is available
-
-## Overview
-
-This project is designed for academy-style and exam-style evaluation where consistency, repeatability, and explainability matter.
-
-It supports:
-
-- direct evaluation from `question + model_answer + student_answer + language`
-- reusable package registration through `POST /questions/register`
-- deterministic template-family routing for common question types
-- hidden-test execution for runnable languages
-- syntax and structure checks for markup and query languages
-- stored package reuse and learning-signal accumulation
-- local GGUF LLM review when deterministic coverage is insufficient
-- faculty edit and approve workflows for every evaluation-relevant field
-- auto-repair for weak packages before evaluation (configurable)
-
-The main design principle is:
-
-- deterministic first
-- execution second
-- LLM last
-
-## Main Routes
-
-- `GET /`
-- `GET /health`
-- `POST /evaluate/students`
-- `POST /questions/register`
-- `GET /questions/get`
-- `PATCH /questions/edit`
-- `GET /questions/review/pending`
-- `POST /questions/approve`
-- `POST /questions/approve-all`
-
-Swagger UI:
-
-- `http://127.0.0.1:8000/docs`
-
-## API Endpoint Reference
-
-### `GET /`
-
-Use this as a simple service-availability check.
-
-Typical use:
-
-- verify that the FastAPI app is running
-- confirm the current runtime process is reachable
-
-### `GET /health`
-
-Use this for runtime health inspection.
-
-Typical response includes:
-
-- service health status
-- runtime marker
-- evaluator fingerprint
-
-Useful for:
-
-- confirming the server restarted correctly
-- checking that the expected evaluator code is active
-
-### `POST /evaluate/students`
-
-Primary evaluation endpoint.
-
-Input:
-
-- one or more students
-- one or more submissions per student
-- direct question context or package-aligned question context
-
-Output:
-
-- `execution_time`
-- per-student totals
-- per-question `score`, `concepts`, `logic_evaluation`, and `feedback`
-- per-question `error` when evaluation could not complete normally
-
-Best for:
-
-- batch exam evaluation
-- benchmarking
-- direct faculty-side scoring
-- batch exam evaluation with optional package reuse
-- LLM audit review can be forced per request via `llm_review` and `llm_review_max_attempts`
-
-### `POST /questions/register`
-
-Question package registration endpoint.
-
-Input:
-
-- one or more questions
-- each with `question`, `model_answer`, and `language`
-- optional `question_id`
-
-Output:
-
-- generated or reused package metadata
-- `template_family`
-- `accepted_solutions`
-- `test_sets`
-- `incorrect_patterns`
-- `package_status`
-- `package_confidence`
-- package reuse and review hints
-- `validation_options` containing editable fields for faculty review
-
-Best for:
-
-- building reusable hidden-test packages
-- stabilizing future evaluation
-- improving deterministic scoring before live usage
-- preparing packages for faculty review and approval
-
-### `GET /questions/get`
-
-Fetch a stored question package by question text + language.
-
-Useful for:
-
-- verifying what is currently stored
-- reviewing approved vs pending packages
-
-### `PATCH /questions/edit`
-
-Edit a stored package without approving it.
-
-Use this when:
-
-- faculty wants to adjust tests, accepted solutions, or incorrect patterns before approval
-
-### `GET /questions/review/pending`
-
-List packages that are still pending review.
-
-Best for:
-
-- building a lightweight faculty review queue
-
-### `POST /questions/approve`
-
-Approve a package, optionally with edits.
-
-Use this when:
-
-- you want to finalize the exact package data used in evaluation
-- you want to edit and approve in one step
-
-### `POST /questions/approve-all`
-
-Bulk-approve all pending packages.
-
-Use this when:
-
-- you want to move a batch into approved state quickly
-
-## Request Schema Reference
-
-The request models are defined in [schemas.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/schemas.py).
-
-### `HiddenTestCase`
-
-Optional hidden tests can be attached directly to a submission in direct mode.
-
-- `input`
-  serialized input payload such as `[1,2,3]`
-- `expected_output`
-  serialized expected result such as `6`
-- `description`
-  short note about the purpose of the test
-
-### `QuestionSubmission`
-
-Represents one student answer for one question.
-
-- `question_id`
-  optional external key such as `q1`
-- `question`
-  prompt text shown to the student
-- `model_answer`
-  faculty or reference solution
-- `alternative_answers`
-  optional reference variants for direct mode
-- `hidden_tests`
-  optional direct-mode hidden tests
-- `student_answer`
-  required student submission
-- `language`
-  language or question type such as `python`, `html`, `react`, `mysql`, or `mongodb`
-
-### `StudentEvaluationRequest`
-
-Represents one student and all of that student's submissions.
-
-- `student_id`
-  required student identifier
-- `llm_review`
-  optional per-student switch to force the LLM audit loop
-- `llm_review_max_attempts`
-  optional per-student cap for the audit loop
-- `submissions`
-  required list of `QuestionSubmission`
-
-### `MultiStudentEvaluationRequest`
-
-Top-level request body for `POST /evaluate/students`.
-
-- `students`
-  required list of `StudentEvaluationRequest`
-- `llm_review`
-  optional global switch to force the LLM audit loop
-- `llm_review_max_attempts`
-  optional global cap for the audit loop
-
-### `QuestionPackageRequest`
-
-Represents one question to register as a reusable package.
-
-- `question_id`
-  optional mapping key
-- `question`
-  required prompt text
-- `model_answer`
-  required faculty answer
-- `language`
-  required language label
-
-### `MultiQuestionPackageRequest`
-
-Top-level request body for `POST /questions/register`.
-
-- `questions`
-  required list of `QuestionPackageRequest`
+LLM provider defaults are defined in [config.py](./config.py).
+
+## Current Important Defaults
+
+Current behavior is centered on package-backed deterministic evaluation.
+
+Important settings from [config.py](./config.py):
+- `LLM_PROVIDER = "llama_cpp"`
+- `GGUF_MODEL_PATH = "models/Phi-3-mini-4k-instruct-q4.gguf"`
+- `N_CTX = 512`
+- `AUTO_GENERATE_QUESTION_RULES = True`
+- `AUTO_ACTIVATE_VALIDATED_QUESTIONS = True`
+- `REQUIRE_VALIDATED_QUESTION_PACKAGE = True`
+- `STRICT_EVALUATION_BY_QUESTION_ID = True`
+- `REQUIRE_FACULTY_APPROVAL_FOR_LIVE = False`
+- `FORCE_LLM_WHEN_NOT_DETERMINISTIC = False`
+- `ALWAYS_LLM_REVIEW = False`
+- `LLM_ALLOW_SCORE_AUDIT = False`
+- `DETERMINISTIC_PACKAGE_SCORING_ONLY = True`
+- `REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION = True`
+- `REGISTER_STRICT_VALIDATE = True`
+- `REGISTER_STRICT_MIN_CONFIDENCE = 0.9`
+- `REGISTER_REJECT_GENERIC_TEMPLATES = True`
+- `AUTO_REPAIR_BAD_PACKAGES = True`
+- `LLM_REPHRASE_FEEDBACK = True`
+- `LLM_GENERATE_FEEDBACK_ALWAYS = True`
+- `MONITOR_SUSPICIOUS_EVALUATIONS = True`
+
+Meaning in practice:
+- evaluation expects a validated package
+- generic registration output is blocked
+- package-backed deterministic scoring is the truth source
+- LLM score invention is disabled in the protected path
+- weak final feedback can be repaired before response return
+- suspicious output is logged and queryable
 
 ## Supported Languages
 
+Supported request languages:
 - `python`
 - `java`
 - `javascript`
@@ -312,456 +239,51 @@ Top-level request body for `POST /questions/register`.
 - `mongodb`
 - `mysql`
 
-## Evaluation Architecture
-
-At a high level, the evaluation pipeline runs through these layers:
-
-1. validate and normalize the request
-2. load direct question context or a stored package
-3. infer a deterministic template family when possible
-4. apply exact-match and accepted-solution shortcuts
-5. run syntax, structure, deterministic rule, and execution checks
-6. apply package hidden tests and incorrect-pattern penalties
-7. fall back to the local LLM only when the deterministic path is too weak
-8. calibrate and return structured scoring plus feedback
-
-## LLM Review Behavior
-
-LLM review is enabled by default and can be forced per request. The system attempts deterministic scoring first, then uses the LLM to audit and correct the score/feedback when needed. If the LLM response is incomplete or unsafe, the evaluator uses deterministic scoring and marks the LLM result as a fallback internally without overwriting strong deterministic feedback.
-
-Key points:
-
-- deterministic output remains the source of truth when it is confident
-- LLM review is used to fill gaps, not override high-confidence deterministic matches
-- repeated fallback responses do not replace deterministic feedback
-- the audit loop continues until the LLM output stabilizes or the attempt cap is reached
-
-### LLM Feedback Rephrase (Hybrid)
-
-After deterministic scoring and any audit corrections, the system can optionally ask the LLM to rephrase feedback for clarity without changing the verdict. This keeps the correctness stable while improving readability.
-
-Rules:
-
-- deterministic rules still decide correctness and score
-- the LLM only rewrites the feedback and improvements text
-- any unsafe or low-quality rephrasing is discarded
-
-## Runtime Behavior
-
-The service layer in [app.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/app.py) also manages evaluator freshness and response normalization.
-
-Important runtime details:
-
-- evaluator source files are fingerprinted
-- if the fingerprint changes, the evaluator modules are reloaded before the next live evaluation
-- `GET /health` returns both a runtime marker and the current evaluator fingerprint
-- final API responses are sanitized before being returned to the client
-- a small number of known score-correction rules are applied at API level for stability on benchmarked edge cases
-
-Why this matters:
-
-- if the code was changed but scores still look old, `GET /health` is the fastest sanity check
-- if multiple local server processes exist, the runtime marker helps identify the live one
-- the final API response can be slightly more stable than raw evaluator output because of response normalization
-
-## Evaluation Modes
-
-### Direct Mode
-
-Use direct mode when you want immediate evaluation without package registration.
-
-Send:
-
-- `question`
-- `model_answer`
-- `student_answer`
-- `language`
-
-Best for:
-
-- quick testing
-- experimentation
-- faculty-side spot checks
-
-### Package Mode
-
-Use package mode when you want stable reuse and stronger hidden tests.
-
-Flow:
-
-1. register questions with `POST /questions/register`
-2. let the system generate or reuse package support data
-3. evaluate students later against those stored packages
-
-Best for:
-
-- repeated exams
-- standardized assessments
-- stronger deterministic grading
-- long-term package improvement through learning signals
-
-### Validation + Approval Mode
-
-Use validation and approval when you want faculty control over the exact data used for scoring.
-
-Flow:
-
-1. register a question through `POST /questions/register`
-2. review `validation_options` for edits
-3. edit directly with `PATCH /questions/edit` or approve with edits using `POST /questions/approve`
-4. use approved packages for high-stakes or exam scoring
-
-## Question Packages
-
-Question packages store reusable evaluation support data such as:
-
-- `accepted_solutions`
-- `test_sets`
-- `incorrect_patterns`
-- `template_family`
-- `package_status`
-- `package_confidence`
-- question profile metadata
-
-Important behavior:
-
-- `question_id` is optional at registration time
-- package reuse is driven by normalized question content, signature, language, and template family
-- `question_id` mainly acts as an evaluation-time label or mapping key
-- registration output is intended to power later evaluation
-
-### Editable Package Fields (Validation Options)
-
-The register response includes `validation_options`, which lists every field faculty can edit:
-
-- `question`
-- `model_answer`
-- `language`
-- `accepted_solutions`
-- `test_sets`
-- `incorrect_patterns`
-- `package_summary`
-- `package_confidence`
-
-## Package Lifecycle
-
-Question packages act as the reusable memory layer for repeated evaluation.
-
-Typical lifecycle:
-
-1. register a question through `POST /questions/register`
-2. infer a profile and deterministic template family
-3. generate or reuse accepted solutions, tests, and incorrect-pattern rules
-4. assign status and confidence metadata
-5. reuse that package in future `POST /evaluate/students` calls
-6. store evaluation history and learning signals for later improvement
-
-Key package fields:
-
-- `question_signature`
-  normalized question identity used for reuse
-- `template_family`
-  deterministic family such as `python::string_length`
-- `accepted_solutions`
-  known good answers or normalized variants
-- `test_sets`
-  positive and negative hidden tests with weights and required flags
-- `incorrect_patterns`
-  common wrong-answer patterns and score caps
-- `package_status`
-  readiness state such as `validated` or `generated`
-- `package_confidence`
-  confidence score used for stricter exam scenarios
-- `review_required`
-  signals whether manual review is still recommended
-
-## Auto-Repair Behavior
-
-When enabled, the service can auto-repair weak packages at evaluation time. This avoids low-quality or fallback-heavy packages from polluting live scoring.
-
-Behavior:
-
-- if a stored package fails quality checks, the service attempts to regenerate it
-- if repair succeeds, evaluation continues with the repaired package
-- if repair fails, evaluation falls back to direct-mode logic
-
-This behavior is controlled by `AUTO_REPAIR_BAD_PACKAGES` in `config.py`.
-
-## Pending Package Auto-Refresh
-
-Pending (not yet approved) packages are automatically refreshed when they are fetched or listed, and also once at startup. This keeps stored packages aligned with the latest generator improvements while preserving faculty-approved content.
-
-Key rules:
-
-- approved packages are never auto-rewritten
-- pending packages are regenerated only when stale or noisy
-- the refresh uses the LLM generation path and then revalidates
-
-## Deterministic Coverage
-
-Current strongest deterministic coverage is on:
-
-- `python`
-- `java`
-- `javascript`
-
-especially for common academy-style basics and structured questions.
-
-Python deterministic coverage has been updated across all major areas (core rules, deterministic families, execution shortcuts, regression protection, and benchmark monitoring) so common academy-style questions are consistently routed and scored.
-
-## Deterministic + Protected + Monitored (Python)
-
-Python coverage is treated as a first-class, always-on deterministic layer and is protected and monitored so regressions are detected early.
-
-What "deterministic" means here:
-
-- common Python families are mapped to stable template families in `evaluator/question_rule_generator.py`
-- matching routes run deterministic checks in `evaluator/execution/shared.py` and `evaluator/execution/python_families/*`
-- LLM is only used when a deterministic family cannot confidently score the case
-
-What "protected" means here:
-
-- regression cases for Python live in `tests/regression_cases.json`
-- each known scoring fix gets a permanent regression case
-- regression tests are enforced by `tests/test_regressions.py`
-
-What "monitored" means here:
-
-- benchmark coverage for Python is in `tests/benchmark_cases.json`
-- benchmark thresholds are enforced by `tests/test_benchmark.py`
-- the nightly benchmark workflow runs from `.github/workflows/nightly-benchmark.yml`
-
-Python deterministic coverage checklist (high-level):
-
-| Area | Example families / routes | Protected by | Monitored by |
-| --- | --- | --- | --- |
-| Core math | add/subtract/multiply/divide, even/odd, positive | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Strings | length, reverse, uppercase/lowercase, vowels, words | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Lists/arrays | sum, max/min, first/last, empty, reverse | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Validation | email, URL, digits/alphabets, JSON | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Algorithms | palindrome, anagram, balanced parentheses | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Data/DS basics | numpy, pandas, matplotlib wording | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Web/Frameworks | flask, django, fastapi wording | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-| Testing/Logging | pytest, unittest, logging wording | `tests/regression_cases.json` | `tests/benchmark_cases.json` |
-
-### Python Basics
-
-- basic math
-- basic string tasks
-- common list/array tasks
-- palindrome
-- reverse string
-- reverse number
-- uppercase/lowercase
-- string length
-- count vowels
-- count words
-- remove spaces
-- only digits / only alphabets
-- max/min
-- sum collection
-- first/last element
-- empty checks
-- list length
-- balanced parentheses
-- anagram
-- Armstrong number
-- leap year
-- GCD / LCM
-- power of two / power of three
-
-### Java Basics
-
-- beginner math and string tasks
-- common array/list tasks
-- palindrome, reverse string, reverse number
-- uppercase/lowercase, string length, count vowels, count words
-- remove spaces
-- only digits / only alphabets
-- even, prime, Armstrong, leap year
-- GCD / LCM
-- power of two / power of three
-- balanced parentheses and anagram
-- basic URL, email, IPv4, and JSON validation
-- safe division with exception handling
-- safe string-to-integer parsing
-- null-safe string length
-
-### JavaScript Basics
-
-- beginner math and string tasks
-- common array/list tasks
-- palindrome, reverse string, reverse number
-- uppercase/lowercase, string length, count vowels, count words
-- first character / last character
-- remove spaces
-- only digits / only alphabets
-- even, prime, Armstrong, leap year
-- GCD / LCM
-- power of two / power of three
-- balanced parentheses and anagram
-- string-to-integer conversion
-- basic URL, email, IPv4, and JSON validation
-
-### HTML Basics
-
-- basic page structure and balanced markup
-- headings and paragraphs
-- links and images
-- audio and video elements
-- lists and tables
-- forms, inputs, labels, textarea, and select/dropdown controls
-- buttons
-- div/span/container-style structure
-- semantic layout with `header`, `nav`, `main`, `section`, and `footer`
-
-### CSS Basics
-
-- basic selector/declaration structure
-- text color and background styling
-- typography basics such as font size, font family, font weight, and text alignment
-- spacing with margin and padding
-- borders and border radius
-- sizing with width and height
-- display, inline/block, and basic positioning
-- flex and grid layout prompts
-- center alignment
-- button, card, and hover styling
-
-### MongoDB Basics
-
-- basic query shape and balanced command structure
-- find/filter queries
-- insert, update, and delete operations
-- projection and sort
-- count, limit, and distinct operations
-- simple aggregation and grouping prompts
-
-### MySQL Basics
-
-- basic query shape and balanced SQL structure
-- select/filter queries
-- insert, update, and delete operations
-- joins
-- group by and aggregate prompts
-- order by, limit, and distinct
-- having-clause prompts
-
-## Brochure-Aligned Coverage
-
-The deterministic layer has also been expanded to recognize syllabus-style wording from institute course brochures.
-
-### Data Science And AI/ML
-
-Currently aligned areas include:
-
-- SQL joins, grouping, ordering, and CRUD-style query families
-- Python data-science families such as:
-  - train/test split
-  - stratified train/test split
-  - shuffle with feature/label alignment
-  - classification accuracy
-  - precision, recall, F1, confusion matrix, ROC-AUC, and log loss
-  - MSE and RMSE
-  - missing-value detection and fill strategies
-  - label encoding and one-hot encoding wording
-  - min-max normalization, MinMaxScaler wording, mean normalization
-  - z-score standardization and basic outlier handling
-  - feature/label split
-  - simple linear regression prediction
-  - correlation matrix and multicollinearity checks
-  - k-fold cross validation
-  - logistic regression, decision tree, KNN, SVM, and random forest training prompts
-  - dataframe sorting and datetime year extraction
-  - sigmoid, softmax, binary cross-entropy, and gradient-descent-step prompts
-
-Partially aligned brochure wording:
-
-- NumPy, Pandas, preprocessing, statistics, and feature-engineering phrasing
-- supervised learning wording around regression, metrics, and model training
-- unsupervised learning wording where deterministic families already exist
-- neural-network math prompts such as activation functions and gradient-descent updates
-
-### Cyber Security
-
-Currently aligned areas include:
-
-- web-security-adjacent coding prompts across supported languages
-- basic URL, email, IPv4, and validation-style questions
-- HTML, CSS, JavaScript, SQL, and web-stack questions often used in web-app security exercises
-
-Still needing specialized evaluators later:
-
-- nmap, Wireshark, netcat, Metasploit, Burp Suite, ZAP, OpenVAS, Nessus
-- SSRF, request smuggling, JWT/OAuth attack labs
-- Evil Twin, ARP spoofing, malware analysis
-- OSINT, phishing, incident response, SIEM, IDS, and threat-intelligence labs
-
-### SDET
-
-Currently aligned areas include:
-
-- API-testing-adjacent prompts such as JSON, URL, email, and IP validation
-- Java, JavaScript, HTML, CSS, SQL, and web-stack families commonly used in testing exercises
-- deterministic grading for parsing, validation, transformation, and expected-output style questions
-
-Still needing specialized evaluators later:
-
-- Selenium WebDriver flows
-- JMeter performance/load testing
-- Jenkins, Docker, and CI/CD pipelines
-- integration and environment-driven testing labs
-
-### MERN
-
-Currently aligned areas include:
-
-- HTML5 and CSS3 prompts including responsive-layout and Bootstrap-style wording
-- JavaScript prompts for validation, transformation, and JSON-style API data handling
-- React prompts for component-driven UI, state, forms, events, and fetch/useEffect-style loading
-- MongoDB prompts for basic query, collection, CRUD, and NoSQL wording
-- combined frontend, styling, client-logic, and database-question routing
-
-Still needing specialized evaluators later:
-
-- full Node.js and Express.js runtime behavior
-- end-to-end REST API and authentication workflows
-- deployment, cloud integration, and production environment tasks
-- Generative AI integrations that depend on external services or models
-
-## Evaluation Request
-
-Use `POST /evaluate/students` to score one or more students in a single request.
-
-Core request shape:
-
-- `students`
-  - `student_id`
-  - `submissions`
-    - `question_id` optional
-    - `question` optional in package-driven flows but recommended
-    - `model_answer`
-    - `student_answer`
-    - `language`
-
-Important request behavior:
-
-- direct mode works even without prior package registration
-- package mode becomes stronger when the same normalized question has already been registered
-- `question_id` acts as a mapping key, especially when strict question-ID mode is enabled
-- supported languages are validated against the app configuration
-- package scoring can use auto-repair if a stored package is weak
+Hidden-test execution support:
+- enabled: `python`, `java`, `javascript`
+- disabled: `html`, `css`, `react`, `mysql`, `mongodb`
+
+Non-runnable languages still use deterministic/static checks where available.
+
+## Request Models
+
+API schemas are defined in [schemas.py](./schemas.py).
+
+Main request models:
+- `QuestionPackageRequest`
+- `MultiQuestionPackageRequest`
+- `QuestionSubmission`
+- `StudentEvaluationRequest`
+- `MultiStudentEvaluationRequest`
+
+### `POST /questions/register` request example
+
+```json
+{
+  "questions": [
+    {
+      "question_id": "q1",
+      "question": "Check if number is zero",
+      "model_answer": "def is_zero(n): return n == 0",
+      "language": "python"
+    }
+  ]
+}
+```
+
+### `POST /evaluate/students` request example
 
 ```json
 {
   "students": [
     {
-      "student_id": "101",
+      "student_id": "S001",
       "submissions": [
         {
-          "question": "Write a function to add two numbers",
-          "model_answer": "def add(a, b): return a + b",
-          "student_answer": "def add(a, b): return a + b",
+          "question_id": "q1",
+          "question": "Check if number is zero",
+          "model_answer": "def is_zero(n): return n == 0",
+          "student_answer": "def is_zero(n): return not n",
           "language": "python"
         }
       ]
@@ -770,483 +292,368 @@ Important request behavior:
 }
 ```
 
-Request limits:
+## Question Package Lifecycle
 
-- max `20` students per request
-- max `20` submissions per student
+Question packages are the reusable memory layer of the evaluator.
 
-## Evaluation Response
+Typical lifecycle:
+1. register a question with `POST /questions/register`
+2. infer or derive a template family
+3. build accepted solutions, hidden tests, and incorrect patterns
+4. validate the package against the model answer
+5. store the package in the profile store
+6. reuse it during `/evaluate/students`
+7. collect evaluation history and learning signals
 
-Typical response shape:
-
-```json
-{
-  "execution_time": 1.24,
-  "students": [
-    {
-      "student_id": "101",
-      "question_count": 1,
-      "total_score": 100,
-      "questions": [
-        {
-          "question_id": "q1",
-          "data": {
-            "score": 100,
-            "concepts": {
-              "logic": "Strong",
-              "edge_cases": "Good",
-              "completeness": "High",
-              "efficiency": "Good",
-              "readability": "Good"
-            },
-            "logic_evaluation": "The student answer matches the model answer, and the logic is correct.",
-            "feedback": "The student answer exactly matches the expected function."
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-Per-question result items may contain:
-
-- `question_id`
-- `data`
-- `error`
-
-The API returns `error` when a submission could not be evaluated safely enough to build a normal score response.
-
-## Response Schema Reference
-
-The response models are also defined in [schemas.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/schemas.py).
-
-### `ConceptEvaluation`
-
-Each successful question result includes concept labels for:
-
-- `logic`
-- `edge_cases`
-- `completeness`
-- `efficiency`
-- `readability`
-
-These are descriptive labels, not raw percentage sub-scores.
-
-### `EvaluationResponse`
-
-Normal successful per-question result:
-
-- `score`
-  integer score out of `100`
-- `concepts`
-  concept-label summary
-- `logic_evaluation`
-  short explanation of how correct the core logic is
-- `feedback`
-  final feedback text returned to the caller
-
-### `StudentQuestionResultItem`
-
-Wrapper object inside each student result:
-
-- `question_id`
-  optional external question key
-- `data`
-  populated on normal success
-- `error`
-  populated when normal evaluation could not complete
-
-### `StudentEvaluationResponse`
-
-Per-student aggregate result:
-
-- `student_id`
-- `question_count`
-- `total_score`
-- `questions`
-
-### `MultiStudentEvaluationResponse`
-
-Batch-level response:
-
-- `execution_time`
-  total response time in seconds
-- `students`
-  list of `StudentEvaluationResponse`
-
-### `QuestionPackageResponse`
-
-Registration response shape for `POST /questions/register`.
-
-Includes:
-
-- original question fields
-- inferred `profile`
+Key package fields:
 - `question_signature`
 - `template_family`
 - `accepted_solutions`
+- `hidden_tests`
 - `test_sets`
 - `incorrect_patterns`
 - `package_status`
-- `package_summary`
 - `package_confidence`
 - `review_required`
-- positive and negative test counts
-- reuse hints in `reused_from_questions`
+- `approval_status`
+- `exam_ready`
 
-## Scoring
+## Registration Deep Dive
 
-Each question is scored out of `100`.
+`POST /questions/register` is the preferred entry point for stable evaluation.
 
-High-level split:
+Registration currently does all of the following:
+- builds a normalized question signature
+- tries question-text family inference
+- tries model-answer family inference when wording is unfamiliar
+- uses a non-generic fallback family for new simple Python question shapes
+- builds deterministic baseline package content
+- optionally merges oracle-generated test coverage
+- validates the package against the provided model answer
+- stores the result for later reuse
 
-- rubric: `90`
-- concepts: `10`
+### Current family inference strategy
 
-Rubric split:
+Current family selection order is:
+1. specific question-text family inference
+2. model-answer-based family inference
+3. fallback `python::model_answer_derived` for simple Python callable answers
+4. only then broad generic families if the question is still not classifiable
 
-- correctness: `40`
-- efficiency: `20`
-- readability: `15`
-- structure: `15`
+This means many new questions can now register successfully even if the wording is unfamiliar, as long as the model answer shape is recognizable.
 
-Concept scoring weights from configuration:
+### Fields reused later during evaluation
 
-- logic: `4`
-- edge_cases: `2`
-- completeness: `2`
-- efficiency: `1`
-- readability: `1`
-
-## Evaluation Output
-
-Each evaluated question returns:
-
-- `score`
-- `concepts`
-- `logic_evaluation`
-- `feedback`
-
-Each student result returns:
-
-- `student_id`
-- `question_count`
-- `total_score`
-- per-question results
-
-## Package Registration Example
-
-Use `POST /questions/register` to build reusable question packages.
-
-Registration produces metadata such as:
-
-- detected `profile`
-- normalized `question_signature`
-- deterministic `template_family`
+These fields from registration are directly reused:
+- `question_signature`
+- `template_family`
 - `accepted_solutions`
+- `hidden_tests`
 - `test_sets`
 - `incorrect_patterns`
 - `package_status`
-- `package_summary`
 - `package_confidence`
 - `review_required`
-- test counts and reuse hints
+- `approval_status`
+- `exam_ready`
 
-When registration succeeds well, later evaluation can use:
+These are mostly informational/debug metadata:
+- `profile`
+- `package_summary`
+- `reused_from_questions`
+- `positive_test_count`
+- `negative_test_count`
+- `validation_options`
 
-- registered accepted solutions
-- registered hidden tests
-- registered incorrect-pattern penalties
-- deterministic family-specific scoring improvements
+### Registration quality gates
 
-```json
-{
-  "questions": [
-    {
-      "question": "Write a function to add two numbers",
-      "model_answer": "def add(a,b): return a+b",
-      "language": "python"
-    },
-    {
-      "question": "Reverse a string",
-      "model_answer": "def reverse(s): return s[::-1]",
-      "language": "python"
-    }
-  ]
-}
-```
+Registration is considered ready only if the package is:
+- not a weak generic fallback
+- `validated` or `live`
+- above the confidence threshold
+- not marked `review_required`
+- not carrying placeholder tests
+- not carrying fallback-style incorrect-pattern feedback
+- covered enough for live use
 
-## Setup And Run
+### Registration response behavior
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m uvicorn app:app --reload
-```
+The register response now includes:
+- `hidden_tests`
+- `exam_ready`
+- richer `validation_options`
 
-After startup:
+This makes the response more useful as a debugging and review object for future evaluation.
 
-- `http://127.0.0.1:8000/docs`
+## Evaluation Deep Dive
 
-Expected local model file:
+The live evaluation flow is now strongly package-centered.
 
-- `models/Phi-3-mini-4k-instruct-q4.gguf`
+Rough path:
+1. normalize request input
+2. build the shared `question_signature`
+3. look up the stored package
+4. if full inline context exists and no ready package is available, try to bootstrap a new package automatically
+5. gather `accepted_solutions`, `hidden_tests`, and `incorrect_patterns`
+6. execute hidden tests for runnable languages
+7. score from deterministic evidence
+8. apply template-specific final response overrides
+9. repair weak generic feedback if a better package-backed message is available
+10. persist evaluation history and suspicious markers
 
-Configured LLM/runtime defaults from [config.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/config.py):
+### Automatic package bootstrap during evaluation
 
-- provider: `llama_cpp`
-- fallback provider support: `ollama`
-- GGUF path: `models/Phi-3-mini-4k-instruct-q4.gguf`
-- context size: `512`
-- default execution timeout: `8` seconds
-- default score on evaluation error: `50`
-- strict JSON output enabled for LLM parsing
-- always-on LLM review enabled by default
-- auto-repair of weak packages enabled by default
-- feedback rephrase via LLM enabled by default
-- LLM review hard max attempts enabled for audit loops
+If `/evaluate/students` receives:
+- `question`
+- `model_answer`
+- `language`
 
-Runtime feature flags:
+and a valid package is missing, the evaluator now attempts to register/build a package automatically before failing.
 
-- auto question-rule generation: enabled
-- auto-activate validated questions: enabled
-- require validated package for evaluation: disabled by default
-- strict evaluation by `question_id`: enabled
-- require faculty approval for live exam use: enabled
-- minimum package confidence for exam use: `0.75`
+This reduces evaluation-time errors for new inline questions.
 
-Hidden-test runtime support:
+### Package-backed scoring behavior
 
-- enabled: `python`, `java`, `javascript`
-- disabled: `html`, `css`, `react`, `mysql`, `mongodb`
+For validated package-backed submissions:
+- hidden tests are used directly
+- incorrect patterns are used directly
+- accepted-solution matching is used directly
+- deterministic scoring wins over LLM scoring
 
-Health endpoints:
+### Final response behavior
 
-- `GET /health` reports service health and active runtime marker
-- `GET /` can be used as a simple availability check
+Before the response is returned:
+- contradictory score/feedback combinations are repaired
+- specific package feedback can override vague generic text
+- package-backed families in the guarded registry bypass unsafe feedback drift
 
-## Configuration Reference
+## Deterministic Guardrails
 
-Primary runtime settings live in [config.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/config.py).
+The final API layer now enforces important consistency rules.
 
-### App Settings
+Protected rules include:
+- `100` score cannot return corrective feedback
+- incorrect-pattern matches cannot remain overscored
+- required hidden-test failures force low scores
+- specific deterministic feedback beats generic LLM feedback
+- package-backed vague feedback is repaired when a better pattern-based or template-specific message exists
 
-- `APP_NAME`
-  service name
-- `VERSION`
-  version string
-- `ENABLE_LOGGING`
-  controls runtime logging helpers
-- `ENABLE_RAG`
-  currently disabled
+### Current protected Python families
 
-### LLM Settings
+The final deterministic feedback registry currently covers:
+- `python::zero_check`
+- `python::list_length`
+- `python::string_endswith`
+- `python::uppercase_string`
+- `python::lowercase_string`
+- `python::odd_check`
+- `python::empty_collection_check`
+- `python::greater_than_threshold`
+- `python::second_element`
 
-- `LLM_PROVIDER`
-  default provider, currently `llama_cpp`
-- `GGUF_MODEL_PATH`
-  local GGUF path
-- `N_CTX`
-  context window
-- `N_THREADS`
-  CPU thread count
-- `N_GPU_LAYERS`
-  GPU offload depth, currently `0`
-- `LLM_MODEL`
-  fallback Ollama model
-- `OLLAMA_BASE_URL`
-  fallback Ollama endpoint
-- `LLM_TEMPERATURE`
-  low value for stable output
-- `LLM_MAX_TOKENS`
-  response token cap
+These are protected because they have:
+- deterministic package scoring
+- template-aware final feedback
+- regression tests
 
-### Scoring Settings
+## New Question Handling
 
-- `RUBRIC_WEIGHTS`
-  correctness, efficiency, readability, and structure weighting
-- `TOTAL_SCORE`
-  maximum per-question score
-- `CONCEPT_WEIGHTS`
-  relative weighting for concept labels
+The system is now much more resilient for new Python questions than it was earlier.
 
-### Analysis Settings
+What currently reduces new-question errors:
+- question-text template inference
+- model-answer-based family inference
+- deterministic model-answer-derived baselines
+- fallback family `python::model_answer_derived`
+- auto-bootstrap during evaluation when full inline context is provided
+- package auto-repair when stored packages are weak
 
-- `ENABLE_SYNTAX_CHECK`
-- `ENABLE_LINE_ANALYSIS`
-- `ENABLE_STRUCTURE_ANALYSIS`
+What this means in practice:
+- many new simple Python questions register without falling into `python::generic`
+- many evaluation requests can self-heal instead of returning package-missing errors
 
-These decide which local analyzers can contribute to evaluation.
+Honest limitation:
+- no system can guarantee zero errors for every possible new question shape
+- but the current design is much more robust than earlier LLM-heavy or wording-only approaches
 
-### Error Handling
+## Storage and Stores
 
-- `DEFAULT_SCORE_ON_ERROR`
-- `DEFAULT_FEEDBACK_ON_ERROR`
+Dynamic data is stored in SQLite.
 
-These are used when evaluation cannot complete normally.
+Primary stores:
+- question packages: `data/question_profiles.db`
+- evaluation history: `data/evaluation_history.db`
+- learning signals: `data/question_learning.db`
 
-### Package and Exam Controls
+### What each store is for
 
-- `AUTO_GENERATE_QUESTION_RULES`
-- `AUTO_GENERATE_MAX_ALTERNATIVES`
-- `AUTO_GENERATE_MAX_HIDDEN_TESTS`
-- `AUTO_ACTIVATE_VALIDATED_QUESTIONS`
-- `REQUIRE_VALIDATED_QUESTION_PACKAGE`
-- `STRICT_EVALUATION_BY_QUESTION_ID`
-- `REQUIRE_FACULTY_APPROVAL_FOR_LIVE`
-- `MIN_PACKAGE_CONFIDENCE_FOR_EXAM`
-- `ALWAYS_LLM_REVIEW`
-- `LLM_REVIEW_MAX_ATTEMPTS`
-- `AUTO_REPAIR_BAD_PACKAGES`
-  auto-repair weak packages at evaluation time
-- `QUESTION_REGISTER_HARD_MAX_ATTEMPTS`
-  upper cap for LLM retries during `POST /questions/register`
-- `LLM_REVIEW_HARD_MAX_ATTEMPTS`
-  upper cap for LLM audit loop during evaluation
-- `LLM_REPHRASE_FEEDBACK`
-  enables LLM feedback rephrasing after deterministic scoring
-- `QUESTION_REGISTER_HARD_MAX_ATTEMPTS`
-- `LLM_REVIEW_HARD_MAX_ATTEMPTS`
-- `LLM_REPHRASE_FEEDBACK`
+Question profile store:
+- reusable per-question rulebook
+- accepted solutions
+- tests
+- incorrect patterns
+- package metadata
 
-### Storage Paths
+Evaluation history store:
+- actual past evaluation results
+- audit trail
+- suspicious-output retrieval
 
-- `QUESTION_PROFILE_DB_PATH`
-- `EVALUATION_HISTORY_DB_PATH`
-- `QUESTION_LEARNING_DB_PATH`
+Learning store:
+- repeated good/bad answer patterns
+- future package-improvement signals
 
-### Hidden-Test Runtime Matrix
+Legacy file that may still exist:
+- `data/question_profiles.json`
 
-From `HIDDEN_TEST_RUNTIME_FEATURES`:
+## Monitoring and Suspicious Evaluations
 
-- enabled: `python`, `java`, `javascript`
-- disabled: `html`, `css`, `react`, `mysql`, `mongodb`
+Suspicious evaluation monitoring is enabled.
 
-Non-runnable languages still use deterministic and static evaluation where available.
+Examples of suspicious reasons:
+- full credit with corrective feedback
+- low score with generic feedback
+- accepted solution not receiving full credit
+- incorrect-pattern overscoring
+- generic template family usage
+- package not ready for live use
+- feedback too short
 
-## Testing
+Query endpoint:
+- `GET /monitor/suspicious-evaluations`
 
-The project includes both benchmark-style validation and regular test modules.
+## Testing and CI
 
-Available test and benchmark files:
+The repo now includes focused protection around deterministic-first evaluation.
 
-- [tests/run_benchmark.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/run_benchmark.py)
-- [tests/test_benchmark.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_benchmark.py)
-- [tests/test_evaluator.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_evaluator.py)
-- [tests/test_regressions.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py)
-- [tests/test_language_support.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_language_support.py)
+Important suites:
+- [tests/test_monitoring_and_registration.py](./tests/test_monitoring_and_registration.py)
+- [tests/test_deterministic_guardrails.py](./tests/test_deterministic_guardrails.py)
+- [tests/test_regressions.py](./tests/test_regressions.py)
+- [tests/test_python_universal.py](./tests/test_python_universal.py)
+
+Useful additional suites and assets:
+- [tests/test_evaluator.py](./tests/test_evaluator.py)
+- [tests/test_language_support.py](./tests/test_language_support.py)
+- [tests/test_benchmark.py](./tests/test_benchmark.py)
+- [tests/run_benchmark.py](./tests/run_benchmark.py)
+- `tests/regression_cases.json`
 - `tests/benchmark_cases.json`
 - `tests/benchmark_thresholds.json`
-- `tests/regression_cases.json`
 
-Run the benchmark:
+### Recommended verification commands
+
+```powershell
+pytest tests/test_monitoring_and_registration.py -q
+pytest tests/test_deterministic_guardrails.py -q
+pytest tests/test_regressions.py -q
+pytest tests/test_python_universal.py -q
+```
+
+Benchmark:
 
 ```powershell
 python tests/run_benchmark.py
 ```
 
-What the benchmark does:
+### What the focused suites currently protect
 
-- loads benchmark cases from `tests/benchmark_cases.json`
-- evaluates them through the live evaluator logic
-- checks score ranges against expected thresholds
-- reports overall accuracy
-- reports accuracy by language
-- reports accuracy by category
-- exits with failure when configured threshold checks are not met
+`tests/test_monitoring_and_registration.py` protects:
+- generic template rejection behavior
+- suspicious evaluation detection
+- deterministic registry coverage
+- package-backed generic-feedback repair
+- registration of new supported families
+- model-answer-based family inference
+- model-answer-derived fallback registration
+- auto-bootstrap during evaluation
 
-Run unit and integration-style tests:
+`tests/test_deterministic_guardrails.py` protects:
+- shared signature normalization
+- package-backed deterministic scoring
+- avoidance of LLM scoring in protected paths
+- template-specific final feedback for guarded Python families
 
-```powershell
-python -m pytest tests/test_benchmark.py tests/test_evaluator.py tests/test_regressions.py tests/test_language_support.py
-```
+## CI
 
-What the test files are for:
+Guardrail CI:
+- [.github/workflows/ci-evaluation-guardrails.yml](./.github/workflows/ci-evaluation-guardrails.yml)
 
-- [tests/test_benchmark.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_benchmark.py)
-  benchmark and threshold checks
-- [tests/test_evaluator.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_evaluator.py)
-  evaluator behavior checks
-- [tests/test_regressions.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py)
-  exact known bug-fix cases that should not silently regress
-- [tests/test_language_support.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/test_language_support.py)
-  language support and routing checks
+Nightly benchmark workflow:
+- [.github/workflows/nightly-benchmark.yml](./.github/workflows/nightly-benchmark.yml)
 
-How to use the regression layer:
+## Troubleshooting
 
-1. when you fix a scoring bug, add one case to `tests/regression_cases.json`
-2. include the original question, reference answer, student answer, and expected score range
-3. include a small expected feedback phrase when practical
-4. run `python -m pytest tests/test_regressions.py`
-5. keep the case permanently so the same bug cannot quietly return
+### `POST /questions/register` returns 422
 
-LLM-assisted regression drafting:
+Common causes:
+- package still fell back to a weak generic family
+- package validation against the model answer failed
+- confidence or coverage rules were not met
 
-If you want the system to suggest new regression cases from recent evaluations, run:
+What to inspect:
+- `template_family`
+- `package_status`
+- `package_confidence`
+- `review_required`
+- returned `detail.items`
 
-```powershell
-python tools/generate_regression_candidates.py --limit 40
-```
+### Evaluation returns a package-related error
 
-This writes `tests/regression_candidates.json` with a draft list. Review and copy the cases you want into `tests/regression_cases.json` before committing.
+If full inline context is present, the evaluator now tries to bootstrap a package automatically.
 
-Recommended verification flow after changing scoring logic:
+If it still fails:
+- the model answer may be too weak to derive a safe package
+- the generated package may still not satisfy registration quality gates
 
-1. restart the FastAPI server
-2. register representative questions
-3. evaluate a small sample batch
-4. run `python tests/run_benchmark.py`
-5. run the pytest suite
+### Correct score but weak feedback
 
-If benchmark thresholds fail:
+Likely causes:
+- missing template-specific final feedback override
+- incorrect-pattern fallback winning before a more specific template branch
+- generic low-quality feedback not yet recognized by the repair layer
 
-- inspect the printed failures list from the benchmark runner
-- confirm the correct deterministic family was selected
-- check whether the score is too high, too low, or only phrased differently
-- confirm the live API process has reloaded the updated evaluator
+Look at:
+- `template_family`
+- `incorrect_patterns`
+- final overrides in [app.py](./app.py)
+- tests in [tests/test_deterministic_guardrails.py](./tests/test_deterministic_guardrails.py)
 
-Use testing when:
+### Hidden tests are not running
 
-- adding new deterministic families
-- changing package-generation logic
-- adjusting scoring overrides
-- validating that benchmark accuracy has not regressed
+Expected for:
+- `html`
+- `css`
+- `react`
+- `mysql`
+- `mongodb`
 
-## Storage
+### LLM context warning
 
-Deterministic rules and static evaluators live in code:
+A message such as:
+- `n_ctx_seq (512) < n_ctx_train (4096)`
 
-- `evaluator/rules/`
-- `evaluator/execution/shared.py`
-- `evaluator/question_rule_generator.py`
-- `analysis/syntax_checker/`
+is only a capacity warning, not a crash.
 
-Dynamic data is stored in SQLite:
+## Where to Change What
 
-- question packages: `data/question_profiles.db`
-- evaluation history: `data/evaluation_history.db`
-- learning signals: `data/question_learning.db`
+If the issue is about reusable per-question logic:
+- [evaluator/question_rule_generator.py](./evaluator/question_rule_generator.py)
+- [evaluator/question_package/workflow.py](./evaluator/question_package/workflow.py)
+- [evaluator/question_profile_repository.py](./evaluator/question_profile_repository.py)
 
-Stored data roles:
+If the issue is about evaluation-time scoring or feedback:
+- [evaluator/orchestration/pipeline.py](./evaluator/orchestration/pipeline.py)
+- [app.py](./app.py)
 
-- `question_profiles.db`
-  registered question packages and reusable metadata
-- `evaluation_history.db`
-  saved evaluation results for audit and debugging
-- `question_learning.db`
-  learning signals collected from past runs
+If the issue is about persistence or audit behavior:
+- [evaluator/question_profile_store.py](./evaluator/question_profile_store.py)
+- [evaluator/evaluation_history_store.py](./evaluator/evaluation_history_store.py)
+- [evaluator/evaluation_history_repository.py](./evaluator/evaluation_history_repository.py)
+- [evaluator/question_learning_store.py](./evaluator/question_learning_store.py)
 
-Legacy JSON profile seed:
-
-- `data/question_profiles.json`
-
-Additional working directories commonly present:
-
-- `models/` for local GGUF models
-- `logs/` for runtime logging output
-- `tests/` for evaluator and benchmark validation
+If the issue is about API contracts:
+- [schemas.py](./schemas.py)
 
 ## Project Structure
 
@@ -1256,490 +663,51 @@ ai-intelligent-evaluation-model/
 |-- config.py
 |-- schemas.py
 |-- README.md
-|
 |-- analysis/
-|   |-- line_analyzer.py
-|   |-- structure_analyzer.py
-|   `-- syntax_checker/
-|       |-- __init__.py
-|       |-- python_checker.py
-|       |-- java_checker.py
-|       |-- javascript_checker.py
-|       |-- html_checker.py
-|       |-- css_checker.py
-|       |-- react_checker.py
-|       |-- mysql_checker.py
-|       `-- mongodb_checker.py
-|
 |-- evaluator/
-|   |-- concept_evaluator.py
-|   |-- evaluation_history_repository.py
-|   |-- evaluation_history_store.py
-|   |-- execution_engine.py
-|   |-- main_evaluator.py
-|   |-- question_classifier.py
-|   |-- question_learning_repository.py
-|   |-- question_learning_store.py
-|   |-- question_profile_repository.py
-|   |-- question_profile_store.py
-|   |-- question_rule_generator.py
-|   |-- comparison/
-|   |   |-- answer_comparator.py
-|   |   |-- feedback_generator.py
-|   |   |-- llm_comparator.py
-|   |   |-- logic_checker.py
-|   |   |-- logic_summary.py
-|   |   `-- score_calibrator.py
-|   |-- execution/
-|   |   |-- __init__.py
-|   |   |-- shared.py
-|   |   `-- python_families/
-|   |       |-- __init__.py
-|   |       |-- strings.py
-|   |       |-- lists.py
-|   |       `-- numbers.py
-|   |-- orchestration/
-|   |   |-- __init__.py
-|   |   |-- confidence.py
-|   |   `-- pipeline.py
-|   |-- question_package/
-|   |   |-- __init__.py
-|   |   |-- approvals.py
-|   |   |-- generator.py
-|   |   |-- learning.py
-|   |   |-- reuser.py
-|   |   |-- validator.py
-|   |   `-- workflow.py
-|   |-- rubric_engine.py
-|   |-- rule_engine.py
-|   |-- scoring_engine.py
-|   `-- rules/
-|       |-- __init__.py
-|       |-- shared.py
-|       |-- javascript_rules.py
-|       |-- javascript_families/
-|       |   |-- __init__.py
-|       |   |-- strings.py
-|       |   |-- lists.py
-|       |   `-- numbers.py
-|       `-- python_families/
-|           |-- __init__.py
-|           |-- strings.py
-|           |-- lists.py
-|           `-- numbers.py
-|
 |-- llm/
-|   |-- llm_engine.py
-|   |-- prompt_builder.py
-|   `-- response_parser.py
-|
 |-- data/
-|   |-- question_profiles.json
-|   |-- question_profiles.db
-|   |-- evaluation_history.db
-|   `-- question_learning.db
-|
+|-- models/
 |-- tests/
-|   |-- benchmark_cases.json
-|   |-- benchmark_thresholds.json
-|   |-- test_benchmark.py
-|   |-- test_evaluator.py
-|   `-- test_language_support.py
-|
+|-- scripts/
 `-- utils/
-    |-- formatter.py
-    |-- helpers.py
-    `-- logger.py
 ```
 
-## Benchmarking And Quality Gates
-
-Benchmark support lives in:
-
-- [tests/run_benchmark.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/tests/run_benchmark.py)
-- `tests/benchmark_cases.json`
-- `tests/benchmark_thresholds.json`
-
-What the benchmark does:
-
-- loads benchmark cases
-- runs them through `evaluate_submission`
-- checks whether scores fall inside expected score ranges
-- reports overall pass rate
-- reports pass rate by language
-- reports pass rate by category
-- fails the process when configured accuracy thresholds are not met
-
-This is useful for:
-
-- regression detection
-- validating new deterministic families
-- checking that scoring changes do not silently reduce accuracy
-
-## Troubleshooting
-
-### The API is running but scores still look old
-
-- call `GET /health`
-- compare the returned runtime marker and evaluator fingerprint with the expected live code
-- restart the server if the fingerprint did not change after evaluator edits
-
-### A registered question is not being reused
-
-- confirm the language matches exactly
-- confirm `question_id` usage is consistent if strict question-ID mode is enabled
-- check whether the faculty wording changed enough to alter the normalized signature
-- re-register the question if the prompt was intentionally changed
-
-### A package shows `generated` instead of `validated`
-
-- the question may have fallen into a generic template family
-- hidden tests may have failed validation against the model answer
-- the family may need a stronger deterministic implementation
-
-### `POST /questions/register` returns 422
-
-This happens when the generated package fails quality checks.
-
-Common causes:
-
-- placeholder tests were produced
-- fallback-style feedback leaked into incorrect patterns
-- package confidence fell below the threshold
-
-Fixes:
-
-- re-register after improving the model answer or question prompt
-- edit the package via `PATCH /questions/edit` and then approve
-
-### Hidden tests are not running for some languages
-
-That is expected for:
-
-- `html`
-- `css`
-- `react`
-- `mysql`
-- `mongodb`
-
-These depend more on static and deterministic checks than executable hidden tests.
-
-### LLM-backed evaluation is weak or unavailable
-
-- confirm the GGUF file exists at `models/Phi-3-mini-4k-instruct-q4.gguf`
-- if using Ollama fallback, confirm Ollama is running locally
-- verify the selected provider in [config.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/config.py)
-
-### Benchmark accuracy dropped after a scoring change
-
-- run `python tests/run_benchmark.py`
-- inspect the failing cases carefully
-- check whether a broad override or family detector changed unrelated categories
-- retest one failing case through the live API if needed
-
-## Development Workflow
-
-Recommended maintenance loop:
-
-1. identify the failing benchmark or question family
-2. decide whether the issue belongs to package generation, deterministic rules, execution logic, or API normalization
-3. patch the smallest responsible layer
-4. restart the server
-5. confirm `GET /health` shows the expected runtime marker and evaluator fingerprint
-6. re-register representative questions if package generation changed
-7. evaluate a small student batch
-8. run the benchmark and pytest suite
-
-Where changes usually belong:
-
-- new or expanded family detection:
-  [evaluator/question_rule_generator.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_rule_generator.py)
-- execution-specific runtime handling:
-  [evaluator/execution/shared.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/evaluator/execution/shared.py)
-- deterministic rule behavior:
-  [evaluator/rules/shared.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/evaluator/rules/shared.py)
-- API normalization, health, and runtime marker behavior:
-  [app.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/app.py)
-- request and response contracts:
-  [schemas.py](/c:/DSA%20ICT/Internship/ai-intelligent-evaluation-model/schemas.py)
-
-## Python Basics Curriculum (Deterministic Coverage)
-
-This section documents the Python basics topics used to guide deterministic template coverage, regression protection, and benchmark monitoring.
-
-1. Introduction to Python
-
-- High-level, interpreted language
-- Dynamically typed (no need to declare types explicitly)
-- Supports multiple paradigms: procedural, object-oriented, functional
-
-Example:
-
-```python
-print("Hello, World!")
-```
-
-2. Variables and Data Types
-
-- Variables store data without explicit type declarations
-- Core data types: `int`, `float`, `str`, `bool`, `NoneType`
-
-Examples:
-
-```python
-x = 10
-name = "Faris"
-```
-
-Dynamic typing:
-
-```python
-x = 10
-x = "Now I'm string"
-```
-
-3. Operators
-
-- Arithmetic: `+ - * / // % **`
-- Comparison: `== != > < >= <=`
-- Logical: `and or not`
-- Assignment: `= += -= *= /=`
-
-4. Control Flow
-
-Conditionals:
-
-```python
-if x > 0:
-    print("Positive")
-elif x == 0:
-    print("Zero")
-else:
-    print("Negative")
-```
-
-Loops:
-
-```python
-for i in range(5):
-    print(i)
-
-i = 0
-while i < 5:
-    print(i)
-    i += 1
-```
-
-Loop control: `break`, `continue`, `pass`
-
-5. Data Structures
-
-List (mutable):
-
-```python
-lst = [1, 2, 3]
-lst.append(4)
-```
-
-Tuple (immutable):
-
-```python
-t = (1, 2, 3)
-```
-
-Set (unique elements):
-
-```python
-s = {1, 2, 3}
-```
-
-Dictionary (key-value):
-
-```python
-d = {"name": "Faris", "age": 23}
-```
-
-6. Strings
-
-```python
-s = "Python"
-s.lower()
-s.upper()
-s.replace("Py", "My")
-s.split()
-```
-
-Slicing:
-
-```python
-s[0:3]
-s[::-1]
-```
-
-7. Functions
-
-```python
-def add(a, b):
-    return a + b
-```
-
-Built-ins: `len()`, `sum()`
-
-Lambda:
-
-```python
-square = lambda x: x**2
-```
-
-8. Input and Output
-
-```python
-name = input("Enter name: ")
-print(name)
-age = int(input("Enter age: "))
-```
-
-9. File Handling
-
-```python
-f = open("file.txt", "r")
-data = f.read()
-f.close()
-```
-
-Better:
-
-```python
-with open("file.txt", "r") as f:
-    data = f.read()
-```
-
-Modes: `r`, `w`, `a`
-
-10. Modules and Packages
-
-```python
-import math
-print(math.sqrt(16))
-```
-
-Custom module:
-
-```python
-# mymodule.py
-def greet():
-    print("Hello")
-
-# main.py
-import mymodule
-mymodule.greet()
-```
-
-11. Exception Handling
-
-```python
-try:
-    x = int("abc")
-except ValueError:
-    print("Error occurred")
-finally:
-    print("Done")
-```
-
-12. Object-Oriented Programming (OOP)
-
-```python
-class Student:
-    def __init__(self, name):
-        self.name = name
-
-    def display(self):
-        print(self.name)
-
-s = Student("Faris")
-s.display()
-```
-
-Concepts: encapsulation, inheritance, polymorphism, abstraction
-
-13. List Comprehension
-
-```python
-squares = [x**2 for x in range(5)]
-even = [x for x in range(10) if x % 2 == 0]
-```
-
-14. Iterators and Generators
-
-Iterator:
-
-```python
-lst = [1, 2, 3]
-it = iter(lst)
-print(next(it))
-```
-
-Generator:
-
-```python
-def gen():
-    yield 1
-    yield 2
-
-g = gen()
-print(next(g))
-```
-
-15. Built-in Functions
-
-`len()`, `type()`, `range()`, `sum()`, `max()`, `min()`
-
-16. Debugging and Testing Basics
-
-```python
-print("debug")
-assert x > 0
-```
-
-17. Python Memory Concepts
-
-- Everything is an object
-- Reference-based memory
-- Mutable vs immutable
-
-```python
-a = [1, 2]
-b = a
-b.append(3)
-```
-
-18. Virtual Environment (Basic Idea)
-
-```powershell
-python -m venv env
-source env/bin/activate
-```
-
-19. Basic Libraries Awareness
-
-`math`, `random`, `datetime`
+Important evaluator subareas:
+- `evaluator/question_rule_generator.py`
+- `evaluator/question_package/`
+- `evaluator/orchestration/pipeline.py`
+- `evaluator/execution/shared.py`
+- `evaluator/comparison/llm_comparator.py`
+- `evaluator/question_profile_repository.py`
 
 ## Limitations
 
 This project performs best on:
-
-- controlled academy-style questions
+- controlled academic questions
 - deterministic-friendly beginner and intermediate prompts
-- questions whose intent can be mapped to a known family
+- prompts that can map to a known family or model-answer pattern
 
 It is weaker on:
-
 - highly open-ended design questions
-- environment-dependent tooling labs
-- full runtime integrations that depend on external services
-- domains that require broader library or system support than the current evaluator sandbox provides
-- highly dynamic frontend/backend behavior that needs a real browser, real database, or deployed service
+- environment-dependent labs
+- full browser/database/service integrations
+- prompts that need broad external context beyond the evaluator sandbox
 
-## Notes
+## Summary
 
-The strongest results come from registering questions first, then evaluating against the resulting packages. Deterministic coverage improves both speed and consistency, and post-exam learning can promote repeated strong answers and repeated mistakes into future package improvements. Package workflow is `generated -> validated -> live`, with faculty approval required for live exam use when enabled.
+The strongest operational flow is:
+1. register questions first
+2. verify packages are specific and validated
+3. evaluate students against stored packages
+4. monitor suspicious outputs
+5. add regressions whenever a bad case appears
+
+The current system is designed to be:
+- deterministic-first
+- package-backed
+- strict about registration quality
+- guarded against contradictory results
+- more resilient for new questions
+- monitored for suspicious output
+- protected by tests and CI

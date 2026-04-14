@@ -33,6 +33,13 @@ def _sanitize_llm_text(text):
         return ""
 
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = _dedupe_sentences(cleaned)
+    if re.search(r"\bdoes not\b\s*$", cleaned.lower()):
+        return ""
+    if cleaned.lower() in {"the provided solution", "the solution", "the function", "the code"}:
+        return ""
+    if "`" in cleaned:
+        return ""
 
     suspicious_fragments = (
         "ayer code:",
@@ -55,6 +62,19 @@ def _sanitize_llm_text(text):
         return ""
 
     return cleaned
+
+
+def _dedupe_sentences(text):
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    seen = set()
+    kept = []
+    for sentence in sentences:
+        normalized = sentence.strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        kept.append(sentence.strip())
+    return " ".join(kept).strip()
 
 
 def is_clean_llm_text(text):

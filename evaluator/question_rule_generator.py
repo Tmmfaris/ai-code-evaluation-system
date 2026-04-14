@@ -7,6 +7,8 @@ from config import (
     AUTO_GENERATE_MAX_HIDDEN_TESTS,
     AUTO_GENERATE_QUESTION_RULES,
     MIN_PACKAGE_CONFIDENCE_FOR_EXAM,
+    ORACLE_TEST_CASES_BASE,
+    ORACLE_TEST_CASES_EXPANDED,
     REQUIRE_FACULTY_APPROVAL_FOR_LIVE,
 )
 from analysis.syntax_checker.css_checker import check_css_syntax
@@ -18,6 +20,7 @@ from analysis.syntax_checker.react_checker import check_react_syntax
 from evaluator.execution.shared import (
     _extract_first_function_name,
     _run_code_with_timeout,
+    _smart_outputs_equal,
     _wrap_python_snippet,
     evaluate_java_hidden_tests,
     evaluate_javascript_hidden_tests,
@@ -64,6 +67,8 @@ def _infer_template_family(question, language):
         return f"{language}::cube_number"
     if "square of a number" in question_text or "return square of a number" in question_text or _contains_all(question_text, "square", "number"):
         return f"{language}::square_number"
+    if "absolute" in question_text and "value" in question_text:
+        return f"{language}::absolute_value"
     if "length of string" in question_text or "find length of string" in question_text:
         return f"{language}::string_length"
     if _contains_all(question_text, "reverse", "string"):
@@ -115,6 +120,10 @@ def _infer_template_family(question, language):
         return f"{language}::count_words"
     if _contains_all(question_text, "remove", "spaces"):
         return f"{language}::remove_spaces"
+    if "starts with" in question_text and "string" in question_text:
+        return f"{language}::string_startswith"
+    if ("ends with" in question_text or "endswith" in question_text or "suffix" in question_text) and "string" in question_text:
+        return f"{language}::string_endswith"
     if _contains_all(question_text, "only", "digits") or "numeric" in question_text:
         return f"{language}::only_digits"
     if _contains_all(question_text, "only", "alphabets") or _contains_all(question_text, "only", "alphabet"):
@@ -148,6 +157,11 @@ def _infer_template_family(question, language):
         return f"{language}::negative_number"
     if _contains_all(question_text, "number", "positive") or "positive number" in question_text or "is positive" in question_text:
         return f"{language}::positive_number"
+    if (
+        "number" in question_text
+        and re.search(r"greater than\s+-?\d+", question_text)
+    ):
+        return f"{language}::greater_than_threshold"
     if "odd" in question_text and "number" in question_text:
         return f"{language}::odd_check"
     if "double" in question_text and "number" in question_text:
@@ -161,6 +175,8 @@ def _infer_template_family(question, language):
         and ("list" in question_text or "array" in question_text)
     ):
         return f"{language}::average_collection"
+    if (_contains_all(question_text, "second", "element")) and ("list" in question_text or "array" in question_text):
+        return f"{language}::second_element"
     if _contains_all(question_text, "empty", "list") or _contains_all(question_text, "empty", "array") or _contains_all(question_text, "list", "empty") or _contains_all(question_text, "array", "empty"):
         return f"{language}::empty_collection_check"
     if _contains_all(question_text, "empty", "string"):
@@ -418,9 +434,16 @@ def _infer_template_family(question, language):
     if _contains_all(question_text, "frequency", "elements") and "list" in question_text:
         return f"{language}::frequency_elements"
     if (
+        "more than 3" in question_text
+        and ("list" in question_text or "array" in question_text or "elements" in question_text)
+    ):
+        return f"{language}::list_length_gt3"
+    if (
         (_contains_all(question_text, "length", "list"))
         or (_contains_all(question_text, "get", "length", "list"))
         or (_contains_all(question_text, "count", "elements") and "list" in question_text)
+        or (_contains_all(question_text, "number", "elements") and "list" in question_text)
+        or ("number of elements in list" in question_text)
     ):
         return f"{language}::list_length"
     if "array is empty" in question_text:
@@ -432,6 +455,82 @@ def _infer_template_family(question, language):
     if language in {"html", "css", "react", "mysql", "mongodb"}:
         return f"{language}::static_template"
     return f"{language}::generic"
+
+
+def _infer_template_family_from_model_answer(model_answer, language):
+    language = (language or "").strip().lower()
+    answer = (model_answer or "").strip()
+    compact = re.sub(r"\s+", "", answer.lower())
+
+    if not answer or language != "python":
+        return ""
+
+    if ".upper()" in compact:
+        return f"{language}::uppercase_string"
+    if ".lower()" in compact:
+        return f"{language}::lowercase_string"
+    if ".endswith(" in compact:
+        return f"{language}::string_endswith"
+    if ".startswith(" in compact:
+        return f"{language}::string_startswith"
+    if "abs(" in compact:
+        return f"{language}::absolute_value"
+    if "len(lst)==0" in compact or "returnnotlst" in compact:
+        return f"{language}::empty_collection_check"
+    if "len(lst)" in compact:
+        return f"{language}::list_length"
+    if "n%2!=0" in compact or "n%2==1" in compact or "(n&1)==1" in compact:
+        return f"{language}::odd_check"
+    if "n==0" in compact or "returnnotn" in compact:
+        return f"{language}::zero_check"
+    if re.search(r"return[a-z_][a-z0-9_]*>(-?\d+)", compact) or re.search(r"returnn>(-?\d+)", compact):
+        return f"{language}::greater_than_threshold"
+    if "returnlst[1]" in compact:
+        return f"{language}::second_element"
+    if "returnlst[0]" in compact:
+        return f"{language}::first_element"
+    if "returnlst[-1]" in compact or "returnlst[len(lst)-1]" in compact:
+        return f"{language}::last_element"
+    return ""
+
+
+def _infer_best_template_family(question, model_answer, language):
+    inferred = _infer_template_family(question, language)
+    if _is_specific_template_family(inferred):
+        return inferred
+    from_model_answer = _infer_template_family_from_model_answer(model_answer, language)
+    if from_model_answer:
+        return from_model_answer
+    if (language or "").strip().lower() == "python" and _extract_declared_callable_name(model_answer):
+        return "python::model_answer_derived"
+    return inferred
+
+
+def _infer_template_family_with_llm(question, language):
+    prompt = f"""
+Return ONLY JSON in this exact shape:
+{{"template_family":"{(language or '').strip().lower()}::..."}}
+
+Rules:
+- Use a specific family when possible (avoid ::generic, ::array_ops, ::string_ops).
+- Use the given language prefix.
+- If uncertain, return an empty string for template_family.
+
+Question:
+{question}
+""".strip()
+    raw = call_llm(prompt)
+    parsed = _extract_first_json_object(raw)
+    if not isinstance(parsed, dict):
+        return None
+    family = (parsed.get("template_family") or "").strip().lower()
+    if not family:
+        return None
+    if not family.startswith(f"{(language or '').strip().lower()}::"):
+        return None
+    if family.endswith("::generic") or family.endswith("::array_ops") or family.endswith("::string_ops"):
+        return None
+    return family
 
 
 def _normalize_test_case(item):
@@ -535,7 +634,10 @@ def _normalize_incorrect_pattern(item):
     }
 
 
-def _build_generation_prompt(question, model_answer, language):
+def _build_generation_prompt(question, model_answer, language, repair_context=None):
+    repair_note = ""
+    if repair_context:
+        repair_note = f"\nPrevious attempt issues:\n{repair_context}\n\n"
     return f"""
 You are generating a reusable evaluation package for a coding question.
 
@@ -570,6 +672,7 @@ Rules:
 - test inputs and outputs must be compact and machine-usable.
 - incorrect_patterns should capture common obviously wrong student variants.
 - If uncertain, return empty arrays.
+{repair_note}
 
 Question:
 {question}
@@ -1308,6 +1411,78 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    threshold_match = re.search(r"greater than\s+(-?\d+)", question_text)
+    if "number" in question_text and threshold_match:
+        threshold = int(threshold_match.group(1))
+        return {
+            "accepted_solutions": [
+                f"return n > {threshold}" if language == "python" else "",
+                f"return n > {threshold};" if language == "java" else "",
+                f"return n > {threshold};" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([threshold + 1], True, "value above threshold", kind="normal", weight=1.0, required=True),
+                    _build_case([threshold + 5], True, "larger value above threshold", kind="edge", weight=1.1, required=False),
+                ],
+                "negative": [
+                    _build_case([threshold], False, "threshold itself is not greater", kind="edge", weight=1.2, required=True),
+                    _build_case([threshold - 1], False, "value below threshold", kind="normal", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return n >= {threshold}",
+                    "match_type": "contains",
+                    "feedback": f"Using >= includes {threshold}, but the question asks for numbers strictly greater than {threshold}.",
+                    "suggestion": f"Use a strict greater-than comparison such as n > {threshold}.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return n < {threshold}",
+                    "match_type": "contains",
+                    "feedback": f"Checking whether the number is less than {threshold} does not solve the greater-than-{threshold} requirement.",
+                    "suggestion": f"Use a strict greater-than comparison such as n > {threshold}.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if "absolute" in question_text and "value" in question_text:
+        return {
+            "accepted_solutions": [
+                "return abs(n)" if language == "python" else "",
+                "return Math.abs(n);" if language == "java" else "",
+                "return Math.abs(n);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([5], 5, "positive value", kind="normal", weight=1.0, required=True),
+                    _build_case([-7], 7, "negative value", kind="edge", weight=1.1, required=True),
+                    _build_case([0], 0, "zero value", kind="edge", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([-1], 1, "negative to positive trap", kind="trap", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n",
+                    "match_type": "contains",
+                    "feedback": "Returning the input directly does not convert negative numbers to their absolute value.",
+                    "suggestion": "Return the absolute value, for example with abs(n).",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return -n",
+                    "match_type": "contains",
+                    "feedback": "Negating the input fails for positive values, which should remain unchanged.",
+                    "suggestion": "Return the absolute value, for example with abs(n).",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
     if _contains_all(question_text, "number", "negative") or "negative number" in question_text:
         return {
             "accepted_solutions": [
@@ -1428,6 +1603,7 @@ def _deterministic_code_baselines(question, language):
                 "positive": [
                     _build_case(["hello"], True, "lowercase word", kind="normal", weight=1.0, required=True),
                     _build_case(["python"], True, "another lowercase word", kind="normal", weight=1.0, required=True),
+                    _build_case(["abc123"], True, "lowercase letters with digits", kind="edge", weight=1.0, required=False),
                 ],
                 "negative": [
                     _build_case(["Hello"], False, "mixed-case string", kind="normal", weight=1.1, required=True),
@@ -2229,6 +2405,41 @@ def _deterministic_code_baselines(question, language):
                     "suggestion": "Return the first character, for example with s[0] or s.charAt(0).",
                     "score_cap": 20,
                 }
+            ],
+        }
+
+    if "starts with" in question_text and "string" in question_text:
+        return {
+            "accepted_solutions": [
+                "return s.startswith('a')" if language == "python" else "",
+                "return s.startsWith(\"a\");" if language == "java" else "",
+                "return s.startsWith(\"a\");" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["apple"], True, "starts with a", kind="normal", weight=1.0, required=True),
+                    _build_case(["a"], True, "single a", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["banana"], False, "different first letter", kind="normal", weight=1.0, required=True),
+                    _build_case([""], False, "empty string", kind="edge", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 'a' in s",
+                    "match_type": "contains",
+                    "feedback": "Checking for the presence of 'a' anywhere is different from checking whether the string starts with 'a'.",
+                    "suggestion": "Use startswith('a') or check the first character only.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[0] == 'a'",
+                    "match_type": "contains",
+                    "feedback": "This fails on empty strings because indexing s[0] raises an error.",
+                    "suggestion": "Use a safe check like s.startswith('a').",
+                    "score_cap": 20,
+                },
             ],
         }
 
@@ -3107,6 +3318,41 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    if (_contains_all(question_text, "second", "element")) and ("list" in question_text or "array" in question_text):
+        return {
+            "accepted_solutions": [
+                "return lst[1]" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.get(1);", "return arr[1];") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr[1];", "return lst[1];") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], 2, "basic second element", kind="normal", weight=1.0, required=True),
+                    _build_case([[7, 9]], 9, "two-element list", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[9, 3, 1]], 3, "catches first-element confusion", kind="trap", weight=1.0, required=True),
+                    _build_case([[4, 5, 6, 1]], 5, "catches last-element confusion", kind="trap", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning the first element does not satisfy the second-element requirement.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return lst[-1]",
+                    "match_type": "contains",
+                    "feedback": "Returning the last element does not satisfy the second-element requirement.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
     if (_contains_all(question_text, "last", "element")) and ("list" in question_text or "array" in question_text):
         return {
             "accepted_solutions": [
@@ -3288,9 +3534,49 @@ def _deterministic_code_baselines(question, language):
         }
 
     if (
+        "more than 3" in question_text
+        and ("list" in question_text or "array" in question_text or "elements" in question_text)
+    ):
+        return {
+            "accepted_solutions": [
+                "return len(lst) > 3" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return lst.size() > 3;", "return arr.length > 3;") if language == "java" else "",
+                _javascript_for_collection(question_text, "return arr.length > 3;", "return lst.length > 3;") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3, 4]], True, "four elements", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, 2, 3, 4, 5]], True, "five elements", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[1, 2, 3]], False, "three elements", kind="edge", weight=1.1, required=True),
+                    _build_case([[]], False, "empty list", kind="edge", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return len(lst) >= 3",
+                    "match_type": "contains",
+                    "feedback": "Checking for at least 3 elements does not satisfy the requirement of more than 3 elements.",
+                    "suggestion": "Return True only when the list length is greater than 3, for example len(lst) > 3.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return len(lst) > 2",
+                    "match_type": "contains",
+                    "feedback": "This allows lists of length 3, which does not meet the more-than-3 requirement.",
+                    "suggestion": "Require a length greater than 3, for example len(lst) > 3.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if (
         (_contains_all(question_text, "length", "list"))
         or (_contains_all(question_text, "get", "length", "list"))
         or (_contains_all(question_text, "count", "elements") and "list" in question_text)
+        or (_contains_all(question_text, "number", "elements") and "list" in question_text)
+        or ("number of elements in list" in question_text)
     ):
         return {
             "accepted_solutions": [
@@ -3324,6 +3610,53 @@ def _deterministic_code_baselines(question, language):
                     "suggestion": "Return the full length with len(lst) or count every element.",
                     "score_cap": 20,
                 }
+            ],
+        }
+
+    if ("ends with" in question_text or "endswith" in question_text or "suffix" in question_text) and "string" in question_text:
+        return {
+            "accepted_solutions": [
+                "return s.endswith('z')" if language == "python" and "'z'" in question_text else "",
+                'return s.endswith("z")' if language == "python" and '"z"' in question_text else "",
+                "return s.endswith('z')" if language == "python" and "'z'" not in question_text and '"z"' not in question_text else "",
+                "return len(s) > 0 and s[-1] == 'z'" if language == "python" and "'z'" in question_text else "",
+                'return len(s) > 0 and s[-1] == "z"' if language == "python" and '"z"' in question_text else "",
+                "return len(s) > 0 and s[-1] == 'z'" if language == "python" and "'z'" not in question_text and '"z"' not in question_text else "",
+                'return s.endsWith("z");' if language == "java" or language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["buzz"], True, "ends with z", kind="normal", weight=1.0, required=True),
+                    _build_case(["z"], True, "single z", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case(["apple"], False, "different last character", kind="normal", weight=1.0, required=True),
+                    _build_case([""], False, "empty string", kind="edge", weight=1.2, required=True),
+                    _build_case(["maze"], False, "contains z but does not end with z", kind="trap", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 'z' in s",
+                    "match_type": "contains",
+                    "feedback": "Checking whether z appears anywhere is different from checking whether the string ends with z.",
+                    "suggestion": "Use a suffix check such as s.endswith('z').",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[0] == 'z'",
+                    "match_type": "contains",
+                    "feedback": "Checking the first character does not verify the ending character.",
+                    "suggestion": "Check the last character or use s.endswith('z').",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[-1] == 'z'",
+                    "match_type": "contains",
+                    "feedback": "Checking s[-1] directly can fail on empty strings.",
+                    "suggestion": "Use a safe suffix check such as s.endswith('z').",
+                    "score_cap": 20,
+                },
             ],
         }
 
@@ -3687,10 +4020,137 @@ def _deterministic_markup_baselines(question, language):
     return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
 
 
+def _python_model_answer_baselines(model_answer):
+    compact = re.sub(r"\s+", "", (model_answer or "").lower())
+    if not compact:
+        return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
+
+    if ".lower()" in compact:
+        return {
+            "accepted_solutions": ["return s.lower()"],
+            "test_sets": {
+                "positive": [
+                    _build_case(["AB"], "ab", "uppercase to lowercase", kind="normal", weight=1.0, required=True),
+                    _build_case([""], "", "empty string lowercase", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["Ab"], "ab", "mixed-case normalization", kind="trap", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the original string does not convert it to lowercase.",
+                    "suggestion": "Call s.lower() before returning the result.",
+                    "score_cap": 20,
+                }
+            ],
+        }
+
+    threshold_match = re.search(r"return[a-z_][a-z0-9_]*>(-?\d+)|returnn>(-?\d+)", compact)
+    if threshold_match:
+        threshold_text = threshold_match.group(1) or threshold_match.group(2)
+        threshold = int(threshold_text)
+        return {
+            "accepted_solutions": [f"return n > {threshold}"],
+            "test_sets": {
+                "positive": [
+                    _build_case([threshold + 1], True, "value above threshold", kind="normal", weight=1.0, required=True),
+                    _build_case([threshold + 5], True, "larger value above threshold", kind="edge", weight=1.1, required=False),
+                ],
+                "negative": [
+                    _build_case([threshold], False, "threshold itself is not greater", kind="edge", weight=1.2, required=True),
+                    _build_case([threshold - 1], False, "value below threshold", kind="normal", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return n >= {threshold}",
+                    "match_type": "contains",
+                    "feedback": f"Using >= includes {threshold}, but the condition should be strictly greater than {threshold}.",
+                    "suggestion": f"Use a strict comparison such as n > {threshold}.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return n < {threshold}",
+                    "match_type": "contains",
+                    "feedback": f"Checking whether the value is less than {threshold} does not solve the greater-than-{threshold} requirement.",
+                    "suggestion": f"Use a strict comparison such as n > {threshold}.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if "returnlst[1]" in compact:
+        return {
+            "accepted_solutions": ["return lst[1]"],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], 2, "basic second element", kind="normal", weight=1.0, required=True),
+                    _build_case([[7, 9]], 9, "two-element list", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[9, 3, 1]], 3, "catches first-element confusion", kind="trap", weight=1.0, required=True),
+                    _build_case([[4, 5, 6, 1]], 5, "catches last-element confusion", kind="trap", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return lst[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning the first element does not satisfy the second-element requirement.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return lst[-1]",
+                    "match_type": "contains",
+                    "feedback": "Returning the last element does not satisfy the second-element requirement.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    function_match = re.search(r"def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)", model_answer or "")
+    params = []
+    if function_match:
+        for bit in function_match.group(1).split(","):
+            name = bit.strip().split("=")[0].strip()
+            if name:
+                params.append(name)
+    primary = params[0] if params else "x"
+
+    return {
+        "accepted_solutions": [],
+        "test_sets": {"positive": [], "negative": []},
+        "incorrect_patterns": [
+            {
+                "pattern": "return True",
+                "match_type": "contains",
+                "feedback": "Always returning True does not implement the required logic for this question.",
+                "suggestion": "Use the input and the model answer pattern to compute the expected result.",
+                "score_cap": 20,
+            },
+            {
+                "pattern": f"return {primary}",
+                "match_type": "contains",
+                "feedback": "Returning the input directly does not implement the required transformation or check for this question.",
+                "suggestion": "Compute the result from the input instead of returning it unchanged.",
+                "score_cap": 20,
+            },
+        ],
+    }
+
+
 def _build_deterministic_baseline_package(question, model_answer, language):
     language = (language or "").strip().lower()
     if language in {"python", "java", "javascript"}:
-        return _deterministic_code_baselines(question, language)
+        baseline = _deterministic_code_baselines(question, language)
+        if language == "python":
+            baseline = _merge_generated_package(baseline, _python_model_answer_baselines(model_answer))
+        return baseline
     return _deterministic_markup_baselines(question, language)
 
 
@@ -3773,8 +4233,8 @@ def _merge_generated_package(base_payload, generated_payload):
 def merge_with_existing_profiles(payload, existing_profiles):
     merged = dict(payload or {})
     signature = _normalize_question_signature(merged.get("question"), merged.get("language"))
-    template_family = merged.get("template_family") or _infer_template_family(merged.get("question"), merged.get("language"))
     model_answer = merged.get("model_answer") or ""
+    template_family = merged.get("template_family") or _infer_best_template_family(merged.get("question"), model_answer, merged.get("language"))
     merged["question_signature"] = signature
     merged["template_family"] = template_family
 
@@ -3785,7 +4245,7 @@ def merge_with_existing_profiles(payload, existing_profiles):
 
     for profile in existing_profiles or []:
         profile_signature = _normalize_question_signature(profile.get("question"), profile.get("language"))
-        profile_family = profile.get("template_family") or _infer_template_family(profile.get("question"), profile.get("language"))
+        profile_family = profile.get("template_family") or _infer_best_template_family(profile.get("question"), profile.get("model_answer"), profile.get("language"))
         signature_match = profile_signature == signature
         family_match = (
             profile_family == template_family
@@ -3952,14 +4412,16 @@ def _promote_learning_patterns(payload):
     return payload
 
 
-def enrich_question_profile(payload, force_llm=False):
+def enrich_question_profile(payload, force_llm=False, repair_context=None):
     enriched = dict(payload or {})
+    initial_model_answer = enriched.get("model_answer")
     enriched["question_signature"] = enriched.get("question_signature") or _normalize_question_signature(
         enriched.get("question"),
         enriched.get("language"),
     )
-    enriched["template_family"] = enriched.get("template_family") or _infer_template_family(
+    enriched["template_family"] = enriched.get("template_family") or _infer_best_template_family(
         enriched.get("question"),
+        initial_model_answer,
         enriched.get("language"),
     )
     enriched.setdefault("accepted_solutions", [])
@@ -3973,6 +4435,12 @@ def enrich_question_profile(payload, force_llm=False):
     if not question or not model_answer or not language:
         return enriched
 
+    template_family = (enriched.get("template_family") or "").strip().lower()
+    if force_llm and (template_family.endswith("::generic") or template_family.endswith("::array_ops") or template_family.endswith("::string_ops")):
+        inferred = _infer_template_family_with_llm(question, language)
+        if inferred:
+            enriched["template_family"] = inferred
+
     baseline_package = _build_deterministic_baseline_package(question, model_answer, language)
     enriched = _merge_generated_package(enriched, baseline_package)
     enriched = _promote_learning_patterns(enriched)
@@ -3983,12 +4451,19 @@ def enrich_question_profile(payload, force_llm=False):
     oracle_package = None
     if language == "python":
         from evaluator.execution.shared import generate_universal_oracle_test_package_for_registration
-        oracle_package = generate_universal_oracle_test_package_for_registration(question, model_answer)
+        oracle_cases = int(ORACLE_TEST_CASES_BASE or 15)
+        if force_llm and repair_context:
+            oracle_cases = int(ORACLE_TEST_CASES_EXPANDED or oracle_cases)
+        oracle_package = generate_universal_oracle_test_package_for_registration(
+            question,
+            model_answer,
+            n_cases=oracle_cases,
+        )
         if oracle_package:
             # Keep handcrafted trap/negative tests and merge oracle positives on top.
             enriched = _merge_generated_package(enriched, oracle_package)
 
-    raw = call_llm(_build_generation_prompt(question, model_answer, language))
+    raw = call_llm(_build_generation_prompt(question, model_answer, language, repair_context=repair_context))
     parsed = _extract_first_json_object(raw)
     if not isinstance(parsed, dict):
         return enriched
@@ -4134,8 +4609,9 @@ def _finalize_from_syntax_result(finalized, syntax_result, summary_prefix, confi
 
 def finalize_question_profile(payload):
     finalized = dict(payload or {})
-    finalized["template_family"] = finalized.get("template_family") or _infer_template_family(
+    finalized["template_family"] = finalized.get("template_family") or _infer_best_template_family(
         finalized.get("question"),
+        finalized.get("model_answer"),
         finalized.get("language"),
     )
     finalized["approval_status"] = (finalized.get("approval_status") or "pending").strip().lower()
@@ -4179,14 +4655,94 @@ def finalize_question_profile(payload):
     positive_keys = {
         (str(item.get("input")), str(item.get("expected_output"))) for item in positive_tests if item
     }
+    required_negative_keys = {
+        (str(item.get("input")), str(item.get("expected_output")))
+        for item in negative_tests
+        if item and item.get("required")
+    }
+    if required_negative_keys:
+        positive_tests = [
+            item
+            for item in positive_tests
+            if (str(item.get("input")), str(item.get("expected_output"))) not in required_negative_keys
+        ]
     negative_tests = [
         item
         for item in negative_tests
         if (str(item.get("input")), str(item.get("expected_output"))) not in positive_keys
+        or (str(item.get("input")), str(item.get("expected_output"))) in required_negative_keys
     ]
     finalized["test_sets"] = {"positive": positive_tests, "negative": negative_tests}
     finalized["positive_test_count"] = len(positive_tests)
     finalized["negative_test_count"] = len(negative_tests)
+
+    if language == "python":
+        def _parse_json_value(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except Exception:
+                    return value
+            return value
+
+        def _build_test_cases(test_cases):
+            cases = []
+            for item in test_cases:
+                parsed_input = _parse_json_value(item.get("input"))
+                parsed_expected = _parse_json_value(item.get("expected_output"))
+                if parsed_expected is None:
+                    continue
+                if isinstance(parsed_input, list):
+                    args = tuple(parsed_input)
+                elif parsed_input is None:
+                    continue
+                else:
+                    args = (parsed_input,)
+                cases.append((args, parsed_expected))
+            return cases
+
+        def _filter_accepted_solutions(candidates, cases):
+            if not cases:
+                return candidates
+            filtered = []
+            inputs = [case[0] for case in cases]
+            expected = [case[1] for case in cases]
+            for item in candidates:
+                if not isinstance(item, str) or not item.strip():
+                    continue
+                code, fn_name = _wrap_python_snippet(item, question_text)
+                if not code or not fn_name:
+                    continue
+                result = _run_code_with_timeout(code, fn_name, inputs)
+                if not result or not result.get("ok"):
+                    continue
+                outputs = result.get("outputs") or []
+                if len(outputs) != len(inputs):
+                    continue
+                ok = True
+                for output, exp in zip(outputs, expected):
+                    if not output.get("ok"):
+                        ok = False
+                        break
+                    value = output.get("result")
+                    if isinstance(exp, bool) and not isinstance(value, bool):
+                        ok = False
+                        break
+                    if not _smart_outputs_equal(exp, value, question_text):
+                        ok = False
+                        break
+                if ok:
+                    filtered.append(item)
+            return filtered
+
+        execution_cases = _build_test_cases(positive_tests + negative_tests)
+        if execution_cases:
+            filtered = _filter_accepted_solutions(finalized.get("accepted_solutions", []), execution_cases)
+            if not filtered and model_answer:
+                filtered = [model_answer]
+            finalized["accepted_solutions"] = filtered[: AUTO_GENERATE_MAX_ALTERNATIVES + 1]
 
     incorrect_patterns = []
     pattern_map = {}
@@ -4347,7 +4903,6 @@ def finalize_question_profile(payload):
 
         outputs = run_result.get("outputs", [])
         passed = 0
-        from evaluator.execution.shared import _smart_outputs_equal
         for expected, actual in zip(expected_outputs, outputs):
             if actual.get("ok") and _smart_outputs_equal(actual.get("result"), expected):
                 passed += 1

@@ -20,6 +20,10 @@ class EvaluationHistoryRepository(ABC):
     def list_for_student(self, student_id: str, limit: int = 100) -> List[dict]:
         raise NotImplementedError
 
+    @abstractmethod
+    def list_by_status(self, status: str, limit: int = 100) -> List[dict]:
+        raise NotImplementedError
+
 
 class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
     def __init__(self, db_path: str):
@@ -57,10 +61,12 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
                         feedback TEXT NOT NULL,
                         status TEXT NOT NULL,
                         error TEXT,
+                        metadata_json TEXT NOT NULL DEFAULT '{}',
                         created_at TEXT NOT NULL
                     )
                     """
                 )
+                self._ensure_column(conn, "evaluation_history", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_evaluation_history_student ON evaluation_history(student_id)"
                 )
@@ -71,6 +77,14 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
                     "CREATE INDEX IF NOT EXISTS idx_evaluation_history_created_at ON evaluation_history(created_at)"
                 )
                 conn.commit()
+
+    def _ensure_column(self, conn, table_name: str, column_name: str, column_definition: str) -> None:
+        columns = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name not in columns:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
 
     def _build_record(self, payload: dict) -> dict:
         return {
@@ -85,6 +99,7 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
             "feedback": (payload.get("feedback") or "").strip(),
             "status": (payload.get("status") or "success").strip(),
             "error": (payload.get("error") or "").strip() or None,
+            "metadata": payload.get("metadata") or {},
             "created_at": payload.get("created_at") or datetime.now(timezone.utc).isoformat(),
         }
 
@@ -102,7 +117,8 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
             "feedback": row[9],
             "status": row[10],
             "error": row[11],
-            "created_at": row[12],
+            "metadata": json.loads(row[12]) if row[12] else {},
+            "created_at": row[13],
         }
 
     def save(self, payload: dict) -> dict:
@@ -113,8 +129,8 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
                     """
                     INSERT INTO evaluation_history (
                         student_id, question_id, question, model_answer, student_answer,
-                        language, score, concepts_json, feedback, status, error, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        language, score, concepts_json, feedback, status, error, metadata_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record["student_id"],
@@ -128,6 +144,7 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
                         record["feedback"],
                         record["status"],
                         record["error"],
+                        json.dumps(record["metadata"], ensure_ascii=True),
                         record["created_at"],
                     ),
                 )
@@ -142,7 +159,7 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
                 rows = conn.execute(
                     """
                     SELECT id, student_id, question_id, question, model_answer, student_answer,
-                           language, score, concepts_json, feedback, status, error, created_at
+                           language, score, concepts_json, feedback, status, error, metadata_json, created_at
                     FROM evaluation_history
                     ORDER BY id DESC
                     LIMIT ?
@@ -158,12 +175,29 @@ class SqliteEvaluationHistoryRepository(EvaluationHistoryRepository):
                 rows = conn.execute(
                     """
                     SELECT id, student_id, question_id, question, model_answer, student_answer,
-                           language, score, concepts_json, feedback, status, error, created_at
+                           language, score, concepts_json, feedback, status, error, metadata_json, created_at
                     FROM evaluation_history
                     WHERE student_id = ?
                     ORDER BY id DESC
                     LIMIT ?
                     """,
                     (student_id, limit),
+                ).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    def list_by_status(self, status: str, limit: int = 100) -> List[dict]:
+        limit = max(1, min(int(limit or 100), 500))
+        with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT id, student_id, question_id, question, model_answer, student_answer,
+                           language, score, concepts_json, feedback, status, error, metadata_json, created_at
+                    FROM evaluation_history
+                    WHERE status = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    ((status or "").strip(), limit),
                 ).fetchall()
         return [self._row_to_record(row) for row in rows]

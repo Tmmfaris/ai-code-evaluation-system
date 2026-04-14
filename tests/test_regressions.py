@@ -28,6 +28,7 @@ def test_regression_cases_hold():
 
         score = result.get("score", -1)
         feedback = (result.get("feedback") or "").lower()
+        assert "safe fallback" not in feedback
         expected_text = case.get("expected_feedback_contains")
         expected_texts = []
         if isinstance(expected_text, list):

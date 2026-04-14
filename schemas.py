@@ -2,54 +2,58 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
+def _example(value):
+    return {"example": value}
+
+
 class HiddenTestCase(BaseModel):
-    input: Optional[str] = Field(None, example="[1,2,3]")
-    expected_output: Optional[str] = Field(None, example="6")
-    description: Optional[str] = Field(None, example="basic positive case")
+    input: Optional[str] = Field(None, json_schema_extra=_example("[1,2,3]"))
+    expected_output: Optional[str] = Field(None, json_schema_extra=_example("6"))
+    description: Optional[str] = Field(None, json_schema_extra=_example("basic positive case"))
 
 
 class QuestionSubmission(BaseModel):
-    question_id: Optional[str] = Field(None, example="q1")
-    question: Optional[str] = Field(None, example="Write a function to calculate factorial")
-    model_answer: Optional[str] = Field(None, example="def f(n): return 1 if n==0 else n*f(n-1)")
+    question_id: Optional[str] = Field(None, json_schema_extra=_example("q1"))
+    question: Optional[str] = Field(None, json_schema_extra=_example("Write a function to calculate factorial"))
+    model_answer: Optional[str] = Field(None, json_schema_extra=_example("def f(n): return 1 if n==0 else n*f(n-1)"))
     alternative_answers: Optional[List[str]] = Field(
         default=None,
-        example=["def fact(n): return 1 if n == 0 else n * fact(n - 1)"],
+        json_schema_extra=_example(["def fact(n): return 1 if n == 0 else n * fact(n - 1)"]),
     )
     hidden_tests: Optional[List[HiddenTestCase]] = None
-    student_answer: str = Field(..., example="def fact(n): return 1 if n==0 else n*fact(n-1)")
-    language: Optional[str] = Field(None, example="python")
+    student_answer: str = Field(..., json_schema_extra=_example("def fact(n): return 1 if n==0 else n*fact(n-1)"))
+    language: Optional[str] = Field(None, json_schema_extra=_example("python"))
 
 
 class StudentEvaluationRequest(BaseModel):
-    student_id: str = Field(..., example="123")
+    student_id: str = Field(..., json_schema_extra=_example("123"))
     llm_review: Optional[bool] = Field(
         default=None,
-        example=True,
+        json_schema_extra=_example(True),
         description="Force LLM review of score/feedback for this student.",
     )
     llm_review_max_attempts: Optional[int] = Field(
         default=None,
-        example=3,
+        json_schema_extra=_example(3),
         description="Max LLM review attempts per question for this student.",
     )
     submissions: List[QuestionSubmission] = Field(
         ...,
-        example=[
+        json_schema_extra=_example([
             {
                 "question": "Write a function to add two numbers",
                 "model_answer": "def add(a,b): return a+b",
                 "student_answer": "def add(a,b): return a+b",
                 "language": "python"
             }
-        ]
+        ]),
     )
 
 
 class MultiStudentEvaluationRequest(BaseModel):
     students: List[StudentEvaluationRequest] = Field(
         ...,
-        example=[
+        json_schema_extra=_example([
             {
                 "student_id": "123",
                 "submissions": [
@@ -67,76 +71,76 @@ class MultiStudentEvaluationRequest(BaseModel):
                     }
                 ]
             }
-        ]
+        ]),
     )
     llm_review: Optional[bool] = Field(
         default=None,
-        example=True,
+        json_schema_extra=_example(True),
         description="Force LLM review of score/feedback for all students.",
     )
     llm_review_max_attempts: Optional[int] = Field(
         default=None,
-        example=3,
+        json_schema_extra=_example(3),
         description="Max LLM review attempts per question for all students.",
     )
 
 
 class ConceptEvaluation(BaseModel):
-    logic: str = Field(..., example="Strong")
-    edge_cases: str = Field(..., example="Good")
-    completeness: str = Field(..., example="High")
-    efficiency: str = Field(..., example="Good")
-    readability: str = Field(..., example="Good")
+    logic: str = Field(..., json_schema_extra=_example("Strong"))
+    edge_cases: str = Field(..., json_schema_extra=_example("Good"))
+    completeness: str = Field(..., json_schema_extra=_example("High"))
+    efficiency: str = Field(..., json_schema_extra=_example("Good"))
+    readability: str = Field(..., json_schema_extra=_example("Good"))
 
 
 class EvaluationResponse(BaseModel):
-    score: int = Field(..., example=85)
+    score: int = Field(..., json_schema_extra=_example(85))
     concepts: ConceptEvaluation
     logic_evaluation: Optional[str] = Field(
         None,
-        example="The student used a different approach, but the logic is correct.",
+        json_schema_extra=_example("The student used a different approach, but the logic is correct."),
     )
     feedback: str = Field(
         ...,
-        example="Correct solution. The implementation matches the expected behavior and uses a clear structure.",
+        json_schema_extra=_example("Correct solution. The implementation matches the expected behavior and uses a clear structure."),
     )
 
 
 class StudentQuestionResultItem(BaseModel):
-    question_id: Optional[str] = Field(None, example="q1")
+    question_id: Optional[str] = Field(None, json_schema_extra=_example("q1"))
     data: Optional[EvaluationResponse] = None
     error: Optional[str] = None
 
 
 class StudentEvaluationResponse(BaseModel):
-    student_id: str = Field(..., example="123")
-    question_count: int = Field(..., example=2)
-    total_score: int = Field(..., example=177)
+    student_id: str = Field(..., json_schema_extra=_example("123"))
+    question_count: int = Field(..., json_schema_extra=_example(2))
+    total_score: int = Field(..., json_schema_extra=_example(177))
     questions: List[StudentQuestionResultItem]
 
 
 class MultiStudentEvaluationResponse(BaseModel):
-    execution_time: float = Field(..., example=20.5)
+    execution_time: float = Field(..., json_schema_extra=_example(20.5))
     students: List[StudentEvaluationResponse]
 
 
 class QuestionPackageRequest(BaseModel):
-    question_id: Optional[str] = Field(None, example="q-demo")
-    question: str = Field(..., example="Write a function to add two numbers")
-    model_answer: str = Field(..., example="def add(a,b): return a+b")
-    language: str = Field(..., example="python")
+    question_id: Optional[str] = Field(None, json_schema_extra=_example("q-demo"))
+    question: str = Field(..., json_schema_extra=_example("Write a function to add two numbers"))
+    model_answer: str = Field(..., json_schema_extra=_example("def add(a,b): return a+b"))
+    language: str = Field(..., json_schema_extra=_example("python"))
 
 
 class MultiQuestionPackageRequest(BaseModel):
     questions: List[QuestionPackageRequest] = Field(
         ...,
-        example=[
+        json_schema_extra=_example([
             {
                 "question": "Write a function to add two numbers",
                 "model_answer": "def add(a,b): return a+b",
                 "language": "python"
             }
-        ],
+        ]),
     )
 
 
@@ -149,12 +153,14 @@ class QuestionPackageResponse(BaseModel):
     question_signature: str
     template_family: Optional[str] = None
     accepted_solutions: Optional[List[str]] = None
+    hidden_tests: Optional[List[dict]] = None
     test_sets: Optional[dict] = None
     incorrect_patterns: Optional[List[dict]] = None
     package_status: Optional[str] = None
     package_summary: Optional[str] = None
     package_confidence: Optional[float] = None
     review_required: Optional[bool] = None
+    exam_ready: Optional[bool] = None
     approval_status: Optional[str] = None
     approved_by: Optional[str] = None
     approved_at: Optional[str] = None
@@ -167,16 +173,16 @@ class QuestionPackageResponse(BaseModel):
 
 
 class ApprovalChecklistItem(BaseModel):
-    key: str = Field(..., example="question_intent_clear")
-    label: str = Field(..., example="Question intent is clear and unambiguous")
-    status: bool = Field(..., example=True)
-    notes: Optional[str] = Field(None, example="Clarified wording with faculty")
+    key: str = Field(..., json_schema_extra=_example("question_intent_clear"))
+    label: str = Field(..., json_schema_extra=_example("Question intent is clear and unambiguous"))
+    status: bool = Field(..., json_schema_extra=_example(True))
+    notes: Optional[str] = Field(None, json_schema_extra=_example("Clarified wording with faculty"))
 
 
 class ApprovalRequest(BaseModel):
-    approved_by: Optional[str] = Field("faculty", example="faculty")
+    approved_by: Optional[str] = Field("faculty", json_schema_extra=_example("faculty"))
     checklist: Optional[List[ApprovalChecklistItem]] = None
-    approval_notes: Optional[str] = Field(None, example="Mentor confirmed edge cases")
+    approval_notes: Optional[str] = Field(None, json_schema_extra=_example("Mentor confirmed edge cases"))
     question: Optional[str] = None
     model_answer: Optional[str] = None
     language: Optional[str] = None

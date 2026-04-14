@@ -55,3 +55,7 @@ def list_recent_evaluation_records(limit: int = 100):
 
 def list_student_evaluation_records(student_id: str, limit: int = 100):
     return _REPOSITORY.list_for_student(student_id=student_id, limit=limit)
+
+
+def list_evaluation_records_by_status(status: str, limit: int = 100):
+    return _REPOSITORY.list_by_status(status=status, limit=limit)

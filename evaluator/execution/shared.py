@@ -1310,6 +1310,8 @@ def _persistent_worker_loop(task_queue, result_queue):
             task = task_queue.get()
         except EOFError:
             break
+        except KeyboardInterrupt:
+            break
 
         if task is None:
             break
@@ -1703,9 +1705,16 @@ def _generate_oracle_test_cases(param_types, question_text, n_cases=15):
     return cases
 
 
-def generate_universal_oracle_test_package_for_registration(question, model_answer):
+def generate_universal_oracle_test_package_for_registration(question, model_answer, n_cases=None):
     if not model_answer:
         return None
+
+    if n_cases is None:
+        try:
+            from config import ORACLE_TEST_CASES_BASE
+            n_cases = int(ORACLE_TEST_CASES_BASE or 15)
+        except Exception:
+            n_cases = 15
         
     actual_code, sample_fn_name = _wrap_python_snippet(model_answer, question)
     if not sample_fn_name:
@@ -1729,7 +1738,7 @@ def generate_universal_oracle_test_package_for_registration(question, model_answ
     if not param_types:
         cases = [()]
     else:
-        cases = _generate_oracle_test_cases(param_types, question)
+        cases = _generate_oracle_test_cases(param_types, question, n_cases=n_cases)
         
     if not cases:
         return None
@@ -2321,7 +2330,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "feedback": "The solution correctly uses a set comprehension.",
         }
 
-    if re.search(r"\bf[- ]string\b", question_text):
+    if any(kw in question_text for kw in ("f-string", "f string", "formatted string literal")):
         if re.search(r"f['\"]", (student_answer or "")):
             return {
                 "result_type": "full_pass",

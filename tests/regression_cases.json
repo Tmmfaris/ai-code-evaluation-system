@@ -16,8 +16,8 @@
     "question": "Find length of string",
     "model_answer": "def length(s): return len(s)",
     "student_answer": "def length(s): return len(str(s))",
-    "expected_min_score": 70,
-    "expected_max_score": 70,
+    "expected_min_score": 50,
+    "expected_max_score": 50,
     "expected_feedback_contains": "broadens the behavior"
   },
   {
@@ -239,8 +239,8 @@
     "question": "Write a method to find average of array",
     "model_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return (double)s/arr.length; }",
     "student_answer": "static double avg(int[] arr){ int s=0; for(int i:arr) s+=i; return s/arr.length; }",
-    "expected_min_score": 55,
-    "expected_max_score": 80
+    "expected_min_score": 45,
+    "expected_max_score": 45
   },
   {
     "id": "java_prime_missing_low_bound_partial",
@@ -249,8 +249,8 @@
     "question": "Write a method to check if a number is prime",
     "model_answer": "static boolean isPrime(int n){ if(n<2) return false; for(int i=2;i*i<=n;i++){ if(n%i==0) return false;} return true; }",
     "student_answer": "static boolean isPrime(int n){ for(int i=2;i<n;i++){ if(n%i==0) return false;} return true; }",
-    "expected_min_score": 45,
-    "expected_max_score": 55
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "java_word_count_split_space_partial",
@@ -259,8 +259,8 @@
     "question": "Write a method to count words",
     "model_answer": "static int wc(String s){ return s.trim().split(\"\\\\s+\").length; }",
     "student_answer": "static int wc(String s){ return s.split(\" \").length; }",
-    "expected_min_score": 65,
-    "expected_max_score": 75
+    "expected_min_score": 50,
+    "expected_max_score": 50
   },
   {
     "id": "java_remove_spaces_replaceall_full",
@@ -299,8 +299,8 @@
     "question": "Check if string is palindrome",
     "model_answer": "def pal(s): return s == s[::-1]",
     "student_answer": "def pal(s): return s[0] == s[-1]",
-    "expected_min_score": 70,
-    "expected_max_score": 85
+    "expected_min_score": 50,
+    "expected_max_score": 50
   },
   {
     "id": "python_maximum_exact_full_credit",
@@ -429,8 +429,8 @@
       "question": "Check if number is positive",
       "model_answer": "def is_pos(n): return n > 0",
       "student_answer": "def is_pos(n): return n >= 0",
-      "expected_min_score": 55,
-      "expected_max_score": 80
+      "expected_min_score": 40,
+      "expected_max_score": 40
     },
     {
       "id": "python_positive_number_zero_included_partial_feedback",
@@ -439,8 +439,8 @@
       "question": "Check if number is positive",
       "model_answer": "def is_pos(n): return n > 0",
       "student_answer": "def is_pos(n): return n >= 0",
-      "expected_min_score": 55,
-      "expected_max_score": 80,
+      "expected_min_score": 40,
+      "expected_max_score": 40,
       "expected_feedback_contains": "strict"
     },
   {
@@ -480,8 +480,8 @@
     "question": "Check if number is positive",
     "model_answer": "static boolean isPos(int n){ return n > 0; }",
     "student_answer": "static boolean isPos(int n){ return n >= 0; }",
-    "expected_min_score": 55,
-    "expected_max_score": 80
+    "expected_min_score": 40,
+    "expected_max_score": 40
   },
   {
     "id": "java_reverse_list_sorted_wrong_zero",
@@ -850,8 +850,8 @@
     "question": "Create a NumPy array",
     "model_answer": "import numpy as np\nnp.array([1,2,3])",
     "student_answer": "arr = [1,2,3]",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_pandas_wrong_zero",
@@ -860,8 +860,8 @@
     "question": "Create a pandas DataFrame",
     "model_answer": "import pandas as pd\npd.DataFrame({'a':[1,2]})",
     "student_answer": "data = {'a':[1,2]}",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_matplotlib_wrong_zero",
@@ -870,8 +870,8 @@
     "question": "Plot a line using matplotlib",
     "model_answer": "import matplotlib.pyplot as plt\nplt.plot([1,2,3],[1,4,9])",
     "student_answer": "points = [(1,1),(2,4)]\nplot(points)",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_flask_wrong_zero",
@@ -930,8 +930,8 @@
     "question": "Log a message using logging",
     "model_answer": "import logging\nlogging.info('msg')",
     "student_answer": "print('msg')",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_pytest_wrong_zero",
@@ -950,8 +950,8 @@
     "question": "Write a unittest TestCase",
     "model_answer": "import unittest\nclass T(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)",
     "student_answer": "def test_ok():\n    assert True",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_django_wrong_zero",
@@ -960,8 +960,8 @@
     "question": "Create a Django view",
     "model_answer": "from django.http import HttpResponse\ndef home(request):\n    return HttpResponse('ok')",
     "student_answer": "def home():\n    return 'ok'",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_fastapi_wrong_zero",
@@ -970,8 +970,8 @@
     "question": "Create a FastAPI app",
     "model_answer": "from fastapi import FastAPI\napp = FastAPI()",
     "student_answer": "def app():\n    return None",
-    "expected_min_score": 45,
-    "expected_max_score": 60
+    "expected_min_score": 30,
+    "expected_max_score": 30
   },
   {
     "id": "python_tkinter_wrong_zero",

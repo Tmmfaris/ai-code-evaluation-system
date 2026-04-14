@@ -34,8 +34,29 @@ from utils.logger import log_info, log_error, log_request, log_result
 from utils.formatter import format_final_output, format_error_response
 from utils.helpers import clean_text, normalize_code, normalize_python_structure, is_empty
 
-from config import ENABLE_SYNTAX_CHECK, SUPPORTED_LANGUAGES, FORCE_LLM_WHEN_NOT_DETERMINISTIC, LLM_REVIEW_MAX_ATTEMPTS, LLM_REPHRASE_FEEDBACK
+from config import (
+    DETERMINISTIC_PACKAGE_SCORING_ONLY,
+    ENABLE_SYNTAX_CHECK,
+    LLM_ALLOW_SCORE_AUDIT,
+    SUPPORTED_LANGUAGES,
+    FORCE_LLM_WHEN_NOT_DETERMINISTIC,
+    LLM_REVIEW_MAX_ATTEMPTS,
+    LLM_REPHRASE_FEEDBACK,
+    LLM_GENERATE_FEEDBACK_ALWAYS,
+    EXECUTION_SCORE_BOUNDS,
+)
 import re
+
+
+def _safe_normalize_python_structure(code):
+    try:
+        from utils.helpers import normalize_python_structure as _nps
+    except Exception:
+        return code
+    try:
+        return _nps(code)
+    except Exception:
+        return code
 
 
 def _normalize_package_reference_answers(reference_answers, question_metadata):
@@ -57,6 +78,48 @@ def _normalize_reference_answers(sample_answer, reference_answers):
 
 
 # Removed local _normalize_question_signature as we now use build_question_signature from repository
+
+
+def _maybe_generate_llm_feedback(
+    *,
+    parsed_llm,
+    question,
+    sample_answer,
+    student_answer,
+    language,
+    question_profile,
+    syntax_result,
+    line_analysis,
+    structure_analysis,
+    fallback_feedback,
+    fallback_improvements,
+    rag_context=None,
+):
+    if not LLM_GENERATE_FEEDBACK_ALWAYS or not is_llm_available():
+        return parsed_llm, False
+    if language in {"python", "java", "html", "javascript"} and not (syntax_result or {}).get("valid", True):
+        return parsed_llm, False
+    try:
+        if not (fallback_feedback or fallback_improvements):
+            return parsed_llm, False
+        llm_feedback, llm_improvements = llm_comparator.rephrase_feedback_with_llm(
+            question=question,
+            language=language,
+            feedback=fallback_feedback or "",
+            improvements=fallback_improvements or "",
+        )
+        parsed_llm["feedback"] = feedback_generator.sanitize_text_or_fallback(
+            llm_feedback,
+            fallback_feedback,
+        )
+        parsed_llm["improvements"] = feedback_generator.choose_safe_improvement(
+            llm_improvements,
+            fallback_improvements,
+        )
+        return parsed_llm, True
+    except Exception as exc:
+        log_error(f"LLM feedback generation failed: {str(exc)}")
+        return parsed_llm, False
 
 
 
@@ -182,6 +245,8 @@ def should_use_deterministic_shortcut(language, syntax_result, execution_finding
         "full_pass",
         "mostly_correct",
         "correct_but_inefficient",
+        "zero_pass",
+        "execution_error",
     }:
         return True
 
@@ -190,6 +255,9 @@ def should_use_deterministic_shortcut(language, syntax_result, execution_finding
 
     if (question_profile or {}).get("risk") == "high":
         return False
+
+    if execution_finding.get("passed_cases") is not None and execution_finding.get("total_cases") is not None:
+        return True
 
     return any(
         (item or {}).get("type") in {
@@ -201,6 +269,47 @@ def should_use_deterministic_shortcut(language, syntax_result, execution_finding
         }
         for item in (rule_findings or [])
     )
+
+
+def _apply_execution_score_bounds(score, execution_finding):
+    if not execution_finding:
+        return score
+    bounds = EXECUTION_SCORE_BOUNDS or {}
+    if execution_finding.get("result_type") == "full_pass":
+        score = max(score, bounds.get("full_pass_min", 90))
+    if execution_finding.get("result_type") == "zero_pass":
+        score = min(score, bounds.get("zero_pass_max", 10))
+    if execution_finding.get("result_type") == "execution_error":
+        score = min(score, 15)
+    if execution_finding.get("result_type") == "partial_pass":
+        score = min(score, bounds.get("partial_pass_max", 70))
+    if execution_finding.get("result_type") == "mostly_correct":
+        score = min(max(score, bounds.get("mostly_correct_min", 60)), bounds.get("mostly_correct_max", 85))
+    if execution_finding.get("result_type") == "correct_but_inefficient":
+        score = max(score, bounds.get("correct_but_inefficient_min", 80))
+    pass_ratio = execution_finding.get("pass_ratio")
+    if isinstance(pass_ratio, (int, float)) and pass_ratio < 1:
+        caps = bounds.get("pass_ratio_caps") or []
+        if not caps:
+            score = min(score, 85)
+        else:
+            for threshold, cap in caps:
+                if pass_ratio <= threshold:
+                    score = min(score, cap)
+                    break
+    if execution_finding.get("required_failures"):
+        score = min(score, 20)
+    min_score = None
+    max_score = None
+    if execution_finding.get("correctness_min") is not None:
+        min_score = (float(execution_finding.get("correctness_min")) / 40.0) * 100.0
+    if execution_finding.get("correctness_max") is not None:
+        max_score = (float(execution_finding.get("correctness_max")) / 40.0) * 100.0
+    if min_score is not None:
+        score = max(score, min_score)
+    if max_score is not None:
+        score = min(score, max_score)
+    return score
 
 
 def should_use_rule_only_shortcut(
@@ -337,9 +446,9 @@ def evaluate_submission(
         if language not in SUPPORTED_LANGUAGES:
             language = "general"
         elif language == "python":
-            student_answer = normalize_python_structure(student_answer)
-            sample_answer = normalize_python_structure(sample_answer)
-            reference_answers = [normalize_python_structure(ref) for ref in reference_answers]
+            student_answer = _safe_normalize_python_structure(student_answer)
+            sample_answer = _safe_normalize_python_structure(sample_answer)
+            reference_answers = [_safe_normalize_python_structure(ref) for ref in reference_answers]
 
         log_info(f"Processing evaluation | Student: {student_id} | Language: {language}")
         question_profile = classify_question(question, language)
@@ -361,6 +470,26 @@ def evaluate_submission(
                 language=language,
                 structure_analysis=structure_analysis,
             )
+            parsed_llm, used_llm_feedback = _maybe_generate_llm_feedback(
+                parsed_llm=parsed_llm,
+                question=question,
+                sample_answer=sample_answer,
+                student_answer=student_answer,
+                language=language,
+                question_profile=question_profile,
+                syntax_result={"valid": True},
+                line_analysis=analyze_lines(student_answer),
+                structure_analysis=structure_analysis,
+                fallback_feedback=parsed_llm.get("feedback", ""),
+                fallback_improvements=parsed_llm.get("improvements", ""),
+                rag_context=(
+                    "Exact match: the student answer matches a known correct solution. "
+                    "Confirm correctness explicitly and avoid 'different approach' phrasing."
+                ),
+            )
+            if used_llm_feedback:
+                used_llm = True
+                evaluation_mode = "exact_match_llm_feedback"
             rubric_score = dict(parsed_llm["rubric"])
             concept_result = evaluate_concepts(parsed_llm, execution_finding={"result_type": "full_pass"})
             final_score = combine_scores(
@@ -464,7 +593,31 @@ def evaluate_submission(
         if execution_finding:
             rule_findings.append(execution_finding)
 
-        if should_use_deterministic_shortcut(
+        package_backed = package_status in {"validated", "live"}
+
+        if DETERMINISTIC_PACKAGE_SCORING_ONLY and package_backed:
+            if execution_finding:
+                log_info(
+                    f"Evaluation path | Student: {student_id} | Language: {language} | "
+                    f"Mode: package_deterministic | Type: {execution_finding.get('result_type', 'unknown')}"
+                )
+                evaluation_mode = "package_deterministic"
+                used_llm = False
+                parsed_llm = logic_checker.build_deterministic_result(
+                    execution_finding=execution_finding,
+                    structure_analysis=structure_analysis,
+                )
+                rubric_score = dict(parsed_llm["rubric"])
+            else:
+                log_info(
+                    f"Evaluation path | Student: {student_id} | Language: {language} | "
+                    f"Mode: package_rule_only"
+                )
+                evaluation_mode = "package_rule_only"
+                used_llm = False
+                parsed_llm = logic_checker.build_rule_only_result(rule_findings)
+                rubric_score = dict(parsed_llm["rubric"])
+        elif should_use_deterministic_shortcut(
             language,
             syntax_result,
             execution_finding,
@@ -519,18 +672,63 @@ def evaluate_submission(
                 syntax_result=syntax_result,
                 line_analysis=line_analysis,
                 structure_analysis=structure_analysis,
+                rag_context=None,
             )
-            rubric_score = logic_checker.merge_hybrid_rubric(
-                llm_rubric=calculate_rubric_score(parsed_llm),
-                execution_finding=execution_finding,
-                structure_analysis=structure_analysis,
-            )
-            parsed_llm["feedback"], parsed_llm["improvements"] = answer_comparator.choose_hybrid_feedback(
-                llm_result=parsed_llm,
-                execution_finding=execution_finding,
-                syntax_result=syntax_result,
+            if parsed_llm.get("_llm_fallback"):
+                used_llm = False
+                if execution_finding:
+                    evaluation_mode = "llm_fallback_to_deterministic"
+                    parsed_llm = logic_checker.build_deterministic_result(
+                        execution_finding=execution_finding,
+                        structure_analysis=structure_analysis,
+                    )
+                    rubric_score = dict(parsed_llm["rubric"])
+                elif rule_findings:
+                    evaluation_mode = "llm_fallback_to_rule_only"
+                    parsed_llm = logic_checker.build_rule_only_result(rule_findings)
+                    rubric_score = dict(parsed_llm["rubric"])
+                else:
+                    rubric_score = logic_checker.merge_hybrid_rubric(
+                        llm_rubric=calculate_rubric_score(parsed_llm),
+                        execution_finding=execution_finding,
+                        structure_analysis=structure_analysis,
+                    )
+            else:
+                rubric_score = logic_checker.merge_hybrid_rubric(
+                    llm_rubric=calculate_rubric_score(parsed_llm),
+                    execution_finding=execution_finding,
+                    structure_analysis=structure_analysis,
+                )
+                parsed_llm["feedback"], parsed_llm["improvements"] = answer_comparator.choose_hybrid_feedback(
+                    llm_result=parsed_llm,
+                    execution_finding=execution_finding,
+                    syntax_result=syntax_result,
+                    language=language,
+                )
+
+        fallback_feedback = parsed_llm.get("feedback", "")
+        fallback_improvements = parsed_llm.get("improvements", "")
+        if evaluation_mode in {"deterministic_shortcut", "rule_only"}:
+            parsed_llm, used_llm_feedback = _maybe_generate_llm_feedback(
+                parsed_llm=parsed_llm,
+                question=question,
+                sample_answer=sample_answer,
+                student_answer=student_answer,
                 language=language,
+                question_profile=question_profile,
+                syntax_result=syntax_result,
+                line_analysis=line_analysis,
+                structure_analysis=structure_analysis,
+                fallback_feedback=fallback_feedback,
+                fallback_improvements=fallback_improvements,
+                rag_context=(
+                    "Deterministic evidence is available from hidden tests or rule findings. "
+                    "Use it as the primary basis for feedback. Do not introduce new requirements."
+                ),
             )
+            if used_llm_feedback:
+                used_llm = True
+                evaluation_mode = f"{evaluation_mode}_llm_feedback"
 
         if language == "java":
             parsed_llm, rubric_score = apply_java_accuracy_overrides(
@@ -588,7 +786,8 @@ def evaluate_submission(
             execution_finding=execution_finding,
             question_profile=question_profile,
         )
-        if llm_comparator.should_audit_with_llm(
+        final_score = _apply_execution_score_bounds(final_score, execution_finding)
+        if LLM_ALLOW_SCORE_AUDIT and llm_comparator.should_audit_with_llm(
             confidence=confidence,
             execution_finding=execution_finding,
             rule_findings=rule_findings,
@@ -614,9 +813,10 @@ def evaluate_submission(
                 final_score = audit_result["score"]
                 parsed_llm["feedback"] = audit_result["feedback"]
                 parsed_llm["improvements"] = audit_result["improvements"]
+                final_score = _apply_execution_score_bounds(final_score, execution_finding)
 
         # Forced LLM review loop (optional): iterate until stable or max attempts.
-        if force_llm_review and is_llm_available():
+        if LLM_ALLOW_SCORE_AUDIT and force_llm_review and is_llm_available():
             attempts = int(llm_review_max_attempts or LLM_REVIEW_MAX_ATTEMPTS or 1)
             attempts = max(1, attempts)
             for _ in range(attempts):
@@ -646,6 +846,7 @@ def evaluate_submission(
                 final_score = audit_result["score"]
                 parsed_llm["feedback"] = audit_result["feedback"]
                 parsed_llm["improvements"] = audit_result["improvements"]
+                final_score = _apply_execution_score_bounds(final_score, execution_finding)
             used_llm = True
             evaluation_mode = "llm_review"
 

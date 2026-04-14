@@ -11,6 +11,7 @@ from evaluator.question_classifier import classify_question
 
 def build_question_signature(question: str, language: str) -> str:
     normalized_question = " ".join((question or "").strip().lower().split())
+    normalized_question = "".join(ch for ch in normalized_question if ch.isalnum() or ch.isspace()).strip()
     return f"{(language or '').strip().lower()}::{normalized_question}"
 
 

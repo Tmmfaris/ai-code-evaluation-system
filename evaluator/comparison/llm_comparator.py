@@ -13,6 +13,11 @@ from .feedback_generator import (
 from .score_calibrator import calibrate_final_score
 
 
+def _is_safe_fallback_text(text):
+    lowered = (text or "").strip().lower()
+    return "safe fallback" in lowered and "primary review" in lowered
+
+
 def compare_answers_with_llm(
     question,
     sample_answer,
@@ -22,6 +27,7 @@ def compare_answers_with_llm(
     syntax_result,
     line_analysis,
     structure_analysis,
+    rag_context=None,
 ):
     prompt = build_comparison_prompt(
         question=question,
@@ -32,7 +38,7 @@ def compare_answers_with_llm(
         syntax_result=syntax_result,
         line_analysis=line_analysis,
         structure_analysis=structure_analysis,
-        rag_context=None,
+        rag_context=rag_context,
     )
 
     raw_llm_output = call_llm(prompt)
@@ -202,6 +208,10 @@ def rephrase_feedback_with_llm(question, language, feedback, improvements):
     raw_llm_output = call_llm(prompt)
     parsed = _parse_rephrase_json(raw_llm_output)
     if not parsed:
+        return feedback, improvements
+    if parsed.get("_llm_fallback"):
+        return feedback, improvements
+    if _is_safe_fallback_text(parsed.get("feedback")) or _is_safe_fallback_text(parsed.get("improvements")):
         return feedback, improvements
 
     rephrased_feedback = choose_safe_feedback(parsed.get("feedback"), feedback)

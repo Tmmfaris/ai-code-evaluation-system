@@ -62,6 +62,10 @@ def build_prompt(
     else:
         profile_text = "Category: general | Task: unknown | Risk: medium | Markers: none"
 
+    context_text = ""
+    if rag_context:
+        context_text = f"Additional context:\n{rag_context}\n\n"
+
     prompt = f"""<|user|>
 You are a strict programming evaluator. Compare the STUDENT CODE against the CORRECT SOLUTION for logic, but evaluate ONLY the STUDENT CODE. Do NOT give credit just because the reference answer is correct.
 
@@ -69,7 +73,7 @@ Language: {language} | Syntax: {syntax_text}
 Question profile: {profile_text}
 Question: {question}
 
-CORRECT SOLUTION (for reference only):
+{context_text}CORRECT SOLUTION (for reference only):
 {sample_answer}
 
 STUDENT CODE (evaluate this):
@@ -95,6 +99,7 @@ Evaluation rules:
 - If logic is mostly correct but has an edge-case mistake, the overall score should usually stay in the 60-80 range.
 - If logic is completely wrong, the overall score should usually stay in the 0-20 range.
 - Keep feedback simple, direct, and accurate.
+- Do not include code snippets or inline code in feedback; describe the issue in plain language.
 
 Rubric:
 - correctness (0-40): Does the student code produce the expected behavior for the required inputs? If not, keep this low. If fully correct, use 36-40.
@@ -246,6 +251,10 @@ Rules:
 - Do NOT introduce new errors or new requirements.
 - Keep feedback concise: 1-2 sentences.
 - Improvements can be a short sentence or empty string.
+- Do not include code snippets or inline code in feedback.
+- Preserve the exact mistake from the original feedback when one is already known.
+- If the original feedback mentions a specific bug, such as checking the wrong condition, failing on empty strings, returning a constant, or using the wrong element, keep that concrete detail.
+- Do not replace specific feedback with generic phrases like "ensure the function works correctly", "implement a fallback", "for consistency", or "reliably".
 - Return ONLY compact single-line JSON.
 
 Language: {language}
