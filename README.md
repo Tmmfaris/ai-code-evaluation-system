@@ -15,6 +15,7 @@ The project is no longer centered on free-form LLM grading. The current system i
 - Overview
 - Current Design Principles
 - What Changed Recently
+- Current Deterministic Families
 - Main Endpoints
 - Quick Start
 - Current Important Defaults
@@ -68,6 +69,7 @@ The project was hardened significantly. The most important recent changes now re
 - package-backed evaluations do not use LLM scoring as the source of truth
 - hidden tests are used directly in the evaluation pipeline for runnable languages
 - incorrect-pattern matches can cap or force low scores
+- final family-specific overrides can replace vague execution summaries with exact deterministic feedback
 
 ### Shared signature normalization
 
@@ -81,6 +83,8 @@ The project was hardened significantly. The most important recent changes now re
 - low-confidence reviewed packages do not silently pass as ready
 - registration checks required case coverage
 - placeholder or fallback-style feedback in incorrect patterns is rejected
+- stale stored packages from the wrong specific family are not reused
+- low-confidence or review-required stored packages are not reused as trusted live profiles
 
 ### Final response guardrails
 
@@ -89,6 +93,9 @@ The project was hardened significantly. The most important recent changes now re
 - required hidden-test failures force low scores
 - specific deterministic feedback beats generic fallback feedback
 - weak package-backed feedback is repaired before the response is returned
+- broad incorrect-pattern rules are constrained so simple patterns like `return s` or `return len(lst)` do not overmatch related but different code
+- boolean tests are rebucketed so `expected_output: false` never stays inside `test_sets.positive`
+- duplicate hidden tests are removed before storage and before API response export
 
 ### Template-specific final feedback protection
 
@@ -111,6 +118,7 @@ New question handling is much stronger than before:
 - deterministic model-answer-derived package baselines
 - non-generic fallback family `python::model_answer_derived`
 - automatic package bootstrap during evaluation when inline context is present
+- family-compatible reuse only when specific parameters also match, such as the same threshold, divisor, prefix length, or target index
 
 ### Monitoring and audit
 
@@ -125,6 +133,52 @@ New question handling is much stronger than before:
 - monitoring tests
 - deterministic guardrail tests
 - universal Python tests
+
+## Current Deterministic Families
+
+The system now supports a broader deterministic registry for common beginner and intermediate question shapes.
+
+Important Python families currently covered in registration and evaluation include:
+- `python::zero_check`
+- `python::greater_than_threshold`
+- `python::divisible_by_constant`
+- `python::odd_check`
+- `python::empty_collection_check`
+- `python::non_empty_collection_check`
+- `python::list_length`
+- `python::list_length_equals_constant`
+- `python::second_element`
+- `python::element_at_index_constant`
+- `python::first_two_characters`
+- `python::prefix_characters_constant`
+- `python::uppercase_string`
+- `python::lowercase_string`
+- `python::string_endswith`
+- fallback `python::model_answer_derived`
+
+These families now cover several parameterized question classes that were previously a major source of `422` registration failures or vague evaluation feedback:
+- divisible by `N`
+- greater than `N`
+- list length equals `N`
+- first `N` characters
+- element at index `N`
+- empty / non-empty collection checks
+
+## LLM Role
+
+The project still supports GGUF/LLM assistance, but the current role of the LLM is intentionally limited.
+
+In practice:
+- deterministic template detection and model-answer analysis are the primary path
+- GGUF is used as a helper for enrichment, repair, or wording improvement
+- bad GGUF output cannot silently become a validated package
+- validated package-backed scoring does not depend on LLM score invention
+
+This design reduces:
+- inconsistent scoring
+- slow or hanging evaluation due to overreliance on model calls
+- contradictory score/feedback combinations
+- repeated failures on new but structurally simple question shapes
 
 ## Main Endpoints
 
@@ -342,6 +396,23 @@ Current family selection order is:
 
 This means many new questions can now register successfully even if the wording is unfamiliar, as long as the model answer shape is recognizable.
 
+### Parameter-aware family reuse
+
+Stored packages are no longer reused only because they are "close enough" in wording.
+
+Reuse is now guarded by both:
+- family compatibility
+- parameter compatibility
+
+Examples:
+- `greater than 10` does not reuse `greater than 5`
+- `divisible by 10` does not reuse `divisible by 4`
+- `list length equals 5` does not reuse `list length equals 3`
+- `first two characters` does not reuse `first three characters`
+- `third element` does not reuse `second element`
+
+This blocks stale or mismatched packages from poisoning new registrations.
+
 ### Fields reused later during evaluation
 
 These fields from registration are directly reused:
@@ -356,6 +427,17 @@ These fields from registration are directly reused:
 - `review_required`
 - `approval_status`
 - `exam_ready`
+
+These are the most scoring-critical fields:
+- `accepted_solutions`
+- `hidden_tests`
+- `test_sets`
+- `incorrect_patterns`
+- `template_family`
+- `package_status`
+- `review_required`
+- `question`
+- `language`
 
 These are mostly informational/debug metadata:
 - `profile`
@@ -382,6 +464,18 @@ The register response now includes:
 - `hidden_tests`
 - `exam_ready`
 - richer `validation_options`
+
+The response is intended to be reviewable by humans, but `/evaluate/students` only consumes the evaluation-relevant package fields, not every informational field in the response.
+
+### Test normalization and final package cleanup
+
+Before a package is returned or stored as ready:
+- boolean oracle tests are normalized into the correct `positive` or `negative` bucket
+- duplicate hidden tests are removed
+- family-incompatible reused tests are pruned
+- stale generic or placeholder-style content is rejected
+
+This is important because many earlier failures were caused by structurally wrong but superficially plausible test sets.
 
 This makes the response more useful as a debugging and review object for future evaluation.
 
@@ -419,6 +513,22 @@ For validated package-backed submissions:
 - incorrect patterns are used directly
 - accepted-solution matching is used directly
 - deterministic scoring wins over LLM scoring
+- specific family overrides can replace generic execution summaries when the code shape clearly matches a known correct or incorrect pattern
+
+### What `/evaluate/students` actually uses
+
+The evaluation path uses the package content that becomes `question_metadata`, especially:
+- `question`
+- `language`
+- `accepted_solutions`
+- `hidden_tests`
+- `test_sets`
+- `incorrect_patterns`
+- `template_family`
+- `package_status`
+- `review_required`
+
+It does not use every field returned by `/questions/register` for scoring. Fields such as `validation_options`, `generation_sources`, `llm_assisted`, and `reused_from_questions` are mainly informational.
 
 ### Final response behavior
 
@@ -426,6 +536,13 @@ Before the response is returned:
 - contradictory score/feedback combinations are repaired
 - specific package feedback can override vague generic text
 - package-backed families in the guarded registry bypass unsafe feedback drift
+
+This now includes explicit protection against recurring feedback failures such as:
+- valid equivalent syntax being scored as wrong
+- generic “whole string” feedback being used for wrong slice direction
+- generic “return length itself” feedback being used for boolean comparisons like `>=`
+- generic execution summaries being used when a family-specific deterministic message exists
+- broad substring matches in incorrect patterns catching larger or different expressions
 
 ## Deterministic Guardrails
 
@@ -437,19 +554,27 @@ Protected rules include:
 - required hidden-test failures force low scores
 - specific deterministic feedback beats generic LLM feedback
 - package-backed vague feedback is repaired when a better pattern-based or template-specific message exists
+- family-specific overrides run before legacy or broader pattern feedback where necessary
+- simple incorrect patterns are matched conservatively to avoid false positives on related code
 
 ### Current protected Python families
 
 The final deterministic feedback registry currently covers:
 - `python::zero_check`
 - `python::list_length`
+- `python::list_length_equals_constant`
 - `python::string_endswith`
+- `python::first_two_characters`
+- `python::prefix_characters_constant`
 - `python::uppercase_string`
 - `python::lowercase_string`
 - `python::odd_check`
 - `python::empty_collection_check`
+- `python::non_empty_collection_check`
+- `python::divisible_by_constant`
 - `python::greater_than_threshold`
 - `python::second_element`
+- `python::element_at_index_constant`
 
 These are protected because they have:
 - deterministic package scoring
@@ -467,6 +592,9 @@ What currently reduces new-question errors:
 - fallback family `python::model_answer_derived`
 - auto-bootstrap during evaluation when full inline context is provided
 - package auto-repair when stored packages are weak
+- family-parameter-aware reuse filters
+- boolean test rebucketing and hidden-test deduplication
+- matcher-level protection against overbroad incorrect-pattern rules
 
 What this means in practice:
 - many new simple Python questions register without falling into `python::generic`
@@ -475,6 +603,7 @@ What this means in practice:
 Honest limitation:
 - no system can guarantee zero errors for every possible new question shape
 - but the current design is much more robust than earlier LLM-heavy or wording-only approaches
+- the realistic goal is deterministic correctness for supported families and graceful rejection or fallback for unsupported shapes
 
 ## Storage and Stores
 
@@ -567,12 +696,17 @@ python tests/run_benchmark.py
 - model-answer-based family inference
 - model-answer-derived fallback registration
 - auto-bootstrap during evaluation
+- reuse compatibility for specific parameterized families
+- boolean test rebucketing
+- hidden-test deduplication
 
 `tests/test_deterministic_guardrails.py` protects:
 - shared signature normalization
 - package-backed deterministic scoring
 - avoidance of LLM scoring in protected paths
 - template-specific final feedback for guarded Python families
+- exact deterministic feedback for recurring wrong-answer patterns
+- matcher-level protection against overbroad `contains` patterns
 
 ## CI
 
@@ -590,6 +724,7 @@ Common causes:
 - package still fell back to a weak generic family
 - package validation against the model answer failed
 - confidence or coverage rules were not met
+- a reused stored package was incompatible and got filtered out, leaving the new package below readiness thresholds
 
 What to inspect:
 - `template_family`
@@ -612,6 +747,7 @@ Likely causes:
 - missing template-specific final feedback override
 - incorrect-pattern fallback winning before a more specific template branch
 - generic low-quality feedback not yet recognized by the repair layer
+- a family is supported for deterministic scoring but not yet fully covered for deterministic wording
 
 Look at:
 - `template_family`
@@ -707,6 +843,7 @@ The current system is designed to be:
 - deterministic-first
 - package-backed
 - strict about registration quality
+- parameter-aware during reuse
 - guarded against contradictory results
 - more resilient for new questions
 - monitored for suspicious output

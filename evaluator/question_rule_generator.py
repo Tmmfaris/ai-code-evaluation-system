@@ -9,6 +9,7 @@ from config import (
     MIN_PACKAGE_CONFIDENCE_FOR_EXAM,
     ORACLE_TEST_CASES_BASE,
     ORACLE_TEST_CASES_EXPANDED,
+    QUESTION_REGISTER_LLM_REPAIR_ATTEMPTS,
     REQUIRE_FACULTY_APPROVAL_FOR_LIVE,
 )
 from analysis.syntax_checker.css_checker import check_css_syntax
@@ -33,7 +34,21 @@ from utils.helpers import normalize_python_structure
 def _extract_first_json_object(text):
     if not text:
         return None
-    match = re.search(r"\{.*\}", text, re.DOTALL)
+    cleaned = str(text).strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    decoder = json.JSONDecoder()
+    for start, char in enumerate(cleaned):
+        if char not in "{[":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(cleaned[start:])
+            if isinstance(parsed, list):
+                return {"incorrect_patterns": parsed}
+            return parsed
+        except json.JSONDecodeError:
+            continue
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not match:
         return None
     try:
@@ -42,10 +57,92 @@ def _extract_first_json_object(text):
         return None
 
 
+def _is_registration_package_json(parsed):
+    if not isinstance(parsed, dict):
+        return False
+    package_keys = {"accepted_solutions", "test_sets", "incorrect_patterns"}
+    if not any(key in parsed for key in package_keys):
+        return False
+    if "score" in parsed and "rubric" in parsed and "feedback" in parsed:
+        return False
+    if "accepted_solutions" in parsed and not isinstance(parsed.get("accepted_solutions"), list):
+        return False
+    if "incorrect_patterns" in parsed and not isinstance(parsed.get("incorrect_patterns"), list):
+        return False
+    if "test_sets" in parsed and not isinstance(parsed.get("test_sets"), dict):
+        return False
+    return True
+
+
 def _normalize_question_signature(question, language):
     normalized_question = re.sub(r"\s+", " ", (question or "").strip().lower())
     normalized_question = re.sub(r"[^a-z0-9 ]", "", normalized_question)
     return f"{(language or '').strip().lower()}::{normalized_question}"
+
+
+_CARDINAL_NUMBER_WORDS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+
+_ORDINAL_NUMBER_WORDS = {
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+}
+
+
+def _parse_small_int_token(token):
+    if token is None:
+        return None
+    cleaned = str(token).strip().lower()
+    if re.fullmatch(r"-?\d+", cleaned):
+        return int(cleaned)
+    if cleaned in _CARDINAL_NUMBER_WORDS:
+        return _CARDINAL_NUMBER_WORDS[cleaned]
+    if cleaned in _ORDINAL_NUMBER_WORDS:
+        return _ORDINAL_NUMBER_WORDS[cleaned]
+    return None
+
+
+def _extract_character_prefix_count(question_text):
+    normalized = (question_text or "").strip().lower()
+    match = re.search(r"first\s+([a-z0-9-]+)\s+characters?", normalized)
+    if not match:
+        return None
+    return _parse_small_int_token(match.group(1))
+
+
+def _extract_element_position(question_text):
+    normalized = (question_text or "").strip().lower()
+    ordinal_words = "|".join(sorted(_ORDINAL_NUMBER_WORDS.keys(), key=len, reverse=True))
+    ordinal_match = re.search(rf"\b({ordinal_words}|\d+(?:st|nd|rd|th))\s+element\b", normalized)
+    if ordinal_match:
+        token = ordinal_match.group(1)
+        numeric_match = re.fullmatch(r"(\d+)(?:st|nd|rd|th)", token)
+        if numeric_match:
+            return int(numeric_match.group(1))
+        return _parse_small_int_token(token)
+    index_match = re.search(r"index\s+(-?\d+)", normalized)
+    if index_match:
+        return int(index_match.group(1)) + 1
+    return None
 
 
 def _infer_template_family(question, language):
@@ -112,6 +209,11 @@ def _infer_template_family(question, language):
         return f"{language}::count_vowels"
     if (_contains_all(question_text, "unique", "characters")) or (_contains_all(question_text, "all", "unique")):
         return f"{language}::unique_characters"
+    character_prefix_count = _extract_character_prefix_count(question_text)
+    if character_prefix_count == 2:
+        return f"{language}::first_two_characters"
+    if character_prefix_count and character_prefix_count > 0:
+        return f"{language}::prefix_characters_constant"
     if _contains_all(question_text, "first", "character"):
         return f"{language}::first_character"
     if _contains_all(question_text, "last", "character"):
@@ -162,6 +264,8 @@ def _infer_template_family(question, language):
         and re.search(r"greater than\s+-?\d+", question_text)
     ):
         return f"{language}::greater_than_threshold"
+    if "number" in question_text and re.search(r"divisible by\s+-?\d+", question_text):
+        return f"{language}::divisible_by_constant"
     if "odd" in question_text and "number" in question_text:
         return f"{language}::odd_check"
     if "double" in question_text and "number" in question_text:
@@ -175,8 +279,25 @@ def _infer_template_family(question, language):
         and ("list" in question_text or "array" in question_text)
     ):
         return f"{language}::average_collection"
-    if (_contains_all(question_text, "second", "element")) and ("list" in question_text or "array" in question_text):
+    element_position = _extract_element_position(question_text)
+    if element_position == 2 and ("list" in question_text or "array" in question_text):
         return f"{language}::second_element"
+    if element_position == 1 and ("list" in question_text or "array" in question_text):
+        return f"{language}::first_element"
+    if element_position and element_position > 2 and ("list" in question_text or "array" in question_text):
+        return f"{language}::element_at_index_constant"
+    if (
+        ("list" in question_text or "array" in question_text or "collection" in question_text)
+        and (
+            "at least one element" in question_text
+            or "has items" in question_text
+            or "has any" in question_text
+            or "not empty" in question_text
+            or "non-empty" in question_text
+            or "non empty" in question_text
+        )
+    ):
+        return f"{language}::non_empty_collection_check"
     if _contains_all(question_text, "empty", "list") or _contains_all(question_text, "empty", "array") or _contains_all(question_text, "list", "empty") or _contains_all(question_text, "array", "empty"):
         return f"{language}::empty_collection_check"
     if _contains_all(question_text, "empty", "string"):
@@ -439,6 +560,11 @@ def _infer_template_family(question, language):
     ):
         return f"{language}::list_length_gt3"
     if (
+        ("list" in question_text or "array" in question_text)
+        and re.search(r"length\s+(equals|equal to|is)\s+-?\d+", question_text)
+    ):
+        return f"{language}::list_length_equals_constant"
+    if (
         (_contains_all(question_text, "length", "list"))
         or (_contains_all(question_text, "get", "length", "list"))
         or (_contains_all(question_text, "count", "elements") and "list" in question_text)
@@ -475,18 +601,42 @@ def _infer_template_family_from_model_answer(model_answer, language):
         return f"{language}::string_startswith"
     if "abs(" in compact:
         return f"{language}::absolute_value"
+    prefix_slice_match = re.search(r"return[a-z_][a-z0-9_]*\[:(-?\d+)\]", compact) or re.search(r"return[a-z_][a-z0-9_]*\[0:(-?\d+)\]", compact)
+    if prefix_slice_match:
+        prefix_count = int(prefix_slice_match.group(1))
+        if prefix_count == 2:
+            return f"{language}::first_two_characters"
+        if prefix_count > 0:
+            return f"{language}::prefix_characters_constant"
+    if "returns[:2]" in compact or "returns[0:2]" in compact:
+        return f"{language}::first_two_characters"
+    if "len(lst)>0" in compact or "len(lst)!=0" in compact or "returnbool(lst)" in compact:
+        return f"{language}::non_empty_collection_check"
     if "len(lst)==0" in compact or "returnnotlst" in compact:
         return f"{language}::empty_collection_check"
+    if re.search(r"len\(lst\)==-?\d+", compact):
+        return f"{language}::list_length_equals_constant"
     if "len(lst)" in compact:
         return f"{language}::list_length"
     if "n%2!=0" in compact or "n%2==1" in compact or "(n&1)==1" in compact:
         return f"{language}::odd_check"
     if "n==0" in compact or "returnnotn" in compact:
         return f"{language}::zero_check"
+    if re.search(r"return[a-z_][a-z0-9_]*%(-?\d+)==0", compact) or re.search(r"returnn%(-?\d+)==0", compact):
+        return f"{language}::divisible_by_constant"
     if re.search(r"return[a-z_][a-z0-9_]*>(-?\d+)", compact) or re.search(r"returnn>(-?\d+)", compact):
         return f"{language}::greater_than_threshold"
     if "returnlst[1]" in compact:
         return f"{language}::second_element"
+    element_match = re.search(r"returnlst\[(-?\d+)\]", compact)
+    if element_match:
+        index = int(element_match.group(1))
+        if index == 1:
+            return f"{language}::second_element"
+        if index == 0:
+            return f"{language}::first_element"
+        if index > 1:
+            return f"{language}::element_at_index_constant"
     if "returnlst[0]" in compact:
         return f"{language}::first_element"
     if "returnlst[-1]" in compact or "returnlst[len(lst)-1]" in compact:
@@ -634,55 +784,101 @@ def _normalize_incorrect_pattern(item):
     }
 
 
+def _sanitize_incorrect_patterns_for_family(incorrect_patterns, template_family, question_text):
+    sanitized = []
+    normalized_family = (template_family or "").strip().lower()
+    normalized_question = (question_text or "").strip().lower()
+
+    for raw_item in incorrect_patterns or []:
+        item = dict(raw_item)
+        pattern_text = (item.get("pattern") or "").strip()
+        compact_pattern = pattern_text.replace(" ", "").replace("\t", "").lower()
+
+        if normalized_family == "python::lowercase_string" or "lowercase" in normalized_question:
+            if compact_pattern in {"deflower(s):returns.lower", "deflower_text(s):returns.lower"} or "returns.lower" in compact_pattern:
+                item["feedback"] = (
+                    "Returning the lower method itself does not convert the input string. Call s.lower() to return the lowercase string."
+                )
+                item["suggestion"] = "Call s.lower() before returning the result."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif (
+                compact_pattern.startswith("deflower(")
+                and "return\"" in compact_pattern
+            ) or (
+                compact_pattern.startswith("deflower_text(")
+                and "return\"" in compact_pattern
+            ):
+                item["feedback"] = "Returning a constant string does not convert the input string to lowercase."
+                item["suggestion"] = "Return the lowercase version of the provided input, for example with s.lower()."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+
+        if normalized_family == "python::second_element" or "second element" in normalized_question:
+            if "returnlst[0]" in compact_pattern:
+                item["feedback"] = (
+                    "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0."
+                )
+                item["suggestion"] = "Return the item at index 1, for example with lst[1]."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif "returnlst[-1]" in compact_pattern:
+                item["feedback"] = (
+                    "Returning the last element does not satisfy the second-element requirement. The task asks for the item at index 1, not the final item in the list."
+                )
+                item["suggestion"] = "Return the item at index 1, for example with lst[1]."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif compact_pattern in {"defsecond(lst):returnlst", "returnlst"}:
+                item["feedback"] = (
+                    "Returning the whole list does not return the second element. The task asks for a single item, so the function should return the value at index 1 instead of the entire list."
+                )
+                item["suggestion"] = "Return the item at index 1, for example with lst[1]."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+
+        sanitized.append(item)
+    return sanitized
+
+
 def _build_generation_prompt(question, model_answer, language, repair_context=None):
     repair_note = ""
     if repair_context:
-        repair_note = f"\nPrevious attempt issues:\n{repair_context}\n\n"
-    return f"""
-You are generating a reusable evaluation package for a coding question.
+        repair_note = f" Previous issue: {str(repair_context)[:180]}"
+    return (
+        "Return ONLY compact valid JSON for a coding-question evaluation package. "
+        "No markdown. No explanation. If unsure, use empty arrays. "
+        "Required schema: "
+        '{"accepted_solutions":[],"test_sets":{"positive":[],"negative":[]},"incorrect_patterns":[]}. '
+        "Each incorrect pattern object must use keys: pattern, match_type, feedback, suggestion, score_cap. "
+        f"Limits: accepted_solutions <= {AUTO_GENERATE_MAX_ALTERNATIVES}; "
+        f"positive tests <= {AUTO_GENERATE_MAX_HIDDEN_TESTS}; negative tests <= {AUTO_GENERATE_MAX_HIDDEN_TESTS}. "
+        f"Language: {language}. Question: {question}. Model answer: {model_answer}.{repair_note}"
+    ).strip()
 
-Return ONLY valid JSON in this exact shape:
-{{
-  "accepted_solutions": ["..."],
-  "test_sets": {{
-    "positive": [
-      {{"input": "...", "expected_output": "...", "description": "..."}}
-    ],
-    "negative": [
-      {{"input": "...", "expected_output": "...", "description": "..."}}
-    ]
-  }},
-  "incorrect_patterns": [
-    {{
-      "pattern": "...",
-      "match_type": "contains",
-      "feedback": "...",
-      "suggestion": "...",
-      "score_cap": 20
-    }}
-  ]
-}}
 
-Rules:
-- Keep the same language as the model answer.
-- accepted_solutions must be logically equivalent correct code solutions.
-- Do not repeat the original model answer.
-- Generate at most {AUTO_GENERATE_MAX_ALTERNATIVES} accepted_solutions.
-- Generate at most {AUTO_GENERATE_MAX_HIDDEN_TESTS} positive tests and {AUTO_GENERATE_MAX_HIDDEN_TESTS} negative tests.
-- test inputs and outputs must be compact and machine-usable.
-- incorrect_patterns should capture common obviously wrong student variants.
-- If uncertain, return empty arrays.
-{repair_note}
+def _build_generation_repair_prompt(raw_response):
+    raw = re.sub(r"\s+", " ", str(raw_response or "")).strip()[:700]
+    return (
+        "Convert this response into ONLY compact valid JSON for this exact schema: "
+        '{"accepted_solutions":[],"test_sets":{"positive":[],"negative":[]},"incorrect_patterns":[]}. '
+        "Do not include score, rubric, feedback-only review, markdown, or explanation. "
+        "If the response cannot be converted safely, return exactly "
+        '{"accepted_solutions":[],"test_sets":{"positive":[],"negative":[]},"incorrect_patterns":[]}. '
+        f"Response: {raw}"
+    )
 
-Question:
-{question}
 
-Language:
-{language}
+def _call_llm_for_registration_package(prompt):
+    raw = call_llm(prompt)
+    parsed = _extract_first_json_object(raw)
+    if _is_registration_package_json(parsed):
+        return parsed, "llm_generation"
 
-Model answer:
-{model_answer}
-""".strip()
+    repair_attempts = max(0, int(QUESTION_REGISTER_LLM_REPAIR_ATTEMPTS or 0))
+    for _ in range(repair_attempts):
+        repaired_raw = call_llm(_build_generation_repair_prompt(raw))
+        repaired = _extract_first_json_object(repaired_raw)
+        if _is_registration_package_json(repaired):
+            return repaired, "llm_generation_repair"
+        raw = repaired_raw
+
+    return None, None
 
 
 def _dedupe_strings(items, limit=None):
@@ -1038,6 +1234,57 @@ def _is_pattern_aligned_with_model(pattern, model_answer):
 
 def _deterministic_code_baselines(question, language):
     question_text = (question or "").lower()
+    divisible_match = re.search(r"divisible by\s+(-?\d+)", question_text)
+
+    if divisible_match:
+        divisor = int(divisible_match.group(1))
+        accepted = []
+        if language == "python":
+            accepted = [f"return n % {divisor} == 0", f"return not n % {divisor}"]
+        elif language == "java":
+            accepted = [f"return n % {divisor} == 0;"]
+        elif language == "javascript":
+            accepted = [f"return n % {divisor} === 0;"]
+        baseline = {
+            "accepted_solutions": accepted,
+            "test_sets": {
+                "positive": [
+                    _build_case([0], True, "zero is divisible by the divisor", kind="edge", weight=1.1, required=True),
+                    _build_case([abs(divisor)], True, "exact multiple of divisor", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([abs(divisor) + 1], False, "non-multiple of divisor", kind="normal", weight=1.0, required=True),
+                    _build_case([1], False, "value with remainder 1", kind="trap", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return n % {divisor} != 0",
+                    "match_type": "contains",
+                    "feedback": f"Checking for a non-zero remainder solves the opposite problem. The function should return True only when the number is divisible by {divisor}.",
+                    "suggestion": f"Use n % {divisor} == 0 to check divisibility.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return n % {divisor} == 1",
+                    "match_type": "contains",
+                    "feedback": f"Checking whether the remainder is 1 does not determine whether the number is divisible by {divisor}.",
+                    "suggestion": f"Use n % {divisor} == 0 to check divisibility.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+        if divisor % 2 == 0 and abs(divisor) > 2:
+            baseline["incorrect_patterns"].append(
+                {
+                    "pattern": "return n % 2 == 0",
+                    "match_type": "contains",
+                    "feedback": f"Checking divisibility by 2 includes extra even numbers that are not necessarily divisible by {divisor}.",
+                    "suggestion": f"Use n % {divisor} == 0 so the divisor matches the question exactly.",
+                    "score_cap": 20,
+                }
+            )
+        return baseline
 
     if "factorial" in question_text:
         return {
@@ -1434,15 +1681,15 @@ def _deterministic_code_baselines(question, language):
                 {
                     "pattern": f"return n >= {threshold}",
                     "match_type": "contains",
-                    "feedback": f"Using >= includes {threshold}, but the question asks for numbers strictly greater than {threshold}.",
-                    "suggestion": f"Use a strict greater-than comparison such as n > {threshold}.",
+                    "feedback": f"Using >= includes {threshold}, so the function also returns True for the threshold itself. The question requires numbers strictly greater than {threshold}, so use a strict greater-than comparison.",
+                    "suggestion": f"Use n > {threshold} so the threshold value itself returns False.",
                     "score_cap": 20,
                 },
                 {
                     "pattern": f"return n < {threshold}",
                     "match_type": "contains",
-                    "feedback": f"Checking whether the number is less than {threshold} does not solve the greater-than-{threshold} requirement.",
-                    "suggestion": f"Use a strict greater-than comparison such as n > {threshold}.",
+                    "feedback": f"Checking whether the number is less than {threshold} solves the opposite problem. The question asks you to identify values greater than {threshold}, not smaller ones.",
+                    "suggestion": f"Use n > {threshold} so only values above the threshold return True.",
                     "score_cap": 20,
                 },
             ],
@@ -2381,7 +2628,57 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
-    if _contains_all(question_text, "first", "character"):
+    if _contains_all(question_text, "first", "two", "character") or re.search(r"first\s+2\s+characters?", question_text):
+        return {
+            "accepted_solutions": [
+                "return s[:2]" if language == "python" else "",
+                "return s.substring(0, Math.min(2, s.length()));" if language == "java" else "",
+                "return s.slice(0, 2);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abcd"], "ab", "basic first two characters", kind="normal", weight=1.0, required=True),
+                    _build_case(["a"], "a", "single character input", kind="edge", weight=1.1, required=True),
+                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["xyz"], "xy", "catches first-character-only logic", kind="trap", weight=1.0, required=True),
+                    _build_case(["hello"], "he", "catches returning too many characters", kind="trap", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning only the first character does not satisfy the requirement to return the first two characters of the string.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[:1]",
+                    "match_type": "contains",
+                    "feedback": "Returning only one character does not satisfy the requirement to return the first two characters of the string.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[:3]",
+                    "match_type": "contains",
+                    "feedback": "Returning three characters does not satisfy the requirement to return exactly the first two characters.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the whole string does not limit the result to the first two characters.",
+                    "suggestion": "Slice the input to the first two characters before returning it.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if _contains_all(question_text, "first", "character") and _extract_character_prefix_count(question_text) in {None, 1}:
         return {
             "accepted_solutions": [
                 "return s[0]" if language == "python" else "",
@@ -3291,6 +3588,51 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    element_position = _extract_element_position(question_text)
+    if element_position and element_position > 2 and ("list" in question_text or "array" in question_text):
+        index = element_position - 1
+        first_list = list(range(1, max(4, element_position + 3)))
+        second_list = list(range(10, 10 + max(4, element_position + 3)))
+        return {
+            "accepted_solutions": [
+                f"return lst[{index}]" if language == "python" else "",
+                _java_for_list_or_array(question_text, f"return lst.get({index});", f"return arr[{index}];") if language == "java" else "",
+                _javascript_for_collection(question_text, f"return arr[{index}];", f"return lst[{index}];") if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([first_list], first_list[index], f"basic element at position {element_position}", kind="normal", weight=1.0, required=True),
+                    _build_case([second_list], second_list[index], "different values same position", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([list(range(20, 20 + max(4, element_position + 3)))], list(range(20, 20 + max(4, element_position + 3)))[index], "catches neighboring index confusion", kind="trap", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return lst[{max(0, index - 1)}]",
+                    "match_type": "contains",
+                    "feedback": f"Returning the item at index {max(0, index - 1)} does not satisfy the requirement to return the element at position {element_position}.",
+                    "suggestion": f"Return the item at index {index}, for example with lst[{index}].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return lst[{index + 1}]",
+                    "match_type": "contains",
+                    "feedback": f"Returning the item after the required position does not satisfy the requirement to return the element at position {element_position}.",
+                    "suggestion": f"Return the item at index {index}, for example with lst[{index}].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": f"Returning the whole list does not return the element at position {element_position}.",
+                    "suggestion": f"Return the single value at index {index}, for example with lst[{index}].",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
     if (_contains_all(question_text, "first", "element")) and ("list" in question_text or "array" in question_text):
         return {
             "accepted_solutions": [
@@ -3339,14 +3681,14 @@ def _deterministic_code_baselines(question, language):
                 {
                     "pattern": "return lst[0]",
                     "match_type": "contains",
-                    "feedback": "Returning the first element does not satisfy the second-element requirement.",
+                    "feedback": "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0.",
                     "suggestion": "Return the item at index 1, for example with lst[1].",
                     "score_cap": 20,
                 },
                 {
                     "pattern": "return lst[-1]",
                     "match_type": "contains",
-                    "feedback": "Returning the last element does not satisfy the second-element requirement.",
+                    "feedback": "Returning the last element does not satisfy the second-element requirement. The task asks for the item at index 1, not the final item in the list.",
                     "suggestion": "Return the item at index 1, for example with lst[1].",
                     "score_cap": 20,
                 }
@@ -3394,6 +3736,99 @@ def _deterministic_code_baselines(question, language):
                     "suggestion": "Return the element at the last position of the original list, for example with lst[-1].",
                     "score_cap": 20,
                 }
+            ],
+        }
+
+    prefix_count = _extract_character_prefix_count(question_text)
+    if prefix_count and prefix_count > 0 and prefix_count != 2:
+        return {
+            "accepted_solutions": [
+                f"return s[:{prefix_count}]" if language == "python" else "",
+                f"return s.substring(0, Math.min({prefix_count}, s.length()));" if language == "java" else "",
+                f"return s.slice(0, {prefix_count});" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abcdef"], "abcdef"[:prefix_count], f"basic first {prefix_count} characters", kind="normal", weight=1.0, required=True),
+                    _build_case(["ab"], "ab"[:prefix_count], "shorter string input", kind="edge", weight=1.1, required=True),
+                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["xyzuvw"], "xyzuvw"[:prefix_count], "catches off-by-one prefix logic", kind="trap", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return s[:{max(1, prefix_count - 1)}]",
+                    "match_type": "contains",
+                    "feedback": f"Returning fewer than {prefix_count} characters does not satisfy the requirement to return the first {prefix_count} characters of the string.",
+                    "suggestion": f"Return a slice of the first {prefix_count} characters, for example with s[:{prefix_count}].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return s[:{prefix_count + 1}]",
+                    "match_type": "contains",
+                    "feedback": f"Returning more than {prefix_count} characters does not satisfy the requirement to return exactly the first {prefix_count} characters.",
+                    "suggestion": f"Return a slice of the first {prefix_count} characters, for example with s[:{prefix_count}].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": f"Returning the whole string does not limit the result to the first {prefix_count} characters.",
+                    "suggestion": f"Slice the input to the first {prefix_count} characters before returning it.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if _contains_all(question_text, "first", "two", "character"):
+        return {
+            "accepted_solutions": [
+                "return s[:2]" if language == "python" else "",
+                "return s.substring(0, Math.min(2, s.length()));" if language == "java" else "",
+                "return s.slice(0, 2);" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abcd"], "ab", "basic first two characters", kind="normal", weight=1.0, required=True),
+                    _build_case(["a"], "a", "single character input", kind="edge", weight=1.1, required=True),
+                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["xyz"], "xy", "catches first-character-only logic", kind="trap", weight=1.0, required=True),
+                    _build_case(["hello"], "he", "catches returning too many characters", kind="trap", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning only the first character does not satisfy the requirement to return the first two characters of the string.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[:1]",
+                    "match_type": "contains",
+                    "feedback": "Returning only one character does not satisfy the requirement to return the first two characters of the string.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[:3]",
+                    "match_type": "contains",
+                    "feedback": "Returning three characters does not satisfy the requirement to return exactly the first two characters.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the whole string does not limit the result to the first two characters.",
+                    "suggestion": "Slice the input to the first two characters before returning it.",
+                    "score_cap": 20,
+                },
             ],
         }
 
@@ -3571,6 +4006,56 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
+    equals_length_match = re.search(r"length\s+(?:equals|equal to|is)\s+(-?\d+)", question_text)
+    if equals_length_match and ("list" in question_text or "array" in question_text):
+        target_length = int(equals_length_match.group(1))
+        lower_length = target_length - 1 if target_length > 0 else 1
+        upper_length = target_length + 1
+        exact_list = list(range(target_length)) if target_length >= 0 else []
+        higher_list = list(range(upper_length))
+        lower_list = list(range(lower_length)) if lower_length >= 0 else []
+        return {
+            "accepted_solutions": [
+                f"return len(lst) == {target_length}" if language == "python" else "",
+                f"return len(lst) != 0 and len(lst) == {target_length}" if language == "python" and target_length > 0 else "",
+                f"return lst.size() == {target_length};" if language == "java" else "",
+                f"return arr.length === {target_length};" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([exact_list], True, f"list length equals {target_length}", kind="normal", weight=1.1, required=True),
+                    _build_case([list(reversed(exact_list))], True, f"different list with length {target_length}", kind="normal", weight=1.0, required=False),
+                ],
+                "negative": [
+                    _build_case([lower_list], False, f"list length below {target_length}", kind="edge", weight=1.2, required=True),
+                    _build_case([higher_list], False, f"list length above {target_length}", kind="edge", weight=1.2, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return len(lst) > {target_length}",
+                    "match_type": "contains",
+                    "feedback": f"Checking whether the list length is greater than {target_length} solves a different problem. This task requires the length to be exactly {target_length}.",
+                    "suggestion": f"Use len(lst) == {target_length} to require the exact length.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return len(lst) >= {target_length}",
+                    "match_type": "contains",
+                    "feedback": f"Using >= allows lists longer than {target_length}, but this task requires the length to be exactly {target_length}.",
+                    "suggestion": f"Use len(lst) == {target_length} to require the exact length.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return len(lst)",
+                    "match_type": "contains",
+                    "feedback": "Returning the list length itself does not answer the yes-or-no question. The function should return a boolean indicating whether the length matches the required value.",
+                    "suggestion": f"Compare the length to {target_length}, for example with len(lst) == {target_length}.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
     if (
         (_contains_all(question_text, "length", "list"))
         or (_contains_all(question_text, "get", "length", "list"))
@@ -3655,6 +4140,61 @@ def _deterministic_code_baselines(question, language):
                     "match_type": "contains",
                     "feedback": "Checking s[-1] directly can fail on empty strings.",
                     "suggestion": "Use a safe suffix check such as s.endswith('z').",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if (
+        (
+            "at least one element" in question_text
+            or "has items" in question_text
+            or "has any" in question_text
+            or "not empty" in question_text
+            or "non-empty" in question_text
+            or "non empty" in question_text
+        )
+        and ("list" in question_text or "array" in question_text or "collection" in question_text)
+    ):
+        return {
+            "accepted_solutions": [
+                "return len(lst) > 0" if language == "python" else "",
+                "return bool(lst)" if language == "python" else "",
+                "return lst != []" if language == "python" else "",
+                _java_for_list_or_array(question_text, "return !lst.isEmpty();", "return arr.length > 0;") if language == "java" else "",
+                "return arr.length > 0;" if language == "javascript" else "",
+                "return !!arr.length;" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1]], True, "single element collection has items", kind="normal", weight=1.1, required=True),
+                    _build_case([[0, 2]], True, "multi-element collection has items", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([[]], False, "empty collection has no items", kind="edge", weight=1.3, required=True),
+                    _build_case([[False]], True, "falsy value still counts as an element", kind="trap", weight=1.1),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return len(lst) == 0",
+                    "match_type": "contains",
+                    "feedback": "Checking whether the list is empty solves the opposite problem. The function should return True when the list has at least one element.",
+                    "suggestion": "Use len(lst) > 0 or bool(lst) to check for one or more elements.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return not lst",
+                    "match_type": "contains",
+                    "feedback": "Using not lst returns True for empty lists, but this task asks for True when the list has at least one element.",
+                    "suggestion": "Use bool(lst) or len(lst) > 0 instead.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the list itself does not explicitly return the required boolean result.",
+                    "suggestion": "Return a boolean expression such as len(lst) > 0 or bool(lst).",
                     "score_cap": 20,
                 },
             ],
@@ -4020,10 +4560,201 @@ def _deterministic_markup_baselines(question, language):
     return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
 
 
+def _build_python_oracle_baseline_from_model_answer(model_answer):
+    answer = (model_answer or "").strip()
+    if not answer:
+        return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
+
+    fn_name = _extract_first_function_name(answer)
+    wrapped_code, wrapped_name = _wrap_python_snippet(answer, "")
+    function_name = wrapped_name or fn_name
+    if not wrapped_code or not function_name:
+        return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
+
+    signature_match = re.search(r"def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)", answer)
+    params = []
+    if signature_match:
+        for bit in signature_match.group(1).split(","):
+            name = bit.strip().split("=")[0].strip()
+            if name:
+                params.append(name)
+    param_count = len(params)
+    primary = params[0] if params else "x"
+
+    sample_inputs = []
+    if param_count == 1:
+        sample_inputs = [
+            (0,),
+            (1,),
+            (2,),
+            (-1,),
+            ("",),
+            ("Ab",),
+            ("hello",),
+            ([1, 2, 3],),
+            ([],),
+            (True,),
+            (False,),
+        ]
+    elif param_count == 2:
+        sample_inputs = [
+            (0, 0),
+            (1, 2),
+            (2, 3),
+            (-1, 4),
+            ("a", "B"),
+            ("hello", ""),
+            ([1, 2], [3]),
+            (True, False),
+        ]
+    else:
+        return {
+            "accepted_solutions": [answer],
+            "test_sets": {"positive": [], "negative": []},
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not implement the required logic for this question.",
+                    "suggestion": "Use the input and the faculty model answer pattern to compute the expected result.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return {primary}",
+                    "match_type": "contains",
+                    "feedback": "Returning the input directly does not implement the required transformation or check for this question.",
+                    "suggestion": "Compute the result from the input instead of returning it unchanged.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    result = _run_code_with_timeout(wrapped_code, function_name, sample_inputs)
+    outputs = (result or {}).get("outputs") or []
+    positives = []
+    seen_io = set()
+
+    for args, output in zip(sample_inputs, outputs):
+        if not isinstance(output, dict) or not output.get("ok"):
+            continue
+        rendered_input = list(args)
+        expected = output.get("result")
+        key = (json.dumps(rendered_input, sort_keys=True, default=str), json.dumps(expected, sort_keys=True, default=str))
+        if key in seen_io:
+            continue
+        seen_io.add(key)
+        positives.append(
+            _build_case(
+                rendered_input,
+                expected,
+                "Oracle-derived faculty model answer test",
+                kind="normal" if len(positives) == 0 else "edge",
+                weight=1.0 if len(positives) == 0 else 1.1,
+                required=len(positives) < 2,
+            )
+        )
+        if len(positives) >= 3:
+            break
+
+    return {
+        "accepted_solutions": [answer],
+        "test_sets": {"positive": positives, "negative": []},
+        "incorrect_patterns": [
+            {
+                "pattern": "return True",
+                "match_type": "contains",
+                "feedback": "Always returning True does not implement the required logic for this question.",
+                "suggestion": "Use the input and the faculty model answer pattern to compute the expected result.",
+                "score_cap": 20,
+            },
+            {
+                "pattern": f"return {primary}",
+                "match_type": "contains",
+                "feedback": "Returning the input directly does not implement the required transformation or check for this question.",
+                "suggestion": "Compute the result from the input instead of returning it unchanged.",
+                "score_cap": 20,
+            },
+        ],
+    }
+
+
 def _python_model_answer_baselines(model_answer):
     compact = re.sub(r"\s+", "", (model_answer or "").lower())
     if not compact:
         return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
+
+    prefix_match = re.search(r"return[a-z_][a-z0-9_]*\[:(-?\d+)\]", compact) or re.search(r"return[a-z_][a-z0-9_]*\[0:(-?\d+)\]", compact)
+    if prefix_match:
+        prefix_count = int(prefix_match.group(1))
+        if prefix_count > 0 and prefix_count != 2:
+            return {
+                "accepted_solutions": [f"return s[:{prefix_count}]"],
+                "test_sets": {
+                    "positive": [
+                        _build_case(["abcdef"], "abcdef"[:prefix_count], f"basic first {prefix_count} characters", kind="normal", weight=1.0, required=True),
+                        _build_case(["ab"], "ab"[:prefix_count], "shorter string input", kind="edge", weight=1.1, required=True),
+                        _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                    ],
+                    "negative": [
+                        _build_case(["xyzuvw"], "xyzuvw"[:prefix_count], "catches off-by-one prefix logic", kind="trap", weight=1.0, required=True),
+                    ],
+                },
+                "incorrect_patterns": [
+                    {
+                        "pattern": f"return s[:{max(1, prefix_count - 1)}]",
+                        "match_type": "contains",
+                        "feedback": f"Returning fewer than {prefix_count} characters does not satisfy the requirement to return the first {prefix_count} characters of the string.",
+                        "suggestion": f"Return a slice of the first {prefix_count} characters, for example with s[:{prefix_count}].",
+                        "score_cap": 20,
+                    },
+                    {
+                        "pattern": f"return s[:{prefix_count + 1}]",
+                        "match_type": "contains",
+                        "feedback": f"Returning more than {prefix_count} characters does not satisfy the requirement to return exactly the first {prefix_count} characters.",
+                        "suggestion": f"Return a slice of the first {prefix_count} characters, for example with s[:{prefix_count}].",
+                        "score_cap": 20,
+                    },
+                ],
+            }
+
+    if "returns[:2]" in compact:
+        return {
+            "accepted_solutions": ["return s[:2]"],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abcd"], "ab", "basic first two characters", kind="normal", weight=1.0, required=True),
+                    _build_case(["a"], "a", "single character input", kind="edge", weight=1.1, required=True),
+                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["xyz"], "xy", "catches first-character-only logic", kind="trap", weight=1.0, required=True),
+                    _build_case(["hello"], "he", "catches returning too many characters", kind="trap", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning only the first character does not satisfy the requirement to return the first two characters of the string.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[:1]",
+                    "match_type": "contains",
+                    "feedback": "Returning only one character does not satisfy the requirement to return the first two characters of the string.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[:3]",
+                    "match_type": "contains",
+                    "feedback": "Returning three characters does not satisfy the requirement to return exactly the first two characters.",
+                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+            ],
+        }
 
     if ".lower()" in compact:
         return {
@@ -4068,19 +4799,145 @@ def _python_model_answer_baselines(model_answer):
                 {
                     "pattern": f"return n >= {threshold}",
                     "match_type": "contains",
-                    "feedback": f"Using >= includes {threshold}, but the condition should be strictly greater than {threshold}.",
-                    "suggestion": f"Use a strict comparison such as n > {threshold}.",
+                    "feedback": f"Using >= includes {threshold}, so the function also returns True for the threshold itself. The question requires numbers strictly greater than {threshold}, so use a strict greater-than comparison.",
+                    "suggestion": f"Use n > {threshold} so the threshold value itself returns False.",
                     "score_cap": 20,
                 },
                 {
                     "pattern": f"return n < {threshold}",
                     "match_type": "contains",
-                    "feedback": f"Checking whether the value is less than {threshold} does not solve the greater-than-{threshold} requirement.",
-                    "suggestion": f"Use a strict comparison such as n > {threshold}.",
+                    "feedback": f"Checking whether the value is less than {threshold} solves the opposite problem. The question asks you to identify values greater than {threshold}, not smaller ones.",
+                    "suggestion": f"Use n > {threshold} so only values above the threshold return True.",
                     "score_cap": 20,
                 },
             ],
         }
+
+    divisor_match = re.search(r"return[a-z_][a-z0-9_]*%(-?\d+)==0|returnn%(-?\d+)==0", compact)
+    if divisor_match:
+        divisor_text = divisor_match.group(1) or divisor_match.group(2)
+        divisor = int(divisor_text)
+        baseline = {
+            "accepted_solutions": [f"return n % {divisor} == 0"],
+            "test_sets": {
+                "positive": [
+                    _build_case([0], True, "zero is divisible by the divisor", kind="edge", weight=1.1, required=True),
+                    _build_case([abs(divisor)], True, "exact multiple of divisor", kind="normal", weight=1.0, required=True),
+                ],
+                "negative": [
+                    _build_case([abs(divisor) + 1], False, "non-multiple of divisor", kind="normal", weight=1.0, required=True),
+                    _build_case([1], False, "value with remainder 1", kind="trap", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return n % {divisor} != 0",
+                    "match_type": "contains",
+                    "feedback": f"Checking for a non-zero remainder solves the opposite problem. The function should return True only when the number is divisible by {divisor}.",
+                    "suggestion": f"Use n % {divisor} == 0 to check divisibility.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return n % {divisor} == 1",
+                    "match_type": "contains",
+                    "feedback": f"Checking whether the remainder is 1 does not determine whether the number is divisible by {divisor}.",
+                    "suggestion": f"Use n % {divisor} == 0 to check divisibility.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+        if divisor % 2 == 0 and abs(divisor) > 2:
+            baseline["incorrect_patterns"].append(
+                {
+                    "pattern": "return n % 2 == 0",
+                    "match_type": "contains",
+                    "feedback": f"Checking divisibility by 2 includes extra even numbers that are not necessarily divisible by {divisor}.",
+                    "suggestion": f"Use n % {divisor} == 0 so the divisor matches the question exactly.",
+                    "score_cap": 20,
+                }
+            )
+        return baseline
+
+    equals_length_match = re.search(r"len\(lst\)==(-?\d+)", compact)
+    if equals_length_match:
+        target_length = int(equals_length_match.group(1))
+        lower_length = target_length - 1 if target_length > 0 else 1
+        upper_length = target_length + 1
+        exact_list = list(range(target_length)) if target_length >= 0 else []
+        higher_list = list(range(upper_length))
+        lower_list = list(range(lower_length)) if lower_length >= 0 else []
+        return {
+            "accepted_solutions": [f"return len(lst) == {target_length}"],
+            "test_sets": {
+                "positive": [
+                    _build_case([exact_list], True, f"list length equals {target_length}", kind="normal", weight=1.1, required=True),
+                    _build_case([list(reversed(exact_list))], True, f"different list with length {target_length}", kind="normal", weight=1.0, required=False),
+                ],
+                "negative": [
+                    _build_case([lower_list], False, f"list length below {target_length}", kind="edge", weight=1.2, required=True),
+                    _build_case([higher_list], False, f"list length above {target_length}", kind="edge", weight=1.2, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return len(lst) > {target_length}",
+                    "match_type": "contains",
+                    "feedback": f"Checking whether the list length is greater than {target_length} solves a different problem. This task requires the length to be exactly {target_length}.",
+                    "suggestion": f"Use len(lst) == {target_length} to require the exact length.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return len(lst) >= {target_length}",
+                    "match_type": "contains",
+                    "feedback": f"Using >= allows lists longer than {target_length}, but this task requires the length to be exactly {target_length}.",
+                    "suggestion": f"Use len(lst) == {target_length} to require the exact length.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return len(lst)",
+                    "match_type": "contains",
+                    "feedback": "Returning the list length itself does not answer the yes-or-no question. The function should return a boolean indicating whether the length matches the required value.",
+                    "suggestion": f"Compare the length to {target_length}, for example with len(lst) == {target_length}.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    element_match = re.search(r"returnlst\[(-?\d+)\]", compact)
+    if element_match:
+        index = int(element_match.group(1))
+        if index > 1:
+            position = index + 1
+            first_list = list(range(1, max(4, position + 3)))
+            second_list = list(range(10, 10 + max(4, position + 3)))
+            return {
+                "accepted_solutions": [f"return lst[{index}]"],
+                "test_sets": {
+                    "positive": [
+                        _build_case([first_list], first_list[index], f"basic element at position {position}", kind="normal", weight=1.0, required=True),
+                        _build_case([second_list], second_list[index], "different values same position", kind="edge", weight=1.1, required=True),
+                    ],
+                    "negative": [
+                        _build_case([list(range(20, 20 + max(4, position + 3)))], list(range(20, 20 + max(4, position + 3)))[index], "catches neighboring index confusion", kind="trap", weight=1.0, required=True),
+                    ],
+                },
+                "incorrect_patterns": [
+                    {
+                        "pattern": f"return lst[{max(0, index - 1)}]",
+                        "match_type": "contains",
+                        "feedback": f"Returning the item at index {max(0, index - 1)} does not satisfy the requirement to return the element at position {position}.",
+                        "suggestion": f"Return the item at index {index}, for example with lst[{index}].",
+                        "score_cap": 20,
+                    },
+                    {
+                        "pattern": f"return lst[{index + 1}]",
+                        "match_type": "contains",
+                        "feedback": f"Returning the item after the required position does not satisfy the requirement to return the element at position {position}.",
+                        "suggestion": f"Return the item at index {index}, for example with lst[{index}].",
+                        "score_cap": 20,
+                    },
+                ],
+            }
 
     if "returnlst[1]" in compact:
         return {
@@ -4099,14 +4956,14 @@ def _python_model_answer_baselines(model_answer):
                 {
                     "pattern": "return lst[0]",
                     "match_type": "contains",
-                    "feedback": "Returning the first element does not satisfy the second-element requirement.",
+                    "feedback": "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0.",
                     "suggestion": "Return the item at index 1, for example with lst[1].",
                     "score_cap": 20,
                 },
                 {
                     "pattern": "return lst[-1]",
                     "match_type": "contains",
-                    "feedback": "Returning the last element does not satisfy the second-element requirement.",
+                    "feedback": "Returning the last element does not satisfy the second-element requirement. The task asks for the item at index 1, not the final item in the list.",
                     "suggestion": "Return the item at index 1, for example with lst[1].",
                     "score_cap": 20,
                 },
@@ -4122,25 +4979,27 @@ def _python_model_answer_baselines(model_answer):
                 params.append(name)
     primary = params[0] if params else "x"
 
+    oracle_baseline = _build_python_oracle_baseline_from_model_answer(model_answer)
+    fallback_patterns = oracle_baseline.get("incorrect_patterns") or [
+        {
+            "pattern": "return True",
+            "match_type": "contains",
+            "feedback": "Always returning True does not implement the required logic for this question.",
+            "suggestion": "Use the input and the model answer pattern to compute the expected result.",
+            "score_cap": 20,
+        },
+        {
+            "pattern": f"return {primary}",
+            "match_type": "contains",
+            "feedback": "Returning the input directly does not implement the required transformation or check for this question.",
+            "suggestion": "Compute the result from the input instead of returning it unchanged.",
+            "score_cap": 20,
+        },
+    ]
     return {
-        "accepted_solutions": [],
-        "test_sets": {"positive": [], "negative": []},
-        "incorrect_patterns": [
-            {
-                "pattern": "return True",
-                "match_type": "contains",
-                "feedback": "Always returning True does not implement the required logic for this question.",
-                "suggestion": "Use the input and the model answer pattern to compute the expected result.",
-                "score_cap": 20,
-            },
-            {
-                "pattern": f"return {primary}",
-                "match_type": "contains",
-                "feedback": "Returning the input directly does not implement the required transformation or check for this question.",
-                "suggestion": "Compute the result from the input instead of returning it unchanged.",
-                "score_cap": 20,
-            },
-        ],
+        "accepted_solutions": oracle_baseline.get("accepted_solutions") or [],
+        "test_sets": oracle_baseline.get("test_sets") or {"positive": [], "negative": []},
+        "incorrect_patterns": fallback_patterns,
     }
 
 
@@ -4169,6 +5028,7 @@ def _prune_placeholder_tests(test_sets, template_family):
     if not _is_specific_template_family(template_family):
         return test_sets
 
+    normalized_family = (template_family or "").strip().lower()
     cleaned = {"positive": [], "negative": []}
     for bucket in ("positive", "negative"):
         normalized_items = [
@@ -4182,6 +5042,70 @@ def _prune_placeholder_tests(test_sets, template_family):
         for normalized in normalized_items:
             if not normalized:
                 continue
+            if normalized_family == "python::non_empty_collection_check":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                    parsed_expected = json.loads(normalized.get("expected_output") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if (
+                    not isinstance(parsed_input, list)
+                    or not parsed_input
+                    or not isinstance(parsed_input[0], list)
+                    or not isinstance(parsed_expected, bool)
+                ):
+                    continue
+            if normalized_family == "python::list_length":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                    parsed_expected = json.loads(normalized.get("expected_output") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if (
+                    not isinstance(parsed_input, list)
+                    or not parsed_input
+                    or not isinstance(parsed_input[0], list)
+                    or not isinstance(parsed_expected, int)
+                    or isinstance(parsed_expected, bool)
+                ):
+                    continue
+            if normalized_family == "python::list_length_equals_constant":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                    parsed_expected = json.loads(normalized.get("expected_output") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if (
+                    not isinstance(parsed_input, list)
+                    or not parsed_input
+                    or not isinstance(parsed_input[0], list)
+                    or not isinstance(parsed_expected, bool)
+                ):
+                    continue
+            if normalized_family == "python::prefix_characters_constant":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                parsed_expected = normalized.get("expected_output")
+                if (
+                    not isinstance(parsed_input, list)
+                    or not parsed_input
+                    or not isinstance(parsed_input[0], str)
+                    or not isinstance(parsed_expected, str)
+                ):
+                    continue
+            if normalized_family == "python::element_at_index_constant":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if (
+                    not isinstance(parsed_input, list)
+                    or not parsed_input
+                    or not isinstance(parsed_input[0], list)
+                ):
+                    continue
             expected_output = normalized.get("expected_output")
             description = (normalized.get("description") or "").strip().lower()
             if expected_output == "null" and (
@@ -4230,6 +5154,82 @@ def _merge_generated_package(base_payload, generated_payload):
     return merged
 
 
+def _is_internal_reuse_question(question_text):
+    lowered = (question_text or "").strip().lower()
+    internal_markers = (
+        "guardrail probe",
+        "scoring fallback probe",
+        "llm repair package",
+        "fenced llm json",
+        "fallback not package",
+    )
+    return any(marker in lowered for marker in internal_markers)
+
+
+def _extract_family_variant(template_family, question_text, model_answer):
+    normalized_family = (template_family or "").strip().lower()
+    normalized_question = (question_text or "").strip().lower()
+    compact_answer = re.sub(r"\s+", "", (model_answer or "").lower())
+
+    if normalized_family == "python::greater_than_threshold":
+        question_match = re.search(r"greater than\s+(-?\d+)", normalized_question)
+        answer_match = re.search(r"return[a-z_][a-z0-9_]*>(-?\d+)|returnn>(-?\d+)", compact_answer)
+        threshold = (
+            (question_match.group(1) if question_match else None)
+            or (answer_match.group(1) if answer_match else None)
+            or (answer_match.group(2) if answer_match else None)
+        )
+        return threshold
+
+    if normalized_family == "python::divisible_by_constant":
+        question_match = re.search(r"divisible by\s+(-?\d+)", normalized_question)
+        answer_match = re.search(r"return[a-z_][a-z0-9_]*%(-?\d+)==0|returnn%(-?\d+)==0", compact_answer)
+        divisor = (
+            (question_match.group(1) if question_match else None)
+            or (answer_match.group(1) if answer_match else None)
+            or (answer_match.group(2) if answer_match else None)
+        )
+        return divisor
+
+    if normalized_family == "python::list_length_equals_constant":
+        question_match = re.search(r"length\s+(?:equals|equal to|is)\s+(-?\d+)", normalized_question)
+        answer_match = re.search(r"len\(lst\)==(-?\d+)", compact_answer)
+        target_length = (
+            (question_match.group(1) if question_match else None)
+            or (answer_match.group(1) if answer_match else None)
+        )
+        return target_length
+
+    if normalized_family == "python::prefix_characters_constant":
+        question_count = _extract_character_prefix_count(normalized_question)
+        answer_match = re.search(r"return[a-z_][a-z0-9_]*\[:(-?\d+)\]|return[a-z_][a-z0-9_]*\[0:(-?\d+)\]", compact_answer)
+        return (
+            str(question_count) if question_count is not None else None
+        ) or (answer_match.group(1) if answer_match else None) or (answer_match.group(2) if answer_match else None)
+
+    if normalized_family == "python::element_at_index_constant":
+        question_position = _extract_element_position(normalized_question)
+        answer_match = re.search(r"returnlst\[(-?\d+)\]", compact_answer)
+        answer_position = str(int(answer_match.group(1)) + 1) if answer_match else None
+        return (str(question_position) if question_position is not None else None) or answer_position
+
+    return None
+
+
+def _is_profile_reuse_compatible(profile_family, template_family):
+    normalized_profile_family = (profile_family or "").strip().lower()
+    normalized_template_family = (template_family or "").strip().lower()
+    if not normalized_template_family:
+        return True
+    if not _is_specific_template_family(normalized_template_family):
+        return True
+    if not normalized_profile_family:
+        return False
+    if not _is_specific_template_family(normalized_profile_family):
+        return False
+    return normalized_profile_family == normalized_template_family
+
+
 def merge_with_existing_profiles(payload, existing_profiles):
     merged = dict(payload or {})
     signature = _normalize_question_signature(merged.get("question"), merged.get("language"))
@@ -4246,15 +5246,31 @@ def merge_with_existing_profiles(payload, existing_profiles):
     for profile in existing_profiles or []:
         profile_signature = _normalize_question_signature(profile.get("question"), profile.get("language"))
         profile_family = profile.get("template_family") or _infer_best_template_family(profile.get("question"), profile.get("model_answer"), profile.get("language"))
+        profile_status = (profile.get("package_status") or "").strip().lower()
+        if profile_status not in {"validated", "live"}:
+            continue
+        if bool(profile.get("review_required", False)):
+            continue
+        if float(profile.get("package_confidence", 0.0) or 0.0) < 0.9:
+            continue
         signature_match = profile_signature == signature
+        signature_compatible = _is_profile_reuse_compatible(profile_family, template_family)
+        profile_variant = _extract_family_variant(profile_family, profile.get("question"), profile.get("model_answer"))
+        target_variant = _extract_family_variant(template_family, merged.get("question"), model_answer)
         family_match = (
             profile_family == template_family
             and _is_specific_template_family(template_family)
+            and template_family != "python::model_answer_derived"
+            and profile_variant == target_variant
         )
-        if not signature_match and not family_match:
+        if not ((signature_match and signature_compatible) or family_match):
             continue
         profile_question = (profile.get("question") or "").strip()
-        if profile_question and profile_question not in reused_from_questions:
+        if (
+            profile_question
+            and not _is_internal_reuse_question(profile_question)
+            and profile_question not in reused_from_questions
+        ):
             reused_from_questions.append(profile_question)
         for answer in profile.get("accepted_solutions", []) or profile.get("alternative_answers", []) or []:
             cleaned = answer.strip() if isinstance(answer, str) else ""
@@ -4324,7 +5340,11 @@ def merge_with_existing_profiles(payload, existing_profiles):
 
             pruned.append(item)
         incorrect_patterns = pruned
-    merged["incorrect_patterns"] = incorrect_patterns
+    merged["incorrect_patterns"] = _sanitize_incorrect_patterns_for_family(
+        incorrect_patterns,
+        template_family,
+        merged.get("question"),
+    )
     merged["test_sets"] = _prune_placeholder_tests(
         {
             "positive": _dedupe_tests_by_io(test_sets["positive"])[:AUTO_GENERATE_MAX_HIDDEN_TESTS],
@@ -4414,6 +5434,12 @@ def _promote_learning_patterns(payload):
 
 def enrich_question_profile(payload, force_llm=False, repair_context=None):
     enriched = dict(payload or {})
+    generation_sources = [
+        item for item in (enriched.get("generation_sources") or [])
+        if isinstance(item, str) and item.strip()
+    ]
+    enriched["generation_sources"] = generation_sources
+    enriched["llm_assisted"] = bool(enriched.get("llm_assisted", False))
     initial_model_answer = enriched.get("model_answer")
     enriched["question_signature"] = enriched.get("question_signature") or _normalize_question_signature(
         enriched.get("question"),
@@ -4440,9 +5466,14 @@ def enrich_question_profile(payload, force_llm=False, repair_context=None):
         inferred = _infer_template_family_with_llm(question, language)
         if inferred:
             enriched["template_family"] = inferred
+            if "llm_template_inference" not in generation_sources:
+                generation_sources.append("llm_template_inference")
+            enriched["llm_assisted"] = True
 
     baseline_package = _build_deterministic_baseline_package(question, model_answer, language)
     enriched = _merge_generated_package(enriched, baseline_package)
+    if "deterministic_baseline" not in generation_sources:
+        generation_sources.append("deterministic_baseline")
     enriched = _promote_learning_patterns(enriched)
 
     if not AUTO_GENERATE_QUESTION_RULES and not force_llm:
@@ -4463,10 +5494,14 @@ def enrich_question_profile(payload, force_llm=False, repair_context=None):
             # Keep handcrafted trap/negative tests and merge oracle positives on top.
             enriched = _merge_generated_package(enriched, oracle_package)
 
-    raw = call_llm(_build_generation_prompt(question, model_answer, language, repair_context=repair_context))
-    parsed = _extract_first_json_object(raw)
-    if not isinstance(parsed, dict):
+    parsed, llm_source = _call_llm_for_registration_package(
+        _build_generation_prompt(question, model_answer, language, repair_context=repair_context)
+    )
+    if not parsed:
         return enriched
+    if llm_source and llm_source not in generation_sources:
+        generation_sources.append(llm_source)
+    enriched["llm_assisted"] = True
 
     accepted = []
     for item in parsed.get("accepted_solutions", []):
@@ -4490,7 +5525,7 @@ def enrich_question_profile(payload, force_llm=False, repair_context=None):
         if normalized:
             incorrect_patterns.append(normalized)
 
-    return _merge_generated_package(
+    merged = _merge_generated_package(
         enriched,
         {
             "accepted_solutions": accepted[:AUTO_GENERATE_MAX_ALTERNATIVES],
@@ -4501,6 +5536,9 @@ def enrich_question_profile(payload, force_llm=False, repair_context=None):
             "incorrect_patterns": incorrect_patterns,
         },
     )
+    merged["generation_sources"] = generation_sources
+    merged["llm_assisted"] = bool(merged.get("llm_assisted", False) or enriched.get("llm_assisted", False))
+    return merged
 
 
 def _parse_hidden_test_input(raw_value):
@@ -4650,8 +5688,24 @@ def finalize_question_profile(payload):
     finalized["accepted_solutions"] = dedup_accepted[: AUTO_GENERATE_MAX_ALTERNATIVES + 1]
 
     test_sets = finalized.get("test_sets") or {"positive": [], "negative": []}
-    positive_tests = _trim_oracle_positive_tests(test_sets.get("positive", []))
-    negative_tests = [_normalize_test_case(item) for item in test_sets.get("negative", []) if _normalize_test_case(item)]
+    raw_positive_tests = [_normalize_test_case(item) for item in test_sets.get("positive", []) if _normalize_test_case(item)]
+    raw_negative_tests = [_normalize_test_case(item) for item in test_sets.get("negative", []) if _normalize_test_case(item)]
+
+    rebucketed_positive_tests = []
+    rebucketed_negative_tests = list(raw_negative_tests)
+    for item in raw_positive_tests:
+        try:
+            parsed_expected = json.loads(item.get("expected_output") or "")
+        except (TypeError, json.JSONDecodeError):
+            parsed_expected = None
+        if isinstance(parsed_expected, bool) and parsed_expected is False:
+            if item not in rebucketed_negative_tests:
+                rebucketed_negative_tests.append(item)
+            continue
+        rebucketed_positive_tests.append(item)
+
+    positive_tests = _trim_oracle_positive_tests(rebucketed_positive_tests)
+    negative_tests = rebucketed_negative_tests
     positive_keys = {
         (str(item.get("input")), str(item.get("expected_output"))) for item in positive_tests if item
     }
@@ -4672,6 +5726,8 @@ def finalize_question_profile(payload):
         if (str(item.get("input")), str(item.get("expected_output"))) not in positive_keys
         or (str(item.get("input")), str(item.get("expected_output"))) in required_negative_keys
     ]
+    positive_tests = _dedupe_tests_by_io(positive_tests)
+    negative_tests = _dedupe_tests_by_io(negative_tests)
     finalized["test_sets"] = {"positive": positive_tests, "negative": negative_tests}
     finalized["positive_test_count"] = len(positive_tests)
     finalized["negative_test_count"] = len(negative_tests)
@@ -4806,7 +5862,11 @@ def finalize_question_profile(payload):
         ):
             continue
         cleaned_patterns.append(item)
-    incorrect_patterns = cleaned_patterns
+    incorrect_patterns = _sanitize_incorrect_patterns_for_family(
+        cleaned_patterns,
+        template_family,
+        finalized.get("question"),
+    )
     finalized["incorrect_patterns"] = incorrect_patterns
 
     all_tests = positive_tests + negative_tests

@@ -169,6 +169,8 @@ class QuestionPackageResponse(BaseModel):
     positive_test_count: Optional[int] = None
     negative_test_count: Optional[int] = None
     reused_from_questions: Optional[List[str]] = None
+    llm_assisted: Optional[bool] = None
+    generation_sources: Optional[List[str]] = None
     validation_options: Optional[dict] = None
 
 

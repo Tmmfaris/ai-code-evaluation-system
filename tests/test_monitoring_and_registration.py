@@ -3,6 +3,10 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import pytest
+
+import app as app_module
+from evaluator.question_rule_generator import merge_with_existing_profiles
 from evaluator.question_package.workflow import prepare_question_profiles_until_correct
 from app import (
     DETERMINISTIC_FINAL_FEEDBACK_TEMPLATES,
@@ -13,6 +17,20 @@ from app import (
     _repair_package_backed_feedback,
 )
 from schemas import QuestionSubmission
+
+
+@pytest.fixture(autouse=True)
+def _fast_register_llm(monkeypatch):
+    def _fake_llm(_prompt):
+        return """
+        {
+          "accepted_solutions": [],
+          "test_sets": {"positive": [], "negative": []},
+          "incorrect_patterns": []
+        }
+        """
+
+    monkeypatch.setattr("evaluator.question_rule_generator.call_llm", _fake_llm)
 
 
 def test_bad_package_detail_flags_generic_templates():
@@ -140,6 +158,224 @@ def test_register_supports_threshold_lowercase_and_second_element_questions():
     assert by_id["q3"]["review_required"] is False
 
 
+def test_register_supports_non_empty_collection_question():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_has_items",
+                "question": "Check if list has at least one element",
+                "model_answer": "def has_items(lst): return len(lst) > 0",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::non_empty_collection_check"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert package["package_confidence"] >= 0.9
+    assert any(
+        item.get("input") == "[[]]" and item.get("expected_output") == "false"
+        for item in (package.get("test_sets") or {}).get("negative", [])
+    )
+
+
+def test_register_supports_divisible_by_constant_question():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_div4",
+                "question": "Check if number is divisible by 4",
+                "model_answer": "def div4(n): return n % 4 == 0",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::divisible_by_constant"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert package["package_confidence"] >= 0.9
+    assert len((package.get("test_sets") or {}).get("negative") or []) >= 1
+    assert any(
+        item.get("pattern") == "return n % 2 == 0"
+        for item in (package.get("incorrect_patterns") or [])
+    )
+
+
+def test_register_supports_first_two_characters_question():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_first2",
+                "question": "Return first two characters of string",
+                "model_answer": "def first2(s): return s[:2]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::first_two_characters"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert package["package_confidence"] >= 0.9
+    assert any(
+        item.get("pattern") == "return s[0]"
+        for item in (package.get("incorrect_patterns") or [])
+    )
+
+
+def test_register_supports_list_length_equals_constant_question():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_len5",
+                "question": "Check if list length equals 5",
+                "model_answer": "def len5(lst): return len(lst) == 5",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::list_length_equals_constant"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert package["package_confidence"] >= 0.9
+    assert any(
+        item.get("input") == "[[0,1,2,3,4]]" and item.get("expected_output") == "true"
+        for item in (package.get("test_sets") or {}).get("positive", [])
+    )
+
+
+def test_boolean_expected_false_cases_are_rebucketed_to_negative_tests():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_div10_bucketing",
+                "question": "Check if number is divisible by 10",
+                "model_answer": "def div10(n): return n % 10 == 0",
+                "language": "python",
+            },
+            {
+                "question_id": "q_len5_bucketing",
+                "question": "Check if list length equals 5",
+                "model_answer": "def len5(lst): return len(lst) == 5",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    by_id = {item["question_id"]: item for item in packages}
+
+    for package in by_id.values():
+        positives = (package.get("test_sets") or {}).get("positive") or []
+        negatives = (package.get("test_sets") or {}).get("negative") or []
+        assert all(item.get("expected_output") != "false" for item in positives)
+        assert any(item.get("expected_output") == "false" for item in negatives)
+
+
+def test_hidden_tests_are_deduplicated_in_final_package_response():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_div10_no_dupes",
+                "question": "Check if number is divisible by 10",
+                "model_answer": "def div10(n): return n % 10 == 0",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    hidden_tests = (package.get("test_sets") or {}).get("positive", []) + (package.get("test_sets") or {}).get("negative", [])
+    keys = [(item.get("input"), item.get("expected_output"), item.get("description")) for item in hidden_tests]
+    assert len(keys) == len(set(keys))
+
+
+def test_register_supports_prefix_and_element_parameterized_families():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_first3",
+                "question": "Return first three characters of string",
+                "model_answer": "def first3(s): return s[:3]",
+                "language": "python",
+            },
+            {
+                "question_id": "q_third",
+                "question": "Return third element of list",
+                "model_answer": "def third(lst): return lst[2]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    by_id = {item["question_id"]: item for item in packages}
+    assert by_id["q_first3"]["template_family"] == "python::prefix_characters_constant"
+    assert by_id["q_first3"]["package_status"] in {"validated", "live"}
+    assert by_id["q_third"]["template_family"] == "python::element_at_index_constant"
+    assert by_id["q_third"]["package_status"] in {"validated", "live"}
+
+
+def test_register_sanitizes_lowercase_and_second_element_incorrect_pattern_feedback():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q2",
+                "question": "Return lowercase version of string",
+                "model_answer": "def lower(s): return s.lower()",
+                "language": "python",
+            },
+            {
+                "question_id": "q3",
+                "question": "Return second element of list",
+                "model_answer": "def second(lst): return lst[1]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    by_id = {item["question_id"]: item for item in packages}
+
+    lowercase_patterns = {
+        (item["pattern"], item["feedback"])
+        for item in by_id["q2"]["incorrect_patterns"]
+    }
+    second_element_patterns = {
+        (item["pattern"], item["feedback"])
+        for item in by_id["q3"]["incorrect_patterns"]
+    }
+
+    assert (
+        "def lower(s): return s.lower",
+        "Returning the lower method itself does not convert the input string. Call s.lower() to return the lowercase string.",
+    ) in lowercase_patterns
+    assert (
+        "def lower(s): return \"abc\"",
+        "Returning a constant string does not convert the input string to lowercase.",
+    ) in lowercase_patterns
+    assert (
+        "def second(lst): return lst",
+        "Returning the whole list does not return the second element. The task asks for a single item, so the function should return the value at index 1 instead of the entire list.",
+    ) in second_element_patterns
+    assert (
+        "def second(lst): return lst[0]",
+        "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0.",
+    ) in second_element_patterns
+
+
 def test_register_can_infer_specific_family_from_model_answer_for_new_wording():
     packages = prepare_question_profiles_until_correct(
         [
@@ -194,10 +430,426 @@ def test_register_uses_model_answer_derived_fallback_for_new_python_question_sha
     )
 
     package = packages[0]
-    assert package["template_family"] == "python::model_answer_derived"
+    assert package["template_family"] in {"python::model_answer_derived", "python::divisible_by_constant"}
     assert package["package_status"] in {"validated", "live"}
     assert package["review_required"] is False
     assert package["package_confidence"] >= 0.9
+
+
+def test_register_builds_oracle_backed_model_answer_derived_package_for_new_python_transform():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_fallback_transform",
+                "question": "Apply the faculty rule to the incoming value",
+                "model_answer": "def transform(n): return n + 5",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::model_answer_derived"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert len((package.get("test_sets") or {}).get("positive") or []) >= 2
+    assert len(package.get("accepted_solutions") or []) >= 1
+
+
+def test_register_marks_package_as_llm_assisted_when_llm_generation_contributes(monkeypatch):
+    def _fake_llm(_prompt):
+        return """
+        {
+          "accepted_solutions": ["return n > 10"],
+          "test_sets": {
+            "positive": [{"input": "[11]", "expected_output": "true", "description": "llm positive"}],
+            "negative": [{"input": "[10]", "expected_output": "false", "description": "llm negative"}]
+          },
+          "incorrect_patterns": [
+            {
+              "pattern": "return n >= 10",
+              "match_type": "contains",
+              "feedback": "Using >= includes 10.",
+              "suggestion": "Use n > 10.",
+              "score_cap": 20
+            }
+          ]
+        }
+        """
+
+    monkeypatch.setattr("evaluator.question_rule_generator.call_llm", _fake_llm)
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_llm_helped_threshold",
+                "question": "Check if number is greater than 10",
+                "model_answer": "def greater_10(n): return n > 10",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["llm_assisted"] is True
+    assert "llm_generation" in (package.get("generation_sources") or [])
+
+
+def test_register_accepts_fenced_json_as_llm_registration_contribution(monkeypatch):
+    monkeypatch.setattr(
+        "evaluator.question_rule_generator.call_llm",
+        lambda _prompt: """
+        ```json
+        {"accepted_solutions":[],"test_sets":{"positive":[],"negative":[]},"incorrect_patterns":[]}
+        ```
+        """,
+    )
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_fenced_llm_json",
+                "question": "Check if number is greater than 10",
+                "model_answer": "def greater_10(n): return n > 10",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["llm_assisted"] is True
+    assert "llm_generation" in (package.get("generation_sources") or [])
+    assert package["package_status"] in {"validated", "live"}
+
+
+def test_register_does_not_count_scoring_fallback_json_as_llm_package(monkeypatch):
+    monkeypatch.setattr(
+        "evaluator.question_rule_generator.call_llm",
+        lambda _prompt: """
+        {"score":50,"feedback":"fallback","concepts":{},"rubric":{"correctness":0}}
+        """,
+    )
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_scoring_fallback_not_package",
+                "question": "Check if the scoring fallback probe number is greater than 10",
+                "model_answer": "def scoring_fallback_probe(n): return n > 10",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["llm_assisted"] is False
+    assert package["package_status"] == "generated"
+    assert "GGUF assistance is required" in package["package_summary"]
+
+
+def test_register_uses_deterministic_primary_path_when_specific_package_is_exact(monkeypatch):
+    monkeypatch.setattr("evaluator.question_rule_generator.call_llm", lambda _prompt: "not valid json")
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_len5_deterministic_primary",
+                "question": "Check if list length equals 5",
+                "model_answer": "def len5(lst): return len(lst) == 5",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::list_length_equals_constant"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert package["llm_assisted"] is False
+    assert "GGUF assistance is required" not in (package.get("package_summary") or "")
+
+
+def test_register_uses_model_answer_analysis_for_new_shape_even_without_usable_llm(monkeypatch):
+    monkeypatch.setattr("evaluator.question_rule_generator.call_llm", lambda _prompt: "not valid json")
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_first3_deterministic_primary",
+                "question": "Return first three characters of string",
+                "model_answer": "def first3(s): return s[:3]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::prefix_characters_constant"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert package["llm_assisted"] is False
+    assert "GGUF assistance is required" not in (package.get("package_summary") or "")
+
+
+def test_register_uses_one_json_repair_call_for_malformed_gguf_output(monkeypatch):
+    responses = iter(
+        [
+            "Here is the package: accepted solution is n > 10",
+            '{"accepted_solutions":[],"test_sets":{"positive":[],"negative":[]},"incorrect_patterns":[]}',
+        ]
+    )
+
+    monkeypatch.setattr("evaluator.question_rule_generator.call_llm", lambda _prompt: next(responses))
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_llm_repair_package",
+                "question": "Check if number is greater than 10",
+                "model_answer": "def greater_10(n): return n > 10",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["llm_assisted"] is True
+    assert "llm_generation_repair" in (package.get("generation_sources") or [])
+    assert package["package_status"] in {"validated", "live"}
+
+
+def test_reused_from_questions_hides_internal_probe_questions():
+    merged = merge_with_existing_profiles(
+        {
+            "question_id": "q_clean_reuse",
+            "question": "Check if number is greater than 10",
+            "model_answer": "def greater_10(n): return n > 10",
+            "language": "python",
+        },
+        [
+            {
+                "question": "Check if the guardrail probe number is greater than 10",
+                "model_answer": "def guardrail_probe(n): return n > 10",
+                "language": "python",
+                "template_family": "python::greater_than_threshold",
+                "package_status": "validated",
+                "package_confidence": 1.0,
+                "review_required": False,
+            },
+            {
+                "question": "Check if the scoring fallback probe number is greater than 10",
+                "model_answer": "def scoring_fallback_probe(n): return n > 10",
+                "language": "python",
+                "template_family": "python::greater_than_threshold",
+                "package_status": "validated",
+                "package_confidence": 1.0,
+                "review_required": False,
+            },
+            {
+                "question": "Tell whether the value passes the cutoff",
+                "model_answer": "def passes_cutoff(n): return n > 10",
+                "language": "python",
+                "template_family": "python::greater_than_threshold",
+                "package_status": "validated",
+                "package_confidence": 1.0,
+                "review_required": False,
+            },
+        ],
+    )
+
+    assert "Tell whether the value passes the cutoff" in merged["reused_from_questions"]
+    assert all("probe" not in item.lower() for item in merged["reused_from_questions"])
+
+
+def test_exact_signature_does_not_reuse_wrong_specific_family_package():
+    merged = merge_with_existing_profiles(
+        {
+            "question_id": "q_same_signature_new_family",
+            "question": "Check if list has at least one element",
+            "model_answer": "def has_items(lst): return len(lst) > 0",
+            "language": "python",
+        },
+        [
+            {
+                "question": "Check if list has at least one element",
+                "model_answer": "def has_items(lst): return len(lst)",
+                "language": "python",
+                "template_family": "python::list_length",
+                "package_status": "validated",
+                "package_confidence": 1.0,
+                "review_required": False,
+                "test_sets": {
+                    "positive": [
+                        {"input": "[[1,2,3]]", "expected_output": "3", "description": "wrong stale length test"}
+                    ],
+                    "negative": [],
+                },
+                "incorrect_patterns": [
+                    {
+                        "pattern": "return len(lst)",
+                        "match_type": "contains",
+                        "feedback": "Returns length instead of boolean.",
+                        "suggestion": "Return a boolean.",
+                        "score_cap": 20,
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert merged["template_family"] == "python::non_empty_collection_check"
+    assert merged["test_sets"]["positive"] == []
+    assert merged["test_sets"]["negative"] == []
+    assert merged["incorrect_patterns"] == []
+
+
+def test_parameterized_family_reuse_does_not_cross_divisors():
+    merged = merge_with_existing_profiles(
+        {
+            "question_id": "q_div4_clean_reuse",
+            "question": "Check if number is divisible by 4",
+            "model_answer": "def div4(n): return n % 4 == 0",
+            "language": "python",
+        },
+        [
+            {
+                "question": "Check if number is divisible by 3",
+                "model_answer": "def div3(n): return n % 3 == 0",
+                "language": "python",
+                "template_family": "python::divisible_by_constant",
+                "package_status": "validated",
+                "package_confidence": 1.0,
+                "review_required": False,
+                "test_sets": {
+                    "positive": [
+                        {"input": "[3]", "expected_output": "true", "description": "divisible by 3 only"}
+                    ],
+                    "negative": [
+                        {"input": "[4]", "expected_output": "false", "description": "not divisible by 3"}
+                    ],
+                },
+            }
+        ],
+    )
+
+    assert merged["template_family"] == "python::divisible_by_constant"
+    assert merged["test_sets"]["positive"] == []
+    assert merged["test_sets"]["negative"] == []
+
+
+def test_parameterized_family_reuse_does_not_cross_length_constants():
+    merged = merge_with_existing_profiles(
+        {
+            "question_id": "q_len5_clean_reuse",
+            "question": "Check if list length equals 5",
+            "model_answer": "def len5(lst): return len(lst) == 5",
+            "language": "python",
+        },
+        [
+            {
+                "question": "Check if list length equals 3",
+                "model_answer": "def len3(lst): return len(lst) == 3",
+                "language": "python",
+                "template_family": "python::list_length_equals_constant",
+                "package_status": "validated",
+                "package_confidence": 1.0,
+                "review_required": False,
+                "test_sets": {
+                    "positive": [
+                        {"input": "[[0,1,2]]", "expected_output": "true", "description": "length three only"}
+                    ],
+                    "negative": [
+                        {"input": "[[0,1,2,3]]", "expected_output": "false", "description": "not length three"}
+                    ],
+                },
+            }
+        ],
+    )
+
+    assert merged["template_family"] == "python::list_length_equals_constant"
+    assert merged["test_sets"]["positive"] == []
+    assert merged["test_sets"]["negative"] == []
+
+
+def test_question_package_response_hides_stored_internal_probe_questions():
+    response = app_module._question_package_response(
+        {
+            "question_id": "q_clean_response",
+            "question": "Check if number is greater than 10",
+            "model_answer": "def greater_10(n): return n > 10",
+            "language": "python",
+            "profile": {
+                "language": "python",
+                "category": "general",
+                "task_type": "unknown",
+                "risk": "medium",
+                "markers": [],
+            },
+            "question_signature": "python::check if number is greater than 10",
+            "reused_from_questions": [
+                "Check if the guardrail probe number is greater than 10",
+                "Tell whether the value passes the cutoff",
+                "Check if the scoring fallback probe number is greater than 10",
+            ],
+            "validation_options": {
+                "reused_from_questions": [
+                    "Check if the guardrail probe number is greater than 10",
+                    "Tell whether the value passes the cutoff",
+                ]
+            },
+        }
+    )
+
+    assert response.reused_from_questions == ["Tell whether the value passes the cutoff"]
+    assert response.validation_options["reused_from_questions"] == ["Tell whether the value passes the cutoff"]
+
+
+def test_register_does_not_silently_accept_package_without_required_llm_assistance(monkeypatch):
+    monkeypatch.setattr("evaluator.question_rule_generator.call_llm", lambda _prompt: "not valid json")
+
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_no_llm_guardrail_probe",
+                "question": "Check if the guardrail probe number is greater than 10",
+                "model_answer": "def guardrail_probe(n): return n > 10",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["llm_assisted"] is False
+    assert package["package_status"] == "generated"
+    assert package["review_required"] is True
+    assert package["package_confidence"] < 0.9
+    assert "GGUF assistance is required" in package["package_summary"]
+
+
+def test_bad_package_detail_flags_missing_llm_assistance_for_registration():
+    detail = _build_bad_package_detail(
+        {
+            "question_id": "q-no-llm",
+            "question": "Check if number is greater than 10",
+            "package_status": "validated",
+            "package_confidence": 1.0,
+            "package_summary": "Validated package without llm flag.",
+            "review_required": False,
+            "template_family": "python::greater_than_threshold",
+            "llm_assisted": False,
+        }
+    )
+
+    assert "llm_assistance_missing" in detail["flags"]
+    assert "GGUF-assisted" in (detail["reason"] or "")
 
 
 def test_evaluation_bootstraps_missing_package_when_inline_context_is_provided():
@@ -212,6 +864,27 @@ def test_evaluation_bootstraps_missing_package_when_inline_context_is_provided()
     result = _evaluate_single_submission("student-bootstrap", submission, False, False, 1)
 
     assert "error" not in result
-    assert result["question_metadata"]["template_family"] == "python::model_answer_derived"
+    assert result["question_metadata"]["template_family"] in {"python::model_answer_derived", "python::divisible_by_constant"}
     assert result["question_metadata"]["package_status"] in {"validated", "live"}
+    assert result["data"].score == 100
+
+
+def test_evaluation_uses_inline_temporary_package_when_bootstrap_cannot_register(monkeypatch):
+    monkeypatch.setattr(app_module, "_try_bootstrap_package_from_inline_context", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "get_question_profile_fresh", lambda *args, **kwargs: None)
+
+    submission = QuestionSubmission(
+        question_id="q_inline_temp_eval",
+        question="Apply the faculty rule to the incoming value",
+        model_answer="def transform(n): return n + 5",
+        student_answer="def transform(n): return n + 5",
+        language="python",
+    )
+
+    result = _evaluate_single_submission("student-inline-temp", submission, False, False, 1)
+
+    assert "error" not in result
+    assert result["question_metadata"]["template_family"] == "python::model_answer_derived"
+    assert result["question_metadata"]["package_status"] == "validated"
+    assert result["question_metadata"]["inline_temporary_package"] is True
     assert result["data"].score == 100

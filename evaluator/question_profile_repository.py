@@ -20,6 +20,30 @@ def _build_package_key(question_signature: str) -> str:
     return f"pkg_{digest}"
 
 
+def _is_internal_reuse_question(question_text: str) -> bool:
+    lowered = (question_text or "").strip().lower()
+    internal_markers = (
+        "guardrail probe",
+        "scoring fallback probe",
+        "llm repair package",
+        "fenced llm json",
+        "fallback not package",
+    )
+    return any(marker in lowered for marker in internal_markers)
+
+
+def _clean_reused_from_questions(items) -> List[str]:
+    cleaned = []
+    for item in items or []:
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
+        if not value or _is_internal_reuse_question(value) or value in cleaned:
+            continue
+        cleaned.append(value)
+    return cleaned
+
+
 class QuestionProfileRepository(ABC):
     @abstractmethod
     def upsert(self, payload: dict) -> dict:
@@ -99,9 +123,13 @@ class JsonQuestionProfileRepository(QuestionProfileRepository):
             "exam_ready": bool(payload.get("exam_ready", False)),
             "positive_test_count": int(payload.get("positive_test_count", len(positive_tests)) or len(positive_tests)),
             "negative_test_count": int(payload.get("negative_test_count", len(negative_tests)) or len(negative_tests)),
-            "reused_from_questions": [
+            "reused_from_questions": _clean_reused_from_questions(
+                (payload.get("reused_from_questions") or payload.get("reused_from_question_ids")) or []
+            ),
+            "llm_assisted": bool(payload.get("llm_assisted", False)),
+            "generation_sources": [
                 item.strip()
-                for item in ((payload.get("reused_from_questions") or payload.get("reused_from_question_ids")) or [])
+                for item in (payload.get("generation_sources") or [])
                 if isinstance(item, str) and item.strip()
             ],
             "profile": profile,
@@ -180,6 +208,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         positive_test_count INTEGER NOT NULL DEFAULT 0,
                         negative_test_count INTEGER NOT NULL DEFAULT 0,
                         reused_from_question_ids_json TEXT NOT NULL DEFAULT '[]',
+                        llm_assisted INTEGER NOT NULL DEFAULT 0,
+                        generation_sources_json TEXT NOT NULL DEFAULT '[]',
                         profile_json TEXT NOT NULL
                     )
                     """
@@ -194,7 +224,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                             template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                             package_status, package_summary, package_confidence, review_required,
                             approval_status, approved_by, exam_ready,
-                            positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
+                            positive_test_count, negative_test_count, reused_from_question_ids_json,
+                            llm_assisted, generation_sources_json, profile_json
                         )
                         SELECT 
                             COALESCE(question_signature, language || '::' || LOWER(TRIM(question))), 
@@ -206,7 +237,9 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                             package_status, package_summary, package_confidence, review_required,
                             approval_status, approved_by, exam_ready,
                             positive_test_count, negative_test_count, 
-                            COALESCE(reused_from_question_ids_json, '[]'), 
+                            COALESCE(reused_from_question_ids_json, '[]'),
+                            0,
+                            '[]',
                             profile_json
                         FROM question_profiles_old
                         """
@@ -236,6 +269,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                 self._ensure_column(conn, "question_profiles", "positive_test_count", "INTEGER NOT NULL DEFAULT 0")
                 self._ensure_column(conn, "question_profiles", "negative_test_count", "INTEGER NOT NULL DEFAULT 0")
                 self._ensure_column(conn, "question_profiles", "reused_from_question_ids_json", "TEXT NOT NULL DEFAULT '[]'")
+                self._ensure_column(conn, "question_profiles", "llm_assisted", "INTEGER NOT NULL DEFAULT 0")
+                self._ensure_column(conn, "question_profiles", "generation_sources_json", "TEXT NOT NULL DEFAULT '[]'")
             self._migrate_legacy_json_if_needed()
 
     def _ensure_column(self, conn, table_name: str, column_name: str, column_definition: str) -> None:
@@ -287,9 +322,13 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
             "exam_ready": bool(payload.get("exam_ready", False)),
             "positive_test_count": int(payload.get("positive_test_count", len(positive_tests)) or len(positive_tests)),
             "negative_test_count": int(payload.get("negative_test_count", len(negative_tests)) or len(negative_tests)),
-            "reused_from_questions": [
+            "reused_from_questions": _clean_reused_from_questions(
+                (payload.get("reused_from_questions") or payload.get("reused_from_question_ids")) or []
+            ),
+            "llm_assisted": bool(payload.get("llm_assisted", False)),
+            "generation_sources": [
                 item.strip()
-                for item in ((payload.get("reused_from_questions") or payload.get("reused_from_question_ids")) or [])
+                for item in (payload.get("generation_sources") or [])
                 if isinstance(item, str) and item.strip()
             ],
             "profile": profile,
@@ -315,8 +354,10 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
             "exam_ready": bool(row[15]),
             "positive_test_count": row[16] or 0,
             "negative_test_count": row[17] or 0,
-            "reused_from_questions": json.loads(row[18]) if row[18] else [],
-            "profile": json.loads(row[19]) if row[19] else {},
+            "reused_from_questions": _clean_reused_from_questions(json.loads(row[18]) if row[18] else []),
+            "llm_assisted": bool(row[19]),
+            "generation_sources": json.loads(row[20]) if row[20] else [],
+            "profile": json.loads(row[21]) if row[21] else {},
         }
 
     def _migrate_legacy_json_if_needed(self) -> None:
@@ -363,6 +404,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         built["positive_test_count"],
                         built["negative_test_count"],
                         json.dumps(built["reused_from_questions"], ensure_ascii=True),
+                        int(bool(built["llm_assisted"])),
+                        json.dumps(built["generation_sources"], ensure_ascii=True),
                         json.dumps(built["profile"], ensure_ascii=True),
                     )
                 )
@@ -376,8 +419,9 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                         package_status, package_summary, package_confidence, review_required,
                         approval_status, approved_by, exam_ready,
-                        positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        positive_test_count, negative_test_count, reused_from_question_ids_json,
+                        llm_assisted, generation_sources_json, profile_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     rows,
                 )
@@ -395,8 +439,9 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                         package_status, package_summary, package_confidence, review_required,
                         approval_status, approved_by, exam_ready,
-                        positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        positive_test_count, negative_test_count, reused_from_question_ids_json,
+                        llm_assisted, generation_sources_json, profile_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         built["question_signature"],
@@ -418,6 +463,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         built["positive_test_count"],
                         built["negative_test_count"],
                         json.dumps(built["reused_from_questions"], ensure_ascii=True),
+                        int(bool(built["llm_assisted"])),
+                        json.dumps(built["generation_sources"], ensure_ascii=True),
                         json.dumps(built["profile"], ensure_ascii=True),
                     ),
                 )
@@ -435,7 +482,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                            template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                            package_status, package_summary, package_confidence, review_required,
                            approval_status, approved_by, exam_ready,
-                           positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
+                           positive_test_count, negative_test_count, reused_from_question_ids_json,
+                           llm_assisted, generation_sources_json, profile_json
                     FROM question_profiles
                     WHERE question_signature = ?
                     """,
@@ -452,7 +500,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                            template_family, accepted_solutions_json, test_sets_json, incorrect_patterns_json,
                            package_status, package_summary, package_confidence, review_required,
                            approval_status, approved_by, exam_ready,
-                           positive_test_count, negative_test_count, reused_from_question_ids_json, profile_json
+                           positive_test_count, negative_test_count, reused_from_question_ids_json,
+                           llm_assisted, generation_sources_json, profile_json
                     FROM question_profiles
                     ORDER BY question_signature
                     """

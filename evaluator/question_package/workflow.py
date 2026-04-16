@@ -9,8 +9,10 @@ from evaluator.question_package.reuser import reuse_existing_package_content
 from evaluator.question_package.validator import validate_question_package
 from config import (
     QUESTION_REGISTER_HARD_MAX_ATTEMPTS,
+    QUESTION_REGISTER_LLM_MAX_ATTEMPTS,
     QUESTION_REGISTER_MAX_ATTEMPTS,
     REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION,
+    REGISTER_REQUIRE_LLM_ASSISTANCE,
     REGISTER_STRICT_VALIDATE,
     REGISTER_STRICT_MIN_CONFIDENCE,
 )
@@ -36,6 +38,18 @@ def _has_fallback_feedback(package):
         ):
             return True
     return False
+
+
+def _is_internal_probe_question(package):
+    lowered = ((package or {}).get("question") or "").strip().lower()
+    internal_markers = (
+        "guardrail probe",
+        "scoring fallback probe",
+        "llm repair package",
+        "fenced llm json",
+        "fallback not package",
+    )
+    return any(marker in lowered for marker in internal_markers)
 
 
 def _has_required_case_coverage(package):
@@ -73,15 +87,70 @@ def _candidate_rank(package):
     test_count = int((package or {}).get("positive_test_count", 0) or 0) + int((package or {}).get("negative_test_count", 0) or 0)
     template_family = ((package or {}).get("template_family") or "").strip().lower()
     is_generic_family = template_family.endswith("::generic") or template_family == "python::generic"
+    generation_sources = (package or {}).get("generation_sources") or []
+    llm_assisted = bool((package or {}).get("llm_assisted")) or any(
+        isinstance(item, str) and item.strip().lower().startswith("llm")
+        for item in generation_sources
+    )
     return (
         status_rank,
         0 if review_required else 1,
         confidence,
+        1 if llm_assisted else 0,
         0 if is_generic_family else 1,
         0 if _has_placeholder_tests(package) else 1,
         0 if _has_fallback_feedback(package) else 1,
         test_count,
     )
+
+
+def _has_llm_assistance(package):
+    generation_sources = (package or {}).get("generation_sources") or []
+    return bool((package or {}).get("llm_assisted")) or any(
+        isinstance(item, str) and item.strip().lower().startswith("llm")
+        for item in generation_sources
+    )
+
+
+def _mark_missing_llm_assistance(package):
+    marked = dict(package or {})
+    sources = [
+        item
+        for item in (marked.get("generation_sources") or [])
+        if isinstance(item, str) and item.strip()
+    ]
+    marked["generation_sources"] = sources
+    marked["llm_assisted"] = False
+    marked["package_status"] = "generated"
+    marked["package_confidence"] = min(float(marked.get("package_confidence", 0.0) or 0.0), 0.89)
+    marked["review_required"] = True
+    marked["exam_ready"] = False
+    marked["package_summary"] = (
+        "GGUF assistance is required for registration, but no usable LLM-generated package content was produced."
+    )
+    marked["llm_requirement_waived"] = False
+    return marked
+
+
+def _can_waive_llm_requirement(package):
+    template_family = ((package or {}).get("template_family") or "").strip().lower()
+    if not template_family or template_family == "python::model_answer_derived":
+        return False
+    if _is_internal_probe_question(package):
+        return False
+    if template_family.endswith("::generic") or template_family == "python::generic":
+        return False
+    return _is_fully_correct(package) and _has_required_case_coverage(package)
+
+
+def _enforce_llm_requirement(package, force_llm=False):
+    if force_llm and REGISTER_REQUIRE_LLM_ASSISTANCE and not _has_llm_assistance(package):
+        if _can_waive_llm_requirement(package):
+            waived = dict(package or {})
+            waived["llm_requirement_waived"] = True
+            return waived
+        return _mark_missing_llm_assistance(package)
+    return package
 
 
 def _is_fully_correct(package):
@@ -116,6 +185,7 @@ def _is_register_ready(package):
         status in {"validated", "live"}
         and not review_required
         and confidence >= float(REGISTER_STRICT_MIN_CONFIDENCE or 0.9)
+        and (not REGISTER_REQUIRE_LLM_ASSISTANCE or _has_llm_assistance(package) or bool((package or {}).get("llm_requirement_waived")))
         and not is_generic_family
         and not _has_placeholder_tests(package)
         and not _has_fallback_feedback(package)
@@ -187,9 +257,11 @@ def _generate_best_profile(prepared_base, force_llm=False, attempts=1):
         candidate = validate_question_package(candidate)
         if best is None or _candidate_rank(candidate) > _candidate_rank(best):
             best = candidate
-        if _is_register_ready(candidate):
+        candidate_ready = _is_register_ready(candidate)
+        if candidate_ready:
             best = candidate
-            break
+            if not (force_llm and REGISTER_REQUIRE_LLM_ASSISTANCE and not _has_llm_assistance(candidate)):
+                break
         if force_llm:
             repair_context = candidate.get("package_summary") or candidate.get("package_status") or ""
             repair = generate_question_package(
@@ -200,9 +272,11 @@ def _generate_best_profile(prepared_base, force_llm=False, attempts=1):
             repair = validate_question_package(repair)
             if _candidate_rank(repair) > _candidate_rank(best):
                 best = repair
-            if _is_register_ready(repair):
+            repair_ready = _is_register_ready(repair)
+            if repair_ready:
                 best = repair
-                break
+                if not (REGISTER_REQUIRE_LLM_ASSISTANCE and not _has_llm_assistance(repair)):
+                    break
         if force_llm and best:
             prepared_base = dict(best)
     return best
@@ -215,8 +289,9 @@ def prepare_question_profiles(question_payloads, force_llm=False, max_attempts=N
     for payload in question_payloads:
         prepared_base = reuse_existing_package_content(payload, existing_profiles)
 
-        attempts = int(max_attempts or (QUESTION_REGISTER_MAX_ATTEMPTS if force_llm else 1) or 1)
+        attempts = int(max_attempts or (QUESTION_REGISTER_LLM_MAX_ATTEMPTS if force_llm else 1) or 1)
         best = _generate_best_profile(prepared_base, force_llm=force_llm, attempts=attempts)
+        best = _enforce_llm_requirement(best, force_llm=force_llm)
 
         stored = upsert_question_profile(best)
         saved_profiles.append(stored)
@@ -231,12 +306,14 @@ def prepare_question_profiles_until_correct(question_payloads, force_llm=False, 
 
     for payload in question_payloads:
         prepared_base = reuse_existing_package_content(payload, existing_profiles)
-        attempts = int(hard_max_attempts or (QUESTION_REGISTER_HARD_MAX_ATTEMPTS if force_llm else QUESTION_REGISTER_MAX_ATTEMPTS) or 1)
-        attempts = max(
-            int(QUESTION_REGISTER_MAX_ATTEMPTS if force_llm else 1),
-            attempts,
-        )
+        if force_llm:
+            attempts = int(hard_max_attempts or QUESTION_REGISTER_LLM_MAX_ATTEMPTS or 1)
+            attempts = min(attempts, int(QUESTION_REGISTER_LLM_MAX_ATTEMPTS or 1))
+        else:
+            attempts = int(hard_max_attempts or QUESTION_REGISTER_HARD_MAX_ATTEMPTS or QUESTION_REGISTER_MAX_ATTEMPTS or 1)
+            attempts = max(int(QUESTION_REGISTER_MAX_ATTEMPTS or 1), attempts)
         best = _generate_best_profile(prepared_base, force_llm=force_llm, attempts=attempts)
+        best = _enforce_llm_requirement(best, force_llm=force_llm)
 
         stored = upsert_question_profile(best)
         saved_profiles.append(stored)

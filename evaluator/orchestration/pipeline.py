@@ -93,8 +93,11 @@ def _maybe_generate_llm_feedback(
     structure_analysis,
     fallback_feedback,
     fallback_improvements,
+    allow_llm_feedback=True,
     rag_context=None,
 ):
+    if not allow_llm_feedback:
+        return parsed_llm, False
     if not LLM_GENERATE_FEEDBACK_ALWAYS or not is_llm_available():
         return parsed_llm, False
     if language in {"python", "java", "html", "javascript"} and not (syntax_result or {}).get("valid", True):
@@ -197,6 +200,7 @@ def _match_package_incorrect_pattern(student_answer, pattern_item):
     code = (student_answer or "")
     normalized_code = "".join(code.lower().split())
     match_type = ((pattern_item or {}).get("match_type") or "contains").lower()
+    normalized_pattern = "".join(pattern.lower().split())
 
     if match_type == "regex":
         try:
@@ -204,7 +208,11 @@ def _match_package_incorrect_pattern(student_answer, pattern_item):
         except re.error:
             return False
     if match_type == "normalized_contains":
-        return "".join(pattern.lower().split()) in normalized_code
+        return normalized_pattern in normalized_code
+    if re.fullmatch(r"return(?:true|false|[a-z_][a-z0-9_]*|len\([^)]+\))", normalized_pattern):
+        return normalized_code == normalized_pattern or normalized_code.endswith(normalized_pattern)
+    if re.fullmatch(r"def[a-z_][a-z0-9_]*\([^)]*\):return(?:true|false|[a-z_][a-z0-9_]*|len\([^)]+\))", normalized_pattern):
+        return normalized_code == normalized_pattern
     return pattern.lower() in code.lower()
 
 
@@ -482,6 +490,7 @@ def evaluate_submission(
                 structure_analysis=structure_analysis,
                 fallback_feedback=parsed_llm.get("feedback", ""),
                 fallback_improvements=parsed_llm.get("improvements", ""),
+                allow_llm_feedback=False,
                 rag_context=(
                     "Exact match: the student answer matches a known correct solution. "
                     "Confirm correctness explicitly and avoid 'different approach' phrasing."
@@ -721,6 +730,7 @@ def evaluate_submission(
                 structure_analysis=structure_analysis,
                 fallback_feedback=fallback_feedback,
                 fallback_improvements=fallback_improvements,
+                allow_llm_feedback=False,
                 rag_context=(
                     "Deterministic evidence is available from hidden tests or rule findings. "
                     "Use it as the primary basis for feedback. Do not introduce new requirements."
@@ -867,7 +877,7 @@ def evaluate_submission(
             parsed_llm.get("improvements", ""),
             "",
         )
-        if LLM_REPHRASE_FEEDBACK:
+        if LLM_REPHRASE_FEEDBACK and not package_backed and evaluation_mode not in {"exact_match", "deterministic_shortcut", "rule_only", "package_deterministic", "package_rule_only"}:
             rephrased_feedback, rephrased_improvements = llm_comparator.rephrase_feedback_with_llm(
                 question=question,
                 language=language,
