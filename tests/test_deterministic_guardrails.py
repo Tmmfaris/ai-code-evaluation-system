@@ -100,6 +100,30 @@ def _register_core_packages():
             "language": "python",
         },
         {
+            "question_id": "q_last_two_characters",
+            "question": "Return last two characters of string",
+            "model_answer": "def last2(s): return s[-2:]",
+            "language": "python",
+        },
+        {
+            "question_id": "q_middle_character",
+            "question": "Return middle character of string (assume odd length)",
+            "model_answer": "def middle(s): return s[len(s)//2]",
+            "language": "python",
+        },
+        {
+            "question_id": "q_list_contains_five",
+            "question": "Check if list contains value 5",
+            "model_answer": "def has5(lst): return 5 in lst",
+            "language": "python",
+        },
+        {
+            "question_id": "q_list_length_less_than_four",
+            "question": "Check if list length is less than 4",
+            "model_answer": "def small(lst): return len(lst) < 4",
+            "language": "python",
+        },
+        {
             "question_id": "q_third_element",
             "question": "Return third element of list",
             "model_answer": "def third(lst): return lst[2]",
@@ -132,6 +156,10 @@ def test_registered_packages_are_specific_and_ready():
     assert package_map["q_first_two_characters"]["template_family"] == "python::first_two_characters"
     assert package_map["q_list_length_equals_five"]["template_family"] == "python::list_length_equals_constant"
     assert package_map["q_first_three_characters"]["template_family"] == "python::prefix_characters_constant"
+    assert package_map["q_last_two_characters"]["template_family"] == "python::suffix_characters_constant"
+    assert package_map["q_middle_character"]["template_family"] == "python::middle_character"
+    assert package_map["q_list_contains_five"]["template_family"] == "python::list_contains_constant"
+    assert package_map["q_list_length_less_than_four"]["template_family"] == "python::list_length_comparison_constant"
     assert package_map["q_third_element"]["template_family"] == "python::element_at_index_constant"
 
     for item in packages:
@@ -329,6 +357,16 @@ def test_expanded_positive_feedback_stays_explanatory():
         ),
         (
             QuestionSubmission(
+                question_id="q_divisible_by_seven_zero_case",
+                question="Check if number is multiple of 7",
+                model_answer="def mult7(n): return n % 7 == 0",
+                student_answer="def mult7(n): return n % 7 == 0 if n != 0 else False",
+                language="python",
+            ),
+            "zero is also divisible by 7",
+        ),
+        (
+            QuestionSubmission(
                 question_id="q_lowercase_string",
                 question="Return lowercase version of string",
                 model_answer="def lower(s): return s.lower()",
@@ -456,6 +494,136 @@ def test_expanded_positive_feedback_stays_explanatory():
                 language="python",
             ),
             "returning fewer than 3 characters does not satisfy the requirement to return the first 3 characters",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_middle_character",
+                question="Return middle character of string (assume odd length)",
+                model_answer="def middle(s): return s[len(s)//2]",
+                student_answer="def middle(s): return s[len(s)//2]",
+                language="python",
+            ),
+            "the function correctly returns the middle character of the string",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_middle_character",
+                question="Return middle character of string (assume odd length)",
+                model_answer="def middle(s): return s[len(s)//2]",
+                student_answer="def middle(s): return s[0]",
+                language="python",
+            ),
+            "returning the first character does not satisfy the requirement to return the middle character",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_list_contains_five",
+                question="Check if list contains value 5",
+                model_answer="def has5(lst): return 5 in lst",
+                student_answer="def has5(lst): return 5 in lst",
+                language="python",
+            ),
+            "the function correctly checks whether the list contains 5",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_list_contains_five",
+                question="Check if list contains value 5",
+                model_answer="def has5(lst): return 5 in lst",
+                student_answer="def has5(lst): return True",
+                language="python",
+            ),
+            "always returning true does not check whether the list actually contains 5",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_list_contains_five",
+                question="Check if list contains value 5",
+                model_answer="def has5(lst): return 5 in lst",
+                student_answer="def has5(lst): return lst",
+                language="python",
+            ),
+            "returning the list itself does not answer the yes-or-no membership question",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_last_two_characters",
+                question="Return last two characters of string",
+                model_answer="def last2(s): return s[-2:]",
+                student_answer="def last2(s): return s[-2:]",
+                language="python",
+            ),
+            "the function correctly returns the last 2 characters of the string",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_last_two_characters",
+                question="Return last two characters of string",
+                model_answer="def last2(s): return s[-2:]",
+                student_answer="def last2(s): return s[len(s)-2:]",
+                language="python",
+            ),
+            "the function correctly returns the last 2 characters of the string",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_list_length_less_than_four",
+                question="Check if list length is less than 4",
+                model_answer="def small(lst): return len(lst) < 4",
+                student_answer="def small(lst): return len(lst) <= 4",
+                language="python",
+            ),
+            "using <= incorrectly includes lists of length 4",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_list_length_less_than_four",
+                question="Check if list length is less than 4",
+                model_answer="def small(lst): return len(lst) < 4",
+                student_answer="def small(lst): return False",
+                language="python",
+            ),
+            "always returning false does not actually compare the list length",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_list_length_less_than_four",
+                question="Check if list length is less than 4",
+                model_answer="def small(lst): return len(lst) < 4",
+                student_answer="def small(lst): return lst",
+                language="python",
+            ),
+            "returning the list itself does not answer whether its length satisfies the required comparison",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_last_two_characters",
+                question="Return last two characters of string",
+                model_answer="def last2(s): return s[-2:]",
+                student_answer="def last2(s): return s[:2]",
+                language="python",
+            ),
+            "returning the first 2 characters does not satisfy the requirement to return the last 2 characters",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_last_two_characters",
+                question="Return last two characters of string",
+                model_answer="def last2(s): return s[-2:]",
+                student_answer="def last2(s): return s[-1:]",
+                language="python",
+            ),
+            "returning only the last character does not satisfy the requirement to return the last 2 characters",
+        ),
+        (
+            QuestionSubmission(
+                question_id="q_last_two_characters",
+                question="Return last two characters of string",
+                model_answer="def last2(s): return s[-2:]",
+                student_answer="def last2(s): return s[:-2]",
+                language="python",
+            ),
+            "returning everything except the last 2 characters does not satisfy the requirement to return the suffix itself",
         ),
         (
             QuestionSubmission(

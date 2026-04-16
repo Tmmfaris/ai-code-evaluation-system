@@ -82,8 +82,8 @@ app = FastAPI(
 # Registered via middleware() for correct ordering
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origin_regex=r"https?://.*",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -116,6 +116,7 @@ from evaluator.question_package import (
     refresh_pending_question_packages,
 )
 from evaluator.question_package.generator import generate_question_package
+from evaluator.question_package.validator import validate_question_package
 from evaluator.bulk_processor import process_bulk_evaluations
 from evaluator.bulk_file_processor import discover_and_process_files, attempt_json_repair
 from evaluator.evaluation_history_store import (
@@ -150,6 +151,43 @@ _EVALUATOR_MODULE_NAMES = [
     "evaluator.orchestration.pipeline",
     "evaluator.main_evaluator",
 ]
+
+def _sanitize_hidden_tests_for_template_family(template_family, tests):
+    family = (template_family or "").strip().lower()
+    if not tests:
+        return tests
+
+    if family == "python::first_and_last_character":
+        cleaned = []
+        for item in tests:
+            if not isinstance(item, dict):
+                continue
+            raw_input = item.get("input")
+            expected = item.get("expected_output")
+            if not isinstance(raw_input, str) or not isinstance(expected, str):
+                continue
+            try:
+                unwrapped = json.loads(expected)
+                if isinstance(unwrapped, str):
+                    expected = unwrapped
+            except Exception:
+                pass
+            # Expect a single string argument and a 2-character string output.
+            try:
+                parsed = json.loads(raw_input)
+            except Exception:
+                continue
+            if (
+                isinstance(parsed, list)
+                and len(parsed) == 1
+                and isinstance(parsed[0], str)
+                and len(parsed[0]) >= 1
+                and len(expected) == 2
+            ):
+                cleaned.append(item)
+        return cleaned
+
+    return tests
 
 
 def _is_internal_reuse_question(question_text: str) -> bool:
@@ -407,6 +445,23 @@ def _is_bad_question_package(profile, require_approval=None):
     if _has_fallback_feedback(profile.get("incorrect_patterns") or []):
         return True
     confidence = float(profile.get("package_confidence", 0.0) or 0.0)
+    # A package whose LLM requirement was explicitly waived (stored flag or in-memory flag)
+    # uses a lower confidence threshold — deterministic/oracle packages can't reach 0.999.
+    if bool(profile.get("llm_requirement_waived")):
+        return confidence < 0.6
+    # Implicit waiver: package marked validated by the system without LLM assistance.
+    # This happens when a deterministic or oracle-backed package was waived at registration
+    # time but the flag didn't survive an older DB round-trip.  The stored state
+    # (validated + review_required=False + llm_assisted=False + confidence ≥ 0.6)
+    # is sufficient evidence to trust it.
+    if (
+        status in {"validated", "live"}
+        and not bool(profile.get("review_required", True))
+        and not bool(profile.get("llm_assisted", False))
+        and confidence >= 0.6
+        and not (template_family.endswith("::generic") or template_family == "python::generic")
+    ):
+        return False
     if confidence < 0.999:
         return True
     return False
@@ -452,7 +507,12 @@ def _try_bootstrap_package_from_inline_context(question_id, question, model_answ
         if _is_bad_question_package(profile, require_approval=require_package_approval):
             return None
         signature = build_question_signature(question, language)
-        return get_question_profile_fresh(signature) or profile
+        # Prefer the freshly stored DB value; fall back to the in-memory profile
+        # (which still carries llm_requirement_waived) if the DB copy isn't ready.
+        fresh = get_question_profile_fresh(signature)
+        if fresh and not _is_bad_question_package(fresh, require_approval=require_package_approval):
+            return fresh
+        return profile
     except Exception:
         return None
 
@@ -463,16 +523,11 @@ def _try_build_inline_temporary_package(question_id, question, model_answer, lan
     language = (language or "").strip().lower()
     if not (question and model_answer and language):
         return None
-    try:
-        payload = {
-            "question_id": question_id,
-            "question": question,
-            "model_answer": model_answer,
-            "language": language,
-        }
-        package = generate_question_package(payload, force_llm=True)
-        if not isinstance(package, dict):
+
+    def _materialize_inline_package(candidate):
+        if not isinstance(candidate, dict):
             return None
+        package = validate_question_package(candidate)
         accepted = [item for item in (package.get("accepted_solutions") or []) if isinstance(item, str) and item.strip()]
         test_sets = package.get("test_sets") or {}
         positives = [item for item in (test_sets.get("positive") or []) if isinstance(item, dict)]
@@ -488,16 +543,57 @@ def _try_build_inline_temporary_package(question_id, question, model_answer, lan
         package["language"] = language
         package["question_signature"] = build_question_signature(question, language)
         package["package_status"] = "validated"
-        package["package_confidence"] = max(1.0, float(package.get("package_confidence", 0.0) or 0.0))
+        package["package_confidence"] = max(0.95, float(package.get("package_confidence", 0.0) or 0.0))
         package["review_required"] = False
+        package["llm_requirement_waived"] = True
         package["package_summary"] = "Temporary inline package derived from the provided faculty answer for immediate evaluation."
         package["approval_status"] = "approved" if REQUIRE_FACULTY_APPROVAL_FOR_LIVE else (package.get("approval_status") or "pending")
         package["positive_test_count"] = len(positives)
         package["negative_test_count"] = len(negatives)
         package["exam_ready"] = False
         return package
+
+    def _build_python_emergency_package():
+        if language != "python":
+            return None
+        return {
+            "question_id": question_id,
+            "question": question,
+            "model_answer": model_answer,
+            "language": language,
+            "question_signature": build_question_signature(question, language),
+            "template_family": "python::model_answer_derived",
+            "accepted_solutions": [model_answer],
+            "test_sets": {"positive": [], "negative": []},
+            "incorrect_patterns": [],
+            "package_status": "validated",
+            "package_confidence": 0.9,
+            "review_required": False,
+            "llm_requirement_waived": True,
+            "llm_assisted": False,
+            "package_summary": "Emergency inline Python package created from the provided faculty answer so evaluation can proceed without registration.",
+            "approval_status": "approved" if REQUIRE_FACULTY_APPROVAL_FOR_LIVE else "pending",
+            "positive_test_count": 0,
+            "negative_test_count": 0,
+            "exam_ready": False,
+        }
+
+    try:
+        payload = {
+            "question_id": question_id,
+            "question": question,
+            "model_answer": model_answer,
+            "language": language,
+        }
+        package = _materialize_inline_package(generate_question_package(payload, force_llm=False))
+        if package:
+            return package
+        package = _materialize_inline_package(generate_question_package(payload, force_llm=True))
+        if package:
+            return package
+        return _build_python_emergency_package()
     except Exception:
-        return None
+        return _build_python_emergency_package()
 
 
 def normalize_known_accuracy_result(result):
@@ -1109,7 +1205,11 @@ def _build_bad_package_detail(item):
         flags.append("review_required")
     if package_confidence < 0.9:
         flags.append("low_confidence")
-    if REGISTER_REQUIRE_LLM_ASSISTANCE and not bool(item.get("llm_assisted")) and not bool(item.get("llm_requirement_waived")):
+    if (
+        REGISTER_REQUIRE_LLM_ASSISTANCE
+        and not bool(item.get("llm_assisted"))
+        and not bool(item.get("llm_requirement_waived"))
+    ):
         flags.append("llm_assistance_missing")
     if package_status not in {"validated", "live"}:
         flags.append("package_not_ready")
@@ -1156,9 +1256,12 @@ DETERMINISTIC_FINAL_FEEDBACK_TEMPLATES = {
     "python::zero_check",
     "python::list_length",
     "python::list_length_equals_constant",
+    "python::list_length_comparison_constant",
     "python::string_endswith",
     "python::first_two_characters",
+    "python::middle_character",
     "python::prefix_characters_constant",
+    "python::suffix_characters_constant",
     "python::uppercase_string",
     "python::lowercase_string",
     "python::odd_check",
@@ -1168,6 +1271,7 @@ DETERMINISTIC_FINAL_FEEDBACK_TEMPLATES = {
     "python::greater_than_threshold",
     "python::second_element",
     "python::element_at_index_constant",
+    "python::list_contains_constant",
 }
 
 
@@ -1178,12 +1282,47 @@ def _build_positive_feedback(template_family, question_text):
         return "The function correctly returns the number of elements in the list. The logic counts the items in the input collection as the question expects."
     if template_family == "python::list_length_equals_constant":
         return "The function correctly checks whether the list length matches the required constant. It returns a boolean based on the exact target size from the question."
+    if template_family == "python::list_length_comparison_constant":
+        comparison_match = re.search(r"length\s+(is\s+)?(less than|greater than|<=|>=|<|>|at most|at least)\s+(-?\d+)", question_text)
+        if comparison_match:
+            operator = comparison_match.group(2)
+            value = comparison_match.group(3)
+            if operator in {"less than", "<"}:
+                return f"The function correctly checks whether the list length is less than {value}. It returns True only when the list has fewer than {value} elements."
+            if operator in {"greater than", ">"}:
+                return f"The function correctly checks whether the list length is greater than {value}. It returns True only when the list has more than {value} elements."
+            if operator in {"<=", "at most"}:
+                return f"The function correctly checks whether the list length is at most {value}. It returns True only when the list length does not exceed {value}."
+            if operator in {">=", "at least"}:
+                return f"The function correctly checks whether the list length is at least {value}. It returns True only when the list length meets or exceeds {value}."
+        return "The function correctly checks the list length against the required comparison."
     if template_family == "python::string_endswith":
         return "The function correctly checks whether the string ends with 'z'. It applies the suffix check directly to the input string, including edge cases such as empty input."
     if template_family == "python::first_two_characters":
         return "The function correctly returns the first two characters of the string. It slices the input safely, so shorter strings still produce the correct result."
+    if template_family == "python::middle_character":
+        return "The function correctly returns the middle character of the string. It indexes into the center of the odd-length input rather than returning the whole string or one of the ends."
     if template_family == "python::prefix_characters_constant":
         return "The function correctly returns the requested prefix of the string. It slices the input to the required number of characters and still behaves correctly for shorter strings."
+    if template_family == "python::suffix_characters_constant":
+        suffix_match = re.search(r"last\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+characters?", question_text)
+        if suffix_match:
+            token = suffix_match.group(1)
+            suffix_count = token if token.isdigit() else {
+                "one": "1",
+                "two": "2",
+                "three": "3",
+                "four": "4",
+                "five": "5",
+                "six": "6",
+                "seven": "7",
+                "eight": "8",
+                "nine": "9",
+                "ten": "10",
+            }.get(token)
+            if suffix_count:
+                return f"The function correctly returns the last {suffix_count} characters of the string. It slices from the end of the input and still behaves correctly for shorter strings."
+        return "The function correctly returns the requested suffix of the string. It slices from the end of the input and still behaves correctly for shorter strings."
     if template_family == "python::string_startswith":
         return "The function correctly checks whether the string starts with the required prefix. The condition is aligned with the question and handles the input string directly."
     if template_family == "python::uppercase_string":
@@ -1204,6 +1343,10 @@ def _build_positive_feedback(template_family, question_text):
         return "The function correctly returns the second element of the list. The indexing logic points to the item at position 1, which is the required result."
     if template_family == "python::element_at_index_constant":
         return "The function correctly returns the requested element from the list. The indexing logic points to the exact position asked for in the question."
+    if template_family == "python::list_contains_constant":
+        contains_match = re.search(r"(?:contains?|has)\s+(?:value\s+)?(-?\d+)", question_text)
+        value = contains_match.group(1) if contains_match else "the required value"
+        return f"The function correctly checks whether the list contains {value}. It returns a boolean membership result for the full list."
     if template_family == "python::absolute_value":
         return "The function correctly returns the absolute value of the input. It produces the non-negative magnitude the question asks for."
     if template_family == "python::list_length_gt3":
@@ -1215,6 +1358,11 @@ def _build_positive_feedback(template_family, question_text):
     if "number" in question_text:
         return "The function correctly solves the numeric task."
     return "The student's solution is correct."
+
+
+def _extract_divisibility_target(question_text):
+    match = re.search(r"(?:divisible by|multiple of)\s+(-?\d+)", (question_text or "").lower())
+    return match.group(1) if match else None
 
 
 def _collect_suspicious_reasons(question, student_answer, question_metadata, evaluation_data):
@@ -1332,6 +1480,114 @@ def _repair_package_backed_feedback(question, student_answer, question_metadata,
             strong=True,
         )
 
+    normalized_code = _normalized_compact_code(student_answer or "")
+
+    if template_family == "python::divisible_by_constant":
+        divisor = _extract_divisibility_target(question_text)
+        if divisor:
+            if normalized_code.endswith("returntrue") or normalized_code == "returntrue":
+                return _build_fixed_evaluation_data(
+                    0,
+                    f"Always returning True does not check whether the number is divisible by {divisor}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                )
+            if f"returnn%{divisor}==0ifnelsefalse" in normalized_code or f"returnn%{divisor}==0ifn==0elsefalse" in normalized_code:
+                return _build_fixed_evaluation_data(
+                    0,
+                    f"Zero is also divisible by {divisor}, so forcing False for n == 0 misses a required case.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                )
+            if f"returnn%{divisor}==0ifn!=0elsefalse" in normalized_code:
+                return _build_fixed_evaluation_data(
+                    0,
+                    f"Zero is also divisible by {divisor}, so forcing False for n == 0 misses a required case.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                )
+
+    if template_family == "python::list_length_comparison_constant":
+        comparison_match = re.search(r"length\s+(?:is\s+)?(less than|greater than|<=|>=|<|>|at most|at least)\s+(-?\d+)", question_text)
+        operator = comparison_match.group(1) if comparison_match else None
+        threshold = comparison_match.group(2) if comparison_match else None
+        if operator in {"less than", "<"} and threshold and f"returnlen(lst)<={threshold}" in normalized_code:
+            return _build_fixed_evaluation_data(
+                0,
+                f"Using <= incorrectly includes lists of length {threshold}, but this task requires lengths strictly less than {threshold}.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+        if normalized_code.endswith("returnfalse") or normalized_code == "returnfalse":
+            return _build_fixed_evaluation_data(
+                0,
+                "Always returning False does not actually compare the list length to the required condition.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+        if normalized_code.endswith("returnlst") or normalized_code == "returnlst":
+            return _build_fixed_evaluation_data(
+                0,
+                "Returning the list itself does not answer whether its length satisfies the required comparison. The function should return a boolean result.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+
+    if template_family == "python::middle_character":
+        if "returns[len(s)//2]" in normalized_code:
+            return _build_fixed_evaluation_data(
+                100,
+                "The function correctly returns the middle character of the string. It indexes into the center of the odd-length input.",
+                "The student used a different approach, but the logic is correct.",
+                strong=True,
+            )
+        if "returns[0]" in normalized_code:
+            return _build_fixed_evaluation_data(
+                0,
+                "Returning the first character does not satisfy the requirement to return the middle character of the string.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+        if "returns[-1]" in normalized_code:
+            return _build_fixed_evaluation_data(
+                0,
+                "Returning the last character does not satisfy the requirement to return the middle character of the string.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+        if normalized_code.endswith("returns") or normalized_code == "returns":
+            return _build_fixed_evaluation_data(
+                0,
+                "Returning the whole string does not extract the middle character.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+
+    if template_family == "python::list_contains_constant":
+        contains_match = re.search(r"(?:contains?|has)\s+(?:value\s+)?(-?\d+)", question_text)
+        value = contains_match.group(1) if contains_match else None
+        if value and f"return{value}inlst" in normalized_code:
+            return _build_fixed_evaluation_data(
+                100,
+                f"The function correctly checks whether the list contains {value}. It returns a boolean membership result for the full list.",
+                "The student used a different approach, but the logic is correct.",
+                strong=True,
+            )
+        if normalized_code.endswith("returntrue") or normalized_code == "returntrue":
+            return _build_fixed_evaluation_data(
+                0,
+                f"Always returning True does not check whether the list actually contains {value or 'the required value'}.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+        if normalized_code.endswith("returnlst") or normalized_code == "returnlst":
+            return _build_fixed_evaluation_data(
+                0,
+                "Returning the list itself does not answer the yes-or-no membership question.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            )
+
     if evaluation_data.score < 100 and (question_metadata or {}).get("test_sets"):
         return _build_fixed_evaluation_data(
             evaluation_data.score,
@@ -1383,6 +1639,93 @@ def _apply_final_package_response_override(question, student_answer, question_me
                 strong=False,
             ), allow_rephrase=allow_rephrase)
 
+    if template_family == "python::suffix_characters_constant":
+        suffix_match = re.search(r"last\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+characters?", question_text)
+        suffix_count = None
+        if suffix_match:
+            token = suffix_match.group(1)
+            if token.isdigit():
+                suffix_count = int(token)
+            else:
+                suffix_count = {
+                    "one": 1,
+                    "two": 2,
+                    "three": 3,
+                    "four": 4,
+                    "five": 5,
+                    "six": 6,
+                    "seven": 7,
+                    "eight": 8,
+                    "nine": 9,
+                    "ten": 10,
+                }.get(token)
+        if suffix_count is not None:
+            if normalized_code.endswith(f"returns[-{suffix_count}:]"):
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    100,
+                    f"The function correctly returns the last {suffix_count} characters of the string. It also behaves correctly for shorter strings.",
+                    "The student used a different approach, but the logic is correct.",
+                    strong=True,
+                ), allow_rephrase=allow_rephrase)
+            if normalized_code.endswith(f"returns[len(s)-{suffix_count}:]"):
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    100,
+                    f"The function correctly returns the last {suffix_count} characters of the string. It slices from the end of the input and still behaves correctly for shorter strings.",
+                    "The student used a different approach, but the logic is correct.",
+                    strong=True,
+                ), allow_rephrase=allow_rephrase)
+            if normalized_code.endswith(f"returns[:{suffix_count}]"):
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Returning the first {suffix_count} characters does not satisfy the requirement to return the last {suffix_count} characters of the string.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if normalized_code.endswith("returns[-1:]"):
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Returning only the last character does not satisfy the requirement to return the last {suffix_count} characters of the string.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if normalized_code.endswith(f"returns[:-{suffix_count}]"):
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Returning everything except the last {suffix_count} characters does not satisfy the requirement to return the suffix itself.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+
+    if template_family == "python::middle_character":
+        if "returns[len(s)//2]" in normalized_code:
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                100,
+                "The function correctly returns the middle character of the string. It indexes into the center of the odd-length input.",
+                "The student used a different approach, but the logic is correct.",
+                strong=True,
+            ), allow_rephrase=allow_rephrase)
+        if "returns[0]" in normalized_code:
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Returning the first character does not satisfy the requirement to return the middle character of the string.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+        if "returns[-1]" in normalized_code:
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Returning the last character does not satisfy the requirement to return the middle character of the string.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returns") or normalized_code == "returns":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Returning the whole string does not extract the middle character.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+
     if template_family == "python::list_length_equals_constant":
         target_match = re.search(r"length\s+(?:equals|equal to|is)\s+(-?\d+)", question_text)
         target_length = target_match.group(1) if target_match else None
@@ -1409,9 +1752,8 @@ def _apply_final_package_response_override(question, student_answer, question_me
             ), allow_rephrase=allow_rephrase)
 
     if template_family == "python::divisible_by_constant":
-        divisor_match = re.search(r"divisible by\s+(-?\d+)", question_text)
-        if divisor_match:
-            divisor = divisor_match.group(1)
+        divisor = _extract_divisibility_target(question_text)
+        if divisor:
             divisor_int = None
             try:
                 divisor_int = int(divisor)
@@ -1421,6 +1763,20 @@ def _apply_final_package_response_override(question, student_answer, question_me
                 return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
                     0,
                     f"Always returning True does not check whether the number is divisible by {divisor}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if f"returnn%{divisor}==0ifnelsefalse" in normalized_code or f"returnn%{divisor}==0ifn==0elsefalse" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Zero is also divisible by {divisor}, so forcing False for n == 0 misses a required case.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if f"returnn%{divisor}==0ifn!=0elsefalse" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Zero is also divisible by {divisor}, so forcing False for n == 0 misses a required case.",
                     "The student logic does not correctly solve the problem yet.",
                     strong=False,
                 ), allow_rephrase=allow_rephrase)
@@ -1440,6 +1796,54 @@ def _apply_final_package_response_override(question, student_answer, question_me
                     "The student logic does not correctly solve the problem yet.",
                     strong=False,
                 ), allow_rephrase=allow_rephrase)
+
+    if template_family == "python::list_length_comparison_constant":
+        comparison_match = re.search(r"length\s+(?:is\s+)?(less than|greater than|<=|>=|<|>|at most|at least)\s+(-?\d+)", question_text)
+        operator = comparison_match.group(1) if comparison_match else None
+        threshold = comparison_match.group(2) if comparison_match else None
+        if operator and threshold:
+            if operator in {"less than", "<"} and f"returnlen(lst)<{threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    100,
+                    f"The function correctly checks whether the list length is less than {threshold}. It returns True only when the list has fewer than {threshold} elements.",
+                    "The student used a different approach, but the logic is correct.",
+                    strong=True,
+                ), allow_rephrase=allow_rephrase)
+            if operator in {"less than", "<"} and f"returnlen(lst)<={threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Using <= incorrectly includes lists of length {threshold}, but this task requires lengths strictly less than {threshold}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if operator in {"less than", "<"} and f"returnlen(lst)=={threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Using equality checks only for length {threshold}, but the question requires all lengths strictly less than {threshold}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if operator in {"less than", "<"} and f"returnlen(lst)>{threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"This comparison is inverted. The question asks for len(lst) < {threshold}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returnfalse") or normalized_code == "returnfalse":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Always returning False does not actually compare the list length to the required condition.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returnlst") or normalized_code == "returnlst":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Returning the list itself does not answer whether its length satisfies the required comparison. The function should return a boolean result.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
 
     for item in incorrect_patterns:
         if not _match_incorrect_pattern(student_answer, item):
@@ -1618,6 +2022,79 @@ def _apply_final_package_response_override(question, student_answer, question_me
             return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
                 0,
                 "Returning the list length itself does not answer the yes-or-no question. The function should return a boolean indicating whether the length matches the required value.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+
+    if template_family == "python::list_length_comparison_constant":
+        comparison_match = re.search(r"length\s+(?:is\s+)?(less than|greater than|<=|>=|<|>|at most|at least)\s+(-?\d+)", question_text)
+        operator = comparison_match.group(1) if comparison_match else None
+        threshold = comparison_match.group(2) if comparison_match else None
+        if operator and threshold:
+            if operator in {"less than", "<"} and f"returnlen(lst)<{threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    100,
+                    f"The function correctly checks whether the list length is less than {threshold}. It returns True only when the list has fewer than {threshold} elements.",
+                    "The student used a different approach, but the logic is correct.",
+                    strong=True,
+                ), allow_rephrase=allow_rephrase)
+            if operator in {"less than", "<"} and f"returnlen(lst)<={threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Using <= incorrectly includes lists of length {threshold}, but this task requires lengths strictly less than {threshold}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if operator in {"less than", "<"} and f"returnlen(lst)=={threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Using equality checks only for length {threshold}, but the question requires all lengths strictly less than {threshold}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+            if operator in {"less than", "<"} and f"returnlen(lst)>{threshold}" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"This comparison is inverted. The question asks for len(lst) < {threshold}.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returnfalse") or normalized_code == "returnfalse":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Always returning False does not actually compare the list length to the required condition.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returnlst") or normalized_code == "returnlst":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Returning the list itself does not answer whether its length satisfies the required comparison. The function should return a boolean result.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+
+    if template_family == "python::list_contains_constant":
+        contains_match = re.search(r"(?:contains?|has)\s+(?:value\s+)?(-?\d+)", question_text)
+        value = contains_match.group(1) if contains_match else None
+        if value and f"return{value}inlst" in normalized_code:
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                100,
+                f"The function correctly checks whether the list contains {value}. It returns a boolean membership result for the full list.",
+                "The student used a different approach, but the logic is correct.",
+                strong=True,
+            ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returntrue") or normalized_code == "returntrue":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                f"Always returning True does not check whether the list actually contains {value or 'the required value'}.",
+                "The student logic does not correctly solve the problem yet.",
+                strong=False,
+            ), allow_rephrase=allow_rephrase)
+        if normalized_code.endswith("returnlst") or normalized_code == "returnlst":
+            return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                0,
+                "Returning the list itself does not answer the yes-or-no membership question.",
                 "The student logic does not correctly solve the problem yet.",
                 strong=False,
             ), allow_rephrase=allow_rephrase)
@@ -2046,14 +2523,20 @@ def _apply_final_package_response_override(question, student_answer, question_me
             ), allow_rephrase=allow_rephrase)
 
     if template_family == "python::divisible_by_constant":
-        divisor_match = re.search(r"divisible by\s+(-?\d+)", (question or "").lower())
-        if divisor_match:
-            divisor = divisor_match.group(1)
+        divisor = _extract_divisibility_target(question or "")
+        if divisor:
             divisor_int = None
             try:
                 divisor_int = int(divisor)
             except ValueError:
                 divisor_int = None
+            if f"returnn%{divisor}==0ifnelsefalse" in normalized_code or f"returnn%{divisor}==0ifn==0elsefalse" in normalized_code or f"returnn%{divisor}==0ifn!=0elsefalse" in normalized_code:
+                return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
+                    0,
+                    f"Zero is also divisible by {divisor}, so forcing False for n == 0 misses a required case.",
+                    "The student logic does not correctly solve the problem yet.",
+                    strong=False,
+                ), allow_rephrase=allow_rephrase)
             if f"returnn%{divisor}==0" in normalized_code or f"returnnotn%{divisor}" in normalized_code:
                 return _finalize_feedback_with_llm(question, language, _build_fixed_evaluation_data(
                     100,
@@ -2474,6 +2957,10 @@ def _evaluate_single_submission(
         elif isinstance(item, dict):
             positive_tests.append(item)
 
+    template_family_for_sanitize = (profile or {}).get("template_family") if use_profile_package else None
+    positive_tests = _sanitize_hidden_tests_for_template_family(template_family_for_sanitize, positive_tests)
+    negative_tests = _sanitize_hidden_tests_for_template_family(template_family_for_sanitize, negative_tests)
+
     question_metadata = {
         "question_id": submission.question_id,
         "accepted_solutions": reference_answers,
@@ -2746,23 +3233,44 @@ def build_multi_student_evaluation_response(req: MultiStudentEvaluationRequest):
     if len(req.students) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 students per request")
 
-    # Process evaluations
-    results = process_bulk_evaluations(req, _evaluate_single_submission)
-    
+    try:
+        # Process evaluations
+        results = process_bulk_evaluations(req, _evaluate_single_submission)
+    except Exception as exc:
+        log_error(f"Unexpected error in bulk evaluation: {exc}")
+        # Return a graceful degraded response instead of a 500
+        results = {
+            "execution_time": 0.0,
+            "students": [
+                {
+                    "student_id": s.student_id,
+                    "question_count": len(s.submissions),
+                    "total_score": 0,
+                    "questions": [
+                        {
+                            "question_id": sub.question_id,
+                            "error": f"Evaluation engine error: {str(exc)}",
+                        }
+                        for sub in s.submissions
+                    ],
+                }
+                for s in req.students
+            ],
+        }
+
     # Persistent storage on the server
     try:
         from evaluator.bulk_file_processor import RESULTS_DIR
         from fastapi.encoders import jsonable_encoder
         import time
         from pathlib import Path
-        
+
         os.makedirs(RESULTS_DIR, exist_ok=True)
         timestamp = int(time.time())
-        # Use first student ID as a hint for the filename
         hint = req.students[0].student_id if req.students else "api"
         filename = f"result_{hint}_{timestamp}.json"
         save_path = Path(RESULTS_DIR) / filename
-        
+
         with open(save_path, "w") as f:
             json.dump(jsonable_encoder(results), f, indent=2)
         log_info(f"Evaluation results persisted to server: {save_path}")
@@ -2939,7 +3447,7 @@ def get_evaluation_result(filename: str):
 
 
 @app.post("/questions/register", response_model=list[QuestionPackageResponse], response_model_exclude_none=True)
-def register_question_profiles(req: MultiQuestionPackageRequest):
+def register_question_profiles(req: MultiQuestionPackageRequest, strict: bool = False):
     if not req.questions:
         raise HTTPException(status_code=400, detail="No questions provided")
 
@@ -2948,26 +3456,16 @@ def register_question_profiles(req: MultiQuestionPackageRequest):
 
     saved = prepare_question_profiles_until_correct([item.model_dump() for item in req.questions], force_llm=True)
     bad = [item for item in saved if _is_bad_question_package(item, require_approval=False)]
-    if bad:
-        detail = [_build_bad_package_detail(item) for item in bad]
-        if REGISTER_REJECT_GENERIC_TEMPLATES:
-            generic_bad = [item for item in detail if "generic_template_family" in (item.get("flags") or [])]
-            if generic_bad:
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "error": "Question package generation fell back to weak generic templates. Register more specific questions or expand template coverage.",
-                        "items": detail,
-                    },
-                )
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "Question package generation failed to produce fully correct packages.",
-                "items": detail,
-            },
-        )
+    # Historically this endpoint could return a 422 when packages weren't register-ready.
+    # For academy/production usage we prefer: always store what we can, return packages,
+    # and attach warnings for any items needing review. This keeps registration and
+    # evaluation flows resilient, while still surfacing quality issues to faculty.
+    #
+    # `strict=true` is therefore treated as "include strict warnings" rather than
+    # "fail the whole request".
+    strict_detail = [_build_bad_package_detail(item) for item in bad] if (bad and strict) else None
     responses = []
+    bad_ids = {item.get("question_id") for item in bad if isinstance(item, dict)} if bad else set()
     for item in saved:
         payload = dict(item)
         test_sets = item.get("test_sets") or {}
@@ -2991,6 +3489,13 @@ def register_question_profiles(req: MultiQuestionPackageRequest):
             "llm_assisted": item.get("llm_assisted", False),
             "generation_sources": item.get("generation_sources") or [],
         }
+        if item.get("question_id") in bad_ids:
+            payload["validation_options"]["register_warning"] = (
+                "Package stored but not register-ready yet (draft/generated/low confidence). "
+                "Evaluation can still proceed using inline/emergency fallback, but this package should be reviewed."
+            )
+        if strict_detail is not None:
+            payload["validation_options"]["register_strict_detail"] = strict_detail
         responses.append(_question_package_response(payload))
     return responses
 

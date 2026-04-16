@@ -1,6 +1,96 @@
 import re
 
 
+def _infer_feedback_context(question="", language="", template_family=""):
+    question_text = (question or "").lower()
+    family = (template_family or "").lower()
+    context = {
+        "question": question_text,
+        "language": (language or "").lower(),
+        "template_family": family,
+    }
+    if any(
+        token in question_text
+        for token in (
+            "first and last character",
+            "first character",
+            "last character",
+            "string",
+            "substring",
+            "slice",
+        )
+    ) or "string" in family:
+        context["domain"] = "strings"
+    elif any(
+        token in question_text
+        for token in (
+            "list",
+            "array",
+            "length",
+            "len(",
+            "elements",
+        )
+    ) or "list" in family:
+        context["domain"] = "lists"
+    elif any(
+        token in question_text
+        for token in (
+            "number",
+            "multiple",
+            "divisible",
+            "prime",
+            "factorial",
+            "sum of digits",
+        )
+    ) or "number" in family:
+        context["domain"] = "numbers"
+    else:
+        context["domain"] = ""
+    return context
+
+
+def _is_feedback_relevant(text, question="", language="", template_family=""):
+    cleaned = _sanitize_llm_text(text)
+    if not cleaned:
+        return False
+
+    lowered = cleaned.lower()
+    context = _infer_feedback_context(
+        question=question,
+        language=language,
+        template_family=template_family,
+    )
+    domain = context.get("domain", "")
+
+    if domain == "strings":
+        irrelevant_terms = (
+            "f-string",
+            "f string",
+            "formatted string",
+            "interpolation",
+            "print formatting",
+            "dataframe",
+            "numpy",
+            "matplotlib",
+            "django",
+            "fastapi",
+        )
+        if any(term in lowered for term in irrelevant_terms):
+            return False
+
+    if domain == "lists":
+        irrelevant_terms = (
+            "f-string",
+            "f string",
+            "formatted string",
+            "interpolation",
+        )
+        if any(term in lowered for term in irrelevant_terms):
+            return False
+
+    return True
+
+
 def cleanup_improvements(improvements, rubric_score, concepts):
     text = _sanitize_llm_text(improvements)
     if not text:
@@ -81,16 +171,37 @@ def is_clean_llm_text(text):
     return bool(_sanitize_llm_text(text))
 
 
-def choose_safe_feedback(audit_feedback, fallback_feedback):
+def choose_safe_feedback(audit_feedback, fallback_feedback, question="", language="", template_family=""):
     cleaned = _sanitize_llm_text(audit_feedback)
-    return cleaned or (fallback_feedback or "").strip()
+    if cleaned and _is_feedback_relevant(
+        cleaned,
+        question=question,
+        language=language,
+        template_family=template_family,
+    ):
+        return cleaned
+    return (fallback_feedback or "").strip()
 
 
-def choose_safe_improvement(audit_improvement, fallback_improvement):
+def choose_safe_improvement(audit_improvement, fallback_improvement, question="", language="", template_family=""):
     cleaned = _sanitize_llm_text(audit_improvement)
-    return cleaned or (fallback_improvement or "").strip()
+    if cleaned and _is_feedback_relevant(
+        cleaned,
+        question=question,
+        language=language,
+        template_family=template_family,
+    ):
+        return cleaned
+    return (fallback_improvement or "").strip()
 
 
-def sanitize_text_or_fallback(text, fallback=""):
+def sanitize_text_or_fallback(text, fallback="", question="", language="", template_family=""):
     cleaned = _sanitize_llm_text(text)
-    return cleaned or (fallback or "").strip()
+    if cleaned and _is_feedback_relevant(
+        cleaned,
+        question=question,
+        language=language,
+        template_family=template_family,
+    ):
+        return cleaned
+    return (fallback or "").strip()

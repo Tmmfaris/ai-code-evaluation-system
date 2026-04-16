@@ -18,6 +18,7 @@ The project is no longer centered on free-form LLM grading. The current system i
 - Current Deterministic Families
 - Main Endpoints
 - Quick Start
+- Documentation and Report Assets
 - Current Important Defaults
 - Question Package Lifecycle
 - Registration Deep Dive
@@ -233,6 +234,60 @@ python -m uvicorn app:app --reload
 
 Open:
 - `http://127.0.0.1:8000/docs`
+
+## Documentation and Report Assets
+
+The repo now includes a formal project report and a local Word-export workflow for documentation and submission use.
+
+Main report assets:
+- [PROJECT_REPORT.md](./PROJECT_REPORT.md)
+- `PROJECT_REPORT.docx`
+- [tools/generate_docx_report.py](./tools/generate_docx_report.py)
+
+The project report currently includes:
+- cover page content
+- abstract
+- acknowledgement
+- table of contents
+- architecture and workflow explanation
+- project problems faced and how they were solved
+- current measures taken to improve accuracy
+- sample API outputs
+- actual test and benchmark snapshots
+- Swagger screenshot placement notes
+- references
+
+### Regenerating the Word report
+
+If you update [PROJECT_REPORT.md](./PROJECT_REPORT.md), regenerate the Word file with:
+
+```powershell
+python tools/generate_docx_report.py PROJECT_REPORT.md PROJECT_REPORT.docx
+```
+
+### Report formatting markers
+
+The local `.docx` generator supports a small set of report-formatting markers inside the Markdown source:
+
+- `<<<COVER>>> ... <<<END_COVER>>>`
+- `<<<PAGE_BREAK>>>`
+
+These markers are used to make the Word output more submission-friendly without requiring external tools such as Pandoc or LibreOffice.
+
+### Swagger screenshots for the final report
+
+The report includes an appendix section describing where to place Swagger screenshots in the final submitted document.
+
+Swagger UI location:
+- `http://127.0.0.1:8000/docs`
+
+Recommended screenshots:
+- Swagger home page
+- `POST /questions/register`
+- `POST /evaluate/students`
+- monitoring/review endpoints
+
+These screenshot notes live in the report appendix so the documentation stays aligned with actual API testing.
 
 ## Environment
 
@@ -666,6 +721,8 @@ Useful additional suites and assets:
 - [tests/test_language_support.py](./tests/test_language_support.py)
 - [tests/test_benchmark.py](./tests/test_benchmark.py)
 - [tests/run_benchmark.py](./tests/run_benchmark.py)
+- [PROJECT_REPORT.md](./PROJECT_REPORT.md)
+- [tools/generate_docx_report.py](./tools/generate_docx_report.py)
 - `tests/regression_cases.json`
 - `tests/benchmark_cases.json`
 - `tests/benchmark_thresholds.json`
@@ -799,11 +856,14 @@ ai-intelligent-evaluation-model/
 |-- config.py
 |-- schemas.py
 |-- README.md
+|-- PROJECT_REPORT.md
+|-- PROJECT_REPORT.docx
 |-- analysis/
 |-- evaluator/
 |-- llm/
 |-- data/
 |-- models/
+|-- tools/
 |-- tests/
 |-- scripts/
 `-- utils/
@@ -816,6 +876,11 @@ Important evaluator subareas:
 - `evaluator/execution/shared.py`
 - `evaluator/comparison/llm_comparator.py`
 - `evaluator/question_profile_repository.py`
+
+Important documentation/reporting files:
+- `PROJECT_REPORT.md`
+- `PROJECT_REPORT.docx`
+- `tools/generate_docx_report.py`
 
 ## Limitations
 
@@ -848,3 +913,4 @@ The current system is designed to be:
 - more resilient for new questions
 - monitored for suspicious output
 - protected by tests and CI
+- documented with a submission-ready project report and local Word export flow

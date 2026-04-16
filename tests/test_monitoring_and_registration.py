@@ -6,8 +6,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import pytest
 
 import app as app_module
-from evaluator.question_rule_generator import merge_with_existing_profiles
+from evaluator.question_rule_generator import finalize_question_profile, merge_with_existing_profiles
 from evaluator.question_package.workflow import prepare_question_profiles_until_correct
+from evaluator.execution.shared import generate_universal_oracle_test_package_for_registration
 from app import (
     DETERMINISTIC_FINAL_FEEDBACK_TEMPLATES,
     _evaluate_single_submission,
@@ -15,6 +16,7 @@ from app import (
     _build_fixed_evaluation_data,
     _collect_suspicious_reasons,
     _repair_package_backed_feedback,
+    _sanitize_hidden_tests_for_template_family,
 )
 from schemas import QuestionSubmission
 
@@ -231,6 +233,196 @@ def test_register_supports_first_two_characters_question():
     )
 
 
+def test_register_supports_middle_character_question():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_middle",
+                "question": "Return middle character of string (assume odd length)",
+                "model_answer": "def middle(s): return s[len(s)//2]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::middle_character"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert any((item or {}).get("input") == "[\"abc\"]" for item in (package.get("test_sets") or {}).get("positive", []))
+    assert not any("[[1,2,3]]" == (item or {}).get("input") for item in (package.get("hidden_tests") or []))
+
+
+def test_register_first_and_last_character_does_not_include_non_string_oracle_tests():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_ends",
+                "question": "Return first and last character of string",
+                "model_answer": "def ends(s): return s[0] + s[-1]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::first_and_last_character"
+    assert not any(
+        (item or {}).get("input") == "[[1,2,3]]"
+        for item in (package.get("hidden_tests") or [])
+    )
+    assert not any(
+        "f-string" in ((item or {}).get("feedback") or "").lower()
+        for item in (package.get("incorrect_patterns") or [])
+    )
+
+
+def test_universal_oracle_registration_package_handles_snippet_model_answer():
+    # A bare snippet (no def) must still be runnable via wrapping.
+    oracle = generate_universal_oracle_test_package_for_registration(
+        "Check if number is multiple of 3",
+        "return n % 3 == 0",
+        n_cases=8,
+    )
+    assert oracle is not None
+    tests = (oracle.get("test_sets") or {}).get("positive") or []
+    assert len(tests) >= 3
+
+
+def test_sanitize_hidden_tests_filters_non_string_cases_for_first_and_last_family():
+    cleaned = _sanitize_hidden_tests_for_template_family(
+        "python::first_and_last_character",
+        [
+            {"input": "[\"python\"]", "expected_output": "pn", "required": True},
+            {"input": "[[1,2,3]]", "expected_output": "4", "required": False},
+            {"input": "[\"\"]", "expected_output": "", "required": False},
+        ],
+    )
+
+    assert any(item.get("input") == "[\"python\"]" for item in cleaned)
+    assert not any(item.get("input") == "[[1,2,3]]" for item in cleaned)
+
+def test_register_supports_list_contains_constant_question():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_has5",
+                "question": "Check if list contains value 5",
+                "model_answer": "def has5(lst): return 5 in lst",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["template_family"] == "python::list_contains_constant"
+    assert package["package_status"] in {"validated", "live"}
+    assert package["review_required"] is False
+    assert any((item or {}).get("expected_output") == "true" and (item or {}).get("required") for item in (package.get("test_sets") or {}).get("positive", []))
+    assert any((item or {}).get("expected_output") == "false" and (item or {}).get("required") for item in (package.get("test_sets") or {}).get("negative", []))
+
+
+def test_finalize_middle_character_discards_stale_non_string_tests_from_reuse():
+    merged = merge_with_existing_profiles(
+        {
+            "question_id": "q_middle",
+            "question": "Return middle character of string (assume odd length)",
+            "model_answer": "def middle(s): return s[len(s)//2]",
+            "language": "python",
+            "accepted_solutions": ["def middle(s): return s[len(s)//2]"],
+            "test_sets": {
+                "positive": [
+                    {"input": "[\"abc\"]", "expected_output": "b", "description": "fresh middle test", "required": True},
+                ],
+                "negative": [
+                    {"input": "[\"radar\"]", "expected_output": "d", "description": "fresh trap", "required": True},
+                ],
+            },
+            "incorrect_patterns": [],
+        },
+        [
+            {
+                "question": "Return middle character of string (assume odd length)",
+                "language": "python",
+                "model_answer": "def middle(s): return s[len(s)//2]",
+                "template_family": "python::middle_character",
+                "package_status": "validated",
+                "review_required": False,
+                "package_confidence": 1.0,
+                "accepted_solutions": ["def middle(s): return s[len(s)//2]"],
+                "hidden_tests": [
+                    {"input": "[[1,2,3]]", "expected_output": "2", "description": "stale bad test"},
+                    {"input": "[\"Ab\"]", "expected_output": "b", "description": "stale even-length string"},
+                ],
+                "test_sets": {"positive": [], "negative": []},
+                "incorrect_patterns": [],
+            }
+        ],
+    )
+
+    finalized = finalize_question_profile(merged)
+    test_sets = finalized.get("test_sets") or {}
+    all_items = list(test_sets.get("positive") or []) + list(test_sets.get("negative") or [])
+    all_inputs = {(item or {}).get("input") for item in all_items}
+
+    assert finalized["template_family"] == "python::middle_character"
+    assert "[[1,2,3]]" not in all_inputs
+    assert "[\"Ab\"]" not in all_inputs
+    assert "[\"abc\"]" in all_inputs
+
+
+def test_finalize_list_contains_constant_discards_stale_wrong_shape_tests_from_reuse():
+    merged = merge_with_existing_profiles(
+        {
+            "question_id": "q_has5",
+            "question": "Check if list contains value 5",
+            "model_answer": "def has5(lst): return 5 in lst",
+            "language": "python",
+            "accepted_solutions": ["def has5(lst): return 5 in lst"],
+            "test_sets": {
+                "positive": [
+                    {"input": "[[5,3,1]]", "expected_output": "true", "description": "fresh positive", "required": True},
+                ],
+                "negative": [
+                    {"input": "[[1,2,3]]", "expected_output": "false", "description": "fresh negative", "required": True},
+                ],
+            },
+            "incorrect_patterns": [],
+        },
+        [
+            {
+                "question": "Check if list contains value 5",
+                "language": "python",
+                "model_answer": "def has5(lst): return 5 in lst",
+                "template_family": "python::list_contains_constant",
+                "package_status": "validated",
+                "review_required": False,
+                "package_confidence": 1.0,
+                "accepted_solutions": ["def has5(lst): return 5 in lst"],
+                "hidden_tests": [
+                    {"input": "[\"abc\"]", "expected_output": "true", "description": "stale wrong input shape"},
+                    {"input": "[[1,2,3]]", "expected_output": "\"false\"", "description": "stale wrong output type"},
+                ],
+                "test_sets": {"positive": [], "negative": []},
+                "incorrect_patterns": [],
+            }
+        ],
+    )
+
+    finalized = finalize_question_profile(merged)
+    test_sets = finalized.get("test_sets") or {}
+    all_items = list(test_sets.get("positive") or []) + list(test_sets.get("negative") or [])
+    all_inputs = {(item or {}).get("input") for item in all_items}
+
+    assert finalized["template_family"] == "python::list_contains_constant"
+    assert "[\"abc\"]" not in all_inputs
+    assert "[[5,3,1]]" in all_inputs
+    assert any((item or {}).get("expected_output") == "true" for item in all_items)
+
+
 def test_register_supports_list_length_equals_constant_question():
     packages = prepare_question_profiles_until_correct(
         [
@@ -253,6 +445,48 @@ def test_register_supports_list_length_equals_constant_question():
         item.get("input") == "[[0,1,2,3,4]]" and item.get("expected_output") == "true"
         for item in (package.get("test_sets") or {}).get("positive", [])
     )
+
+
+def test_register_supports_first_last_character_and_exact_len_two_payload():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q1",
+                "question": "Check if number is multiple of 3",
+                "model_answer": "def mult3(n): return n % 3 == 0",
+                "language": "python",
+            },
+            {
+                "question_id": "q2",
+                "question": "Return first and last character of string",
+                "model_answer": "def ends(s): return s[0] + s[-1]",
+                "language": "python",
+            },
+            {
+                "question_id": "q3",
+                "question": "Check if list length is exactly 2",
+                "model_answer": "def len2(lst): return len(lst) == 2",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    by_id = {item["question_id"]: item for item in packages}
+
+    assert by_id["q1"]["template_family"] in {"python::divisible_by_constant", "python::model_answer_derived"}
+    assert by_id["q1"]["package_status"] in {"validated", "live"}
+    assert by_id["q1"]["review_required"] is False
+
+    assert by_id["q2"]["template_family"] == "python::first_and_last_character"
+    assert by_id["q2"]["package_status"] in {"validated", "live"}
+    assert by_id["q2"]["review_required"] is False
+    assert by_id["q2"]["package_confidence"] >= 0.9
+
+    assert by_id["q3"]["template_family"] == "python::list_length_equals_constant"
+    assert by_id["q3"]["package_status"] in {"validated", "live"}
+    assert by_id["q3"]["review_required"] is False
+    assert by_id["q3"]["package_confidence"] >= 0.9
 
 
 def test_boolean_expected_false_cases_are_rebucketed_to_negative_tests():
@@ -414,6 +648,33 @@ def test_register_can_infer_specific_family_from_model_answer_for_new_wording():
     assert by_id["q_new_lower"]["template_family"] == "python::lowercase_string"
     assert by_id["q_new_lower"]["package_status"] in {"validated", "live"}
     assert by_id["q_new_lower"]["review_required"] is False
+
+
+def test_register_builds_stronger_suffix_character_packages():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_suffix_two",
+                "question": "Give back the last two characters of string",
+                "model_answer": "def last2(s): return s[-2:]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    positive = (package.get("test_sets") or {}).get("positive") or []
+    negative = (package.get("test_sets") or {}).get("negative") or []
+    patterns = package.get("incorrect_patterns") or []
+
+    assert package["template_family"] == "python::suffix_characters_constant"
+    assert package["package_status"] in {"validated", "live"}
+    assert any((item or {}).get("input") == "[\"a\"]" for item in positive)
+    assert any((item or {}).get("description") == "exact-length string input" for item in positive)
+    assert any((item or {}).get("pattern") == "return s[-1:]" for item in patterns)
+    assert any((item or {}).get("pattern") == "return s[:-2]" for item in patterns)
+    assert len(negative) >= 1
 
 
 def test_register_uses_model_answer_derived_fallback_for_new_python_question_shapes():
@@ -887,4 +1148,44 @@ def test_evaluation_uses_inline_temporary_package_when_bootstrap_cannot_register
     assert result["question_metadata"]["template_family"] == "python::model_answer_derived"
     assert result["question_metadata"]["package_status"] == "validated"
     assert result["question_metadata"]["inline_temporary_package"] is True
+    assert result["data"].score == 100
+
+
+def test_evaluation_uses_emergency_python_package_when_temporary_generation_fails(monkeypatch):
+    monkeypatch.setattr(app_module, "_try_bootstrap_package_from_inline_context", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "get_question_profile_fresh", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "generate_question_package", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    submission = QuestionSubmission(
+        question_id="q_inline_emergency_eval",
+        question="Compute the custom score for a value",
+        model_answer="def score(x): return x * 3 + 1",
+        student_answer="def score(x): return x * 3 + 1",
+        language="python",
+    )
+
+    result = _evaluate_single_submission("student-inline-emergency", submission, False, False, 1)
+
+    assert "error" not in result
+    assert result["question_metadata"]["template_family"] == "python::model_answer_derived"
+    assert result["question_metadata"]["package_status"] == "validated"
+    assert result["question_metadata"]["inline_temporary_package"] is True
+    assert result["data"].score == 100
+
+
+def test_evaluation_handles_new_python_topic_without_registered_package():
+    submission = QuestionSubmission(
+        question_id="q_new_python_topic_eval",
+        question="Calculate mean squared error between two lists",
+        model_answer="def mse(y_true, y_pred): return sum((a-b)**2 for a, b in zip(y_true, y_pred)) / len(y_true)",
+        student_answer="def mse(y_true, y_pred): return sum((a-b)**2 for a, b in zip(y_true, y_pred)) / len(y_true)",
+        language="python",
+    )
+
+    result = _evaluate_single_submission("student-new-topic", submission, False, False, 1)
+
+    assert "error" not in result
+    assert result["question_metadata"]["package_status"] in {"validated", "live"}
+    assert isinstance(result["question_metadata"]["template_family"], str)
+    assert result["question_metadata"]["template_family"].startswith("python::")
     assert result["data"].score == 100

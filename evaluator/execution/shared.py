@@ -284,9 +284,10 @@ def _extract_first_function_node(code):
 
 def _normalize_question_text(question):
     text = (question or "").lower()
+    # Avoid false positives like "of string" which contains the substring "f string".
+    text = re.sub(r"(?<![a-z0-9])f\s*string(?![a-z0-9])", "f-string", text)
+    text = re.sub(r"(?<![a-z0-9])fstring(?![a-z0-9])", "f-string", text)
     replacements = [
-        ("f string", "f-string"),
-        ("fstring", "f-string"),
         ("formatted string", "f-string"),
         ("string formatting", "string format"),
         ("format string", "string format"),
@@ -1743,24 +1744,64 @@ def generate_universal_oracle_test_package_for_registration(question, model_answ
     if not cases:
         return None
 
-    oracle_run = _run_code_with_timeout(model_answer, sample_fn_name, cases)
+    # IMPORTANT: execute the wrapped code, not the raw model_answer string. The raw
+    # value may be a snippet ("return ...") that only becomes runnable after wrapping.
+    oracle_run = _run_code_with_timeout(actual_code, sample_fn_name, cases)
     if not oracle_run.get("ok"):
         return None
         
     oracle_outputs = oracle_run.get("outputs", [])
     
-    test_sets = {"positive": [], "negative": []}
-    for case, out in zip(cases, oracle_outputs):
-        if out.get("ok"):
-            val = out.get("result")
-            test_sets["positive"].append({
-                "input": list(case) if isinstance(case, tuple) else case,
-                "expected_output": val,
-                "description": f"Auto-generated deterministic oracle test"
-            })
-            
+    def _materialize_positive_tests(_cases, _outputs):
+        materialized = []
+        for case, out in zip(_cases, _outputs):
+            if out.get("ok"):
+                materialized.append(
+                    {
+                        "input": list(case) if isinstance(case, tuple) else case,
+                        "expected_output": out.get("result"),
+                        "description": "Auto-generated deterministic oracle test",
+                    }
+                )
+        return materialized
+
+    test_sets = {"positive": _materialize_positive_tests(cases, oracle_outputs), "negative": []}
+
+    # If every oracle case errored (domain mismatch), try a safer set of inputs
+    # that avoids empty strings/lists and reduces zero-heavy integer combos.
     if not test_sets["positive"]:
-        return None
+        def _safe_values_for(pt):
+            if pt == "int":
+                return [1, 2, 3, 5, 10]
+            if pt == "str":
+                return ["a", "ab", "hello", "python"]
+            if pt == "list":
+                return [[1], [1, 2], [1, 2, 3], [0, 1]]
+            if pt == "float":
+                return [1.0, 2.5, -1.0]
+            if pt == "bool":
+                return [True, False, True]
+            if pt == "dict":
+                return [{"a": 1}, {"x": 10, "y": 20}]
+            return [1, 2, 3]
+
+        safe_columns = []
+        for pt in (param_types or []):
+            safe_columns.append(_safe_values_for(pt))
+        safe_cases = []
+        if safe_columns:
+            max_cases = min(max(5, int(n_cases or 10)), min(len(col) for col in safe_columns))
+            for i in range(max_cases):
+                safe_cases.append(tuple(col[i] for col in safe_columns))
+        else:
+            safe_cases = [()]
+
+        retry = _run_code_with_timeout(actual_code, sample_fn_name, safe_cases)
+        if retry and retry.get("ok"):
+            retry_outputs = retry.get("outputs", [])
+            test_sets["positive"] = _materialize_positive_tests(safe_cases, retry_outputs)
+        if not test_sets["positive"]:
+            return None
         
     return {
         "test_sets": test_sets,
@@ -2009,8 +2050,10 @@ def evaluate_python_hidden_tests(student_answer, hidden_tests):
     if passed == 0:
         return {
             "result_type": "zero_pass",
-            "correctness_max": 5,
-            "efficiency_max": 5,
+            # If every registered check fails, treat correctness as zero.
+            # This prevents a misleading non-zero score alongside "failed on all checks" feedback.
+            "correctness_max": 0,
+            "efficiency_max": 0,
             "feedback": f"Hidden test cases failed on all {total} registered checks.",
             "suggestion": "Review the logic against the registered question inputs and expected outputs.",
         }
@@ -2096,8 +2139,8 @@ def evaluate_java_hidden_tests(student_answer, hidden_tests):
     if passed == 0:
         return {
             "result_type": "zero_pass",
-            "correctness_max": 5,
-            "efficiency_max": 5,
+            "correctness_max": 0,
+            "efficiency_max": 0,
             "feedback": f"Hidden test cases failed on all {total} registered Java checks.",
             "suggestion": "Review the Java logic against the registered question inputs and expected outputs.",
         }
@@ -2208,8 +2251,8 @@ def evaluate_javascript_hidden_tests(student_answer, hidden_tests):
     if passed == 0:
         return {
             "result_type": "zero_pass",
-            "correctness_max": 5,
-            "efficiency_max": 5,
+            "correctness_max": 0,
+            "efficiency_max": 0,
             "feedback": f"Hidden test cases failed on all {total} registered JavaScript checks.",
             "suggestion": "Review the JavaScript logic against the registered question inputs and expected outputs.",
         }
@@ -2330,7 +2373,8 @@ def analyze_python_execution(question, sample_answer, student_answer):
             "feedback": "The solution correctly uses a set comprehension.",
         }
 
-    if any(kw in question_text for kw in ("f-string", "f string", "formatted string literal")):
+    # Avoid false positives like "of string" which contains the substring "f string".
+    if re.search(r"(?i)(?<![a-z0-9])f[- ]string(?![a-z0-9])|formatted string literal", question_text):
         if re.search(r"f['\"]", (student_answer or "")):
             return {
                 "result_type": "full_pass",
@@ -3432,7 +3476,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if "numpy" in question_text and ("np.array" not in (student_answer or "") and "numpy.array" not in (student_answer or "")) and "[" in (student_answer or ""):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -3457,7 +3501,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if "pandas" in question_text and ("DataFrame" not in (student_answer or "") and "pd.DataFrame" not in (student_answer or "")) and "{" in (student_answer or ""):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -3482,7 +3526,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if ("matplotlib" in question_text or "seaborn" in question_text) and ("plt." not in (student_answer or "") and "sns." not in (student_answer or "")) and "plot" in normalized_student:
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -3567,7 +3611,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if "django" in question_text and "django" not in (student_answer or "") and "def " in (student_answer or ""):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -3592,7 +3636,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if "fastapi" in question_text and "fastapi" not in (student_answer or "") and "def " in (student_answer or ""):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -3617,7 +3661,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if "logging" in question_text and "logging." not in (student_answer or "") and "print(" in (student_answer or ""):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -3667,7 +3711,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if "unittest" in question_text and "unittest" not in (student_answer or "") and "assert" in normalized_student:
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 12,
+            "correctness_max": 20,
             "efficiency_max": 10,
             "readability_max": 12,
             "structure_max": 10,
@@ -6019,7 +6063,7 @@ def analyze_python_execution(question, sample_answer, student_answer):
     if _question_contains(question, "positive") and (">=0" in (student_answer or "") or ">= 0" in (student_answer or "")):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 16,
+            "correctness_max": 22,
             "efficiency_max": 12,
             "readability_max": 12,
             "structure_max": 12,
@@ -6298,7 +6342,7 @@ def analyze_java_execution(question, sample_answer, student_answer):
         if re.search(r"for\s*\([^)]*i\s*=\s*2[^)]*i\s*<\s*n", code) and "return true" in code:
             return {
                 "result_type": "mostly_correct",
-                "correctness_max": 12,
+                "correctness_max": 20,
                 "efficiency_max": 10,
                 "readability_max": 12,
                 "structure_max": 10,
@@ -6518,7 +6562,7 @@ def analyze_java_execution(question, sample_answer, student_answer):
         if ".split(\" \")" in code and ".length" in code:
             return {
                 "result_type": "mostly_correct",
-                "correctness_max": 20,
+                "correctness_max": 26,
                 "efficiency_max": 20,
                 "readability_max": 15,
                 "structure_max": 15,
@@ -6536,7 +6580,7 @@ def analyze_java_execution(question, sample_answer, student_answer):
         if "int res=1" in code and "res*=" in code and "return res" in code:
             return {
                 "result_type": "mostly_correct",
-                "correctness_max": 18,
+                "correctness_max": 22,
                 "efficiency_max": 15,
                 "readability_max": 12,
                 "structure_max": 12,
@@ -6969,7 +7013,7 @@ def analyze_java_execution(question, sample_answer, student_answer):
         if ("d*d*d" in code or "d * d * d" in code) and ("while(" in code or "while (" in code):
             return {
                 "result_type": "mostly_correct",
-                "correctness_max": 18,
+                "correctness_max": 28,
                 "efficiency_max": 15,
                 "readability_max": 12,
                 "structure_max": 12,
@@ -8042,7 +8086,7 @@ def analyze_java_execution(question, sample_answer, student_answer):
         if re.search(r"return\s+[a-z_][a-z0-9_]*\s*/\s*arr\.length\s*;", code):
             return {
                 "result_type": "mostly_correct",
-                "correctness_max": 18,
+                "correctness_max": 28,
                 "efficiency_max": 15,
                 "readability_max": 12,
                 "structure_max": 12,

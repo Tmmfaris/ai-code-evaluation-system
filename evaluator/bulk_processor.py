@@ -47,13 +47,25 @@ def process_bulk_evaluations(multi_req, evaluate_submission_func) -> dict:
             task = future_to_task[future]
             try:
                 result = future.result()
-                # Use a unique key to map back
-                # Since we don't have IDs, we use (student_id, question_text) as a loose mapping key for the response
-                key = (task["student_id"], task["submission"].question)
+                key = (
+                    task["student_id"],
+                    task["submission"].question_id,
+                    task["submission"].question,
+                    task["submission"].model_answer,
+                    task["submission"].student_answer,
+                    task["submission"].language,
+                )
                 evaluation_map[key] = result
             except Exception as e:
                 log_error(f"Bulk evaluation failed for student {task['student_id']}: {str(e)}")
-                key = (task["student_id"], task["submission"].question)
+                key = (
+                    task["student_id"],
+                    task["submission"].question_id,
+                    task["submission"].question,
+                    task["submission"].model_answer,
+                    task["submission"].student_answer,
+                    task["submission"].language,
+                )
                 evaluation_map[key] = {"error": str(e)}
 
     # Reconstruct the response structure
@@ -62,7 +74,14 @@ def process_bulk_evaluations(multi_req, evaluate_submission_func) -> dict:
         s_results = []
         s_total_score = 0
         for sub in student_req.submissions:
-            res = evaluation_map.get((student_req.student_id, sub.question))
+            res = evaluation_map.get((
+                student_req.student_id,
+                sub.question_id,
+                sub.question,
+                sub.model_answer,
+                sub.student_answer,
+                sub.language,
+            ))
             if res and "error" not in res:
                 # _evaluate_single_submission returns a wrapper dict where the actual
                 # EvaluationResponse obj is in the 'data' key.

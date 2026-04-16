@@ -21,3 +21,8 @@ pytest_output.txt
 report.xml
 question_profiles.db
 tests/regression_candidates.json
+tests/.tmp_store/
+tmp_*.json
+tmp_*.txt
+missing_funcs.txt
+analysis/trace-*.txt

@@ -6,7 +6,7 @@ def evaluate_string_family(question, question_text, families, normalized_student
     if _contains(question_text, "add", "two", "numbers") and "returna" in normalized_student and "returna+b" not in normalized_student:
         return {
             "result_type": "zero_pass",
-            "correctness_max": 5,
+            "correctness_max": 0,
             "efficiency_max": 5,
             "feedback": "The function returns only one input value instead of adding the two numbers.",
             "suggestion": "Return the sum of both inputs, such as a + b.",
@@ -92,7 +92,7 @@ def evaluate_string_family(question, question_text, families, normalized_student
     ):
         return {
             "result_type": "mostly_correct",
-            "correctness_max": 18,
+            "correctness_max": 28,
             "efficiency_max": 12,
             "readability_max": 12,
             "structure_max": 12,

@@ -49,7 +49,7 @@ def build_deterministic_result(execution_finding, structure_analysis):
         }
 
     return {
-        "score": 0,
+        "score": sum(rubric.values()),
         "feedback": execution_finding.get("feedback", ""),
         "improvements": execution_finding.get("suggestion", ""),
         "rubric": rubric,
@@ -122,7 +122,7 @@ def build_rule_only_result(findings):
         }
 
     return {
-        "score": explicit_score if explicit_score is not None else 0,
+        "score": explicit_score if explicit_score is not None else sum(rubric.values()),
         "feedback": top.get("feedback", ""),
         "improvements": top.get("suggestion", ""),
         "rubric": rubric,

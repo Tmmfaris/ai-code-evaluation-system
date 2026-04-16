@@ -84,7 +84,14 @@ def build_syntax_error_result(syntax_result):
     }
 
 
-def choose_hybrid_feedback(llm_result, execution_finding, syntax_result, language):
+def choose_hybrid_feedback(
+    llm_result,
+    execution_finding,
+    syntax_result,
+    language,
+    question="",
+    template_family="",
+):
     if language in {"python", "java", "html", "javascript"} and not syntax_result.get("valid", True):
         syntax_result = build_syntax_error_result(syntax_result)
         return syntax_result["feedback"], syntax_result["improvements"]
@@ -92,4 +99,21 @@ def choose_hybrid_feedback(llm_result, execution_finding, syntax_result, languag
     if execution_finding and execution_finding.get("feedback"):
         return execution_finding.get("feedback", ""), execution_finding.get("suggestion", "")
 
-    return llm_result.get("feedback", ""), llm_result.get("improvements", "")
+    from evaluator.comparison import feedback_generator
+
+    return (
+        feedback_generator.choose_safe_feedback(
+            llm_result.get("feedback", ""),
+            "",
+            question=question,
+            language=language,
+            template_family=template_family,
+        ),
+        feedback_generator.choose_safe_improvement(
+            llm_result.get("improvements", ""),
+            "",
+            question=question,
+            language=language,
+            template_family=template_family,
+        ),
+    )

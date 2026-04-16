@@ -127,6 +127,7 @@ class JsonQuestionProfileRepository(QuestionProfileRepository):
                 (payload.get("reused_from_questions") or payload.get("reused_from_question_ids")) or []
             ),
             "llm_assisted": bool(payload.get("llm_assisted", False)),
+            "llm_requirement_waived": bool(payload.get("llm_requirement_waived", False)),
             "generation_sources": [
                 item.strip()
                 for item in (payload.get("generation_sources") or [])
@@ -271,6 +272,7 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                 self._ensure_column(conn, "question_profiles", "reused_from_question_ids_json", "TEXT NOT NULL DEFAULT '[]'")
                 self._ensure_column(conn, "question_profiles", "llm_assisted", "INTEGER NOT NULL DEFAULT 0")
                 self._ensure_column(conn, "question_profiles", "generation_sources_json", "TEXT NOT NULL DEFAULT '[]'")
+                self._ensure_column(conn, "question_profiles", "llm_requirement_waived", "INTEGER NOT NULL DEFAULT 0")
             self._migrate_legacy_json_if_needed()
 
     def _ensure_column(self, conn, table_name: str, column_name: str, column_definition: str) -> None:
@@ -326,6 +328,7 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                 (payload.get("reused_from_questions") or payload.get("reused_from_question_ids")) or []
             ),
             "llm_assisted": bool(payload.get("llm_assisted", False)),
+            "llm_requirement_waived": bool(payload.get("llm_requirement_waived", False)),
             "generation_sources": [
                 item.strip()
                 for item in (payload.get("generation_sources") or [])
@@ -358,6 +361,7 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
             "llm_assisted": bool(row[19]),
             "generation_sources": json.loads(row[20]) if row[20] else [],
             "profile": json.loads(row[21]) if row[21] else {},
+            "llm_requirement_waived": bool(row[22]) if len(row) > 22 else False,
         }
 
     def _migrate_legacy_json_if_needed(self) -> None:
@@ -440,8 +444,8 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         package_status, package_summary, package_confidence, review_required,
                         approval_status, approved_by, exam_ready,
                         positive_test_count, negative_test_count, reused_from_question_ids_json,
-                        llm_assisted, generation_sources_json, profile_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        llm_assisted, generation_sources_json, profile_json, llm_requirement_waived
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         built["question_signature"],
@@ -466,6 +470,7 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                         int(bool(built["llm_assisted"])),
                         json.dumps(built["generation_sources"], ensure_ascii=True),
                         json.dumps(built["profile"], ensure_ascii=True),
+                        int(bool(built.get("llm_requirement_waived", False))),
                     ),
                 )
                 conn.commit()
@@ -483,7 +488,7 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                            package_status, package_summary, package_confidence, review_required,
                            approval_status, approved_by, exam_ready,
                            positive_test_count, negative_test_count, reused_from_question_ids_json,
-                           llm_assisted, generation_sources_json, profile_json
+                           llm_assisted, generation_sources_json, profile_json, llm_requirement_waived
                     FROM question_profiles
                     WHERE question_signature = ?
                     """,
@@ -501,7 +506,7 @@ class SqliteQuestionProfileRepository(QuestionProfileRepository):
                            package_status, package_summary, package_confidence, review_required,
                            approval_status, approved_by, exam_ready,
                            positive_test_count, negative_test_count, reused_from_question_ids_json,
-                           llm_assisted, generation_sources_json, profile_json
+                           llm_assisted, generation_sources_json, profile_json, llm_requirement_waived
                     FROM question_profiles
                     ORDER BY question_signature
                     """

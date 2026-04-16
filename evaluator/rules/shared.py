@@ -1677,7 +1677,7 @@ def analyze_submission_rules(question, student_answer, language):
     if "add two numbers" in question_text and _returns_name(function_node, "a", "b"):
         findings.append({
             "type": "hard_fail",
-            "correctness_max": 5,
+            "correctness_max": 0,
             "efficiency_max": 5,
             "readability_max": 8,
             "structure_max": 10,

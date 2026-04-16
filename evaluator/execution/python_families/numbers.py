@@ -250,14 +250,27 @@ def evaluate_number_family(question, question_text, families, normalized_student
             "suggestion": "Use a modulo-5 check such as n % 5 == 0.",
         }
 
-    if _contains(question_text, "divisible by 3") and "returnnotn%3" in normalized_student:
+    if (
+        (_contains(question_text, "divisible by 3") or _contains(question_text, "multiple of 3"))
+        and ("returnnotn%3" in normalized_student or "returnn%3==0" in normalized_student)
+    ):
+        if "returnn%3==0ifnelsefalse" in normalized_student or "returnn%3==0ifn!=0elsefalse" in normalized_student:
+            return {
+                "result_type": "mostly_correct",
+                "correctness_max": 16,
+                "efficiency_max": 12,
+                "readability_max": 12,
+                "structure_max": 12,
+                "feedback": "The function incorrectly returns False for 0, but 0 is also divisible by 3.",
+                "suggestion": "Check whether n % 3 == 0 directly without treating 0 as a special false case.",
+            }
         return {
             "result_type": "full_pass",
             "correctness_min": 36,
             "feedback": "The function correctly checks whether the number is divisible by 3.",
         }
 
-    if _contains(question_text, "divisible by 3") and "returnn%3==1" in normalized_student:
+    if (_contains(question_text, "divisible by 3") or _contains(question_text, "multiple of 3")) and "returnn%3==1" in normalized_student:
         return {
             "result_type": "zero_pass",
             "correctness_max": 5,
@@ -266,7 +279,7 @@ def evaluate_number_family(question, question_text, families, normalized_student
             "suggestion": "Use a modulo-3 check such as n % 3 == 0.",
         }
 
-    if _contains(question_text, "divisible by 3") and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
+    if (_contains(question_text, "divisible by 3") or _contains(question_text, "multiple of 3")) and normalized_student.endswith("returntrue") and "returnfalse" not in normalized_student:
         return {
             "result_type": "zero_pass",
             "correctness_max": 5,

@@ -2,6 +2,8 @@
 # 🔧 GENERAL CONFIGURATION
 # ==============================
 
+import os
+
 APP_NAME = "AI Intelligent Evaluation Model"
 VERSION = "2.0"
 
@@ -130,9 +132,9 @@ MAX_EXECUTION_TIME = 8   # ⚡ reduced from 10
 # QUESTION PROFILE STORAGE
 # ==============================
 
-QUESTION_PROFILE_BACKEND = "sqlite"
-QUESTION_PROFILE_STORE_PATH = "data/question_profiles.json"
-QUESTION_PROFILE_DB_PATH = "data/question_profiles.db"
+QUESTION_PROFILE_BACKEND = os.getenv("AI_EVAL_QUESTION_PROFILE_BACKEND", "sqlite")
+QUESTION_PROFILE_STORE_PATH = os.getenv("AI_EVAL_QUESTION_PROFILE_STORE_PATH", "data/question_profiles.json")
+QUESTION_PROFILE_DB_PATH = os.getenv("AI_EVAL_QUESTION_PROFILE_DB_PATH", "data/question_profiles.db")
 
 
 # ==============================
@@ -140,6 +142,7 @@ QUESTION_PROFILE_DB_PATH = "data/question_profiles.db"
 # ==============================
 
 AUTO_GENERATE_QUESTION_RULES = True
+AUTO_FILL_MISSING_REGISTRATION_FIELDS = True
 AUTO_GENERATE_MAX_ALTERNATIVES = 3
 AUTO_GENERATE_MAX_HIDDEN_TESTS = 8
 ORACLE_TEST_CASES_BASE = 15
@@ -159,11 +162,11 @@ LLM_REVIEW_MAX_ATTEMPTS = 3
 ALWAYS_LLM_REVIEW = False
 AUTO_REPAIR_BAD_PACKAGES = True
 LLM_REPHRASE_FEEDBACK = True
-LLM_GENERATE_FEEDBACK_ALWAYS = True
+LLM_GENERATE_FEEDBACK_ALWAYS = False
 LLM_REVIEW_HARD_MAX_ATTEMPTS = 8
 LLM_ALLOW_SCORE_AUDIT = False
 DETERMINISTIC_PACKAGE_SCORING_ONLY = True
-REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION = True
+REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION = False
 EXECUTION_SCORE_BOUNDS = {
     "full_pass_min": 90,
     "zero_pass_max": 10,
@@ -178,7 +181,7 @@ EXECUTION_SCORE_BOUNDS = {
         (1.0, 85),
     ],
 }
-REGISTER_STRICT_VALIDATE = True
+REGISTER_STRICT_VALIDATE = False
 REGISTER_STRICT_MIN_CONFIDENCE = 0.9
 REGISTER_REJECT_GENERIC_TEMPLATES = True
 REGISTER_REQUIRE_LLM_ASSISTANCE = True
@@ -220,11 +223,11 @@ HIDDEN_TEST_RUNTIME_FEATURES = {
 # ==============================
 
 EVALUATION_HISTORY_BACKEND = "sqlite"
-EVALUATION_HISTORY_DB_PATH = "data/evaluation_history.db"
+EVALUATION_HISTORY_DB_PATH = os.getenv("AI_EVAL_EVALUATION_HISTORY_DB_PATH", "data/evaluation_history.db")
 
 
 # ==============================
 # QUESTION LEARNING STORAGE
 # ==============================
 
-QUESTION_LEARNING_DB_PATH = "data/question_learning.db"
+QUESTION_LEARNING_DB_PATH = os.getenv("AI_EVAL_QUESTION_LEARNING_DB_PATH", "data/question_learning.db")

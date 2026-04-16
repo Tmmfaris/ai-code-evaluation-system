@@ -129,6 +129,59 @@ def _extract_character_prefix_count(question_text):
     return _parse_small_int_token(match.group(1))
 
 
+def _extract_last_n_characters_count(question_text):
+    normalized = (question_text or "").strip().lower()
+    match = re.search(r"last\s+([a-z0-9-]+)\s+characters?", normalized)
+    if not match:
+        return None
+    return _parse_small_int_token(match.group(1))
+
+
+def _mentions_first_and_last_character(question_text):
+    normalized = (question_text or "").strip().lower()
+    return bool(
+        ("first and last character" in normalized)
+        or ("first & last character" in normalized)
+        or (
+            "first" in normalized
+            and "last" in normalized
+            and "character" in normalized
+        )
+    )
+
+
+def _extract_list_contains_constant(question_text):
+    normalized = (question_text or "").strip().lower()
+    match = re.search(r"(?:list|array).*(?:contains?|has)\s+(?:value\s+)?(-?\d+)", normalized)
+    if not match:
+        match = re.search(r"(?:contains?|has)\s+(?:value\s+)?(-?\d+).*(?:list|array)", normalized)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _extract_list_length_comparison(question_text):
+    normalized = (question_text or "").strip().lower()
+    patterns = [
+        (r"(?:length|size)\s*(?:is|of)?\s*(?:less than|<)\s*([a-z0-9-]+)", "<"),
+        (r"(?:length|size)\s*(?:is|of)?\s*(?:greater than|more than|>)\s*([a-z0-9-]+)", ">"),
+        (r"(?:length|size)\s*(?:is|of)?\s*(?:less than or equal to|<=)\s*([a-z0-9-]+)", "<="),
+        (r"(?:length|size)\s*(?:is|of)?\s*(?:greater than or equal to|>=)\s*([a-z0-9-]+)", ">="),
+        (r"less than\s+([a-z0-9-]+)\s+(?:elements|items)", "<"),
+        (r"more than\s+([a-z0-9-]+)\s+(?:elements|items)", ">"),
+    ]
+    for pattern, operator in patterns:
+        match = re.search(pattern, normalized)
+        if match:
+            val = _parse_small_int_token(match.group(1))
+            if val is not None:
+                return {"operator": operator, "value": val}
+    return None
+
+
 def _extract_element_position(question_text):
     normalized = (question_text or "").strip().lower()
     ordinal_words = "|".join(sorted(_ORDINAL_NUMBER_WORDS.keys(), key=len, reverse=True))
@@ -179,6 +232,7 @@ def _infer_template_family(question, language):
         or _contains_all(question_text, "array", "reverse")
     ):
         return f"{language}::reverse_list"
+
     if "uppercase" in question_text and "string" in question_text:
         return f"{language}::uppercase_string"
     if (
@@ -209,14 +263,36 @@ def _infer_template_family(question, language):
         return f"{language}::count_vowels"
     if (_contains_all(question_text, "unique", "characters")) or (_contains_all(question_text, "all", "unique")):
         return f"{language}::unique_characters"
+    if _mentions_first_and_last_character(question_text):
+        return f"{language}::first_and_last_character"
     character_prefix_count = _extract_character_prefix_count(question_text)
     if character_prefix_count == 2:
         return f"{language}::first_two_characters"
     if character_prefix_count and character_prefix_count > 0:
         return f"{language}::prefix_characters_constant"
-    if _contains_all(question_text, "first", "character"):
+
+    suffix_character_count = _extract_last_n_characters_count(question_text)
+    if suffix_character_count and suffix_character_count > 0 and not _mentions_first_and_last_character(question_text):
+        return f"{language}::suffix_characters_constant"
+    if _contains_all(question_text, "middle", "character") and "string" in question_text:
+        return f"{language}::middle_character"
+    if (
+        _contains_all(question_text, "first", "character")
+        and not (
+            _contains_all(question_text, "last", "character")
+            or "first and last character" in question_text
+            or "first & last character" in question_text
+        )
+    ):
         return f"{language}::first_character"
-    if _contains_all(question_text, "last", "character"):
+    if (
+        _contains_all(question_text, "last", "character")
+        and not (
+            _contains_all(question_text, "first", "character")
+            or "first and last character" in question_text
+            or "first & last character" in question_text
+        )
+    ):
         return f"{language}::last_character"
     if _contains_all(question_text, "count", "words"):
         return f"{language}::count_words"
@@ -550,20 +626,34 @@ def _infer_template_family(question, language):
         return f"{language}::remove_duplicates_preserve_order"
     if _contains_all(question_text, "contains", "duplicates"):
         return f"{language}::contains_duplicates"
+    contains_value = _extract_list_contains_constant(question_text)
+    if contains_value is not None:
+        return f"{language}::list_contains_constant"
     if _contains_all(question_text, "list", "sorted"):
         return f"{language}::list_sorted"
     if _contains_all(question_text, "frequency", "elements") and "list" in question_text:
         return f"{language}::frequency_elements"
     if (
         "more than 3" in question_text
-        and ("list" in question_text or "array" in question_text or "elements" in question_text)
     ):
         return f"{language}::list_length_gt3"
     if (
-        ("list" in question_text or "array" in question_text)
-        and re.search(r"length\s+(equals|equal to|is)\s+-?\d+", question_text)
+        (
+            re.search(r"(?:list|array)\s+length\s+(?:equals|equal to|is)\s+-?\d+", question_text)
+            or re.search(r"(?:length|size)\s+(?:equals|equal to|is)\s+-?\d+", question_text)
+            or re.search(r"(?:length|size).*(?:exactly)\s+([a-z0-9-]+)", question_text)
+            or re.search(r"(?:exactly)\s+([a-z0-9-]+).*(?:length|size)", question_text)
+            or re.search(r"(?:length|size)\s+(?:is\s+)?exactly\s+([a-z0-9-]+)", question_text)
+        )
+        and ("list" in question_text or "array" in question_text or "elements" in question_text)
     ):
         return f"{language}::list_length_equals_constant"
+    list_length_comp = _extract_list_length_comparison(question_text)
+    if (
+        list_length_comp
+        and ("list" in question_text or "array" in question_text or "elements" in question_text)
+    ):
+        return f"{language}::list_length_comparison_constant"
     if (
         (_contains_all(question_text, "length", "list"))
         or (_contains_all(question_text, "get", "length", "list"))
@@ -608,8 +698,25 @@ def _infer_template_family_from_model_answer(model_answer, language):
             return f"{language}::first_two_characters"
         if prefix_count > 0:
             return f"{language}::prefix_characters_constant"
+    suffix_slice_match = re.search(r"return[a-z_][a-z0-9_]*\[(-?\d+):\]", compact)
+    if suffix_slice_match:
+        suffix_count = -int(suffix_slice_match.group(1))
+        if suffix_count > 0:
+            return f"{language}::suffix_characters_constant"
+    if "returns[len(s)//2]" in compact:
+        return f"{language}::middle_character"
     if "returns[:2]" in compact or "returns[0:2]" in compact:
         return f"{language}::first_two_characters"
+    if re.search(r"returns\[0\]\+s\[-1\]", compact) or re.search(r"return[a-z_][a-z0-9_]*\[0\]\+[a-z_][a-z0-9_]*\[-1\]", compact):
+        return f"{language}::first_and_last_character"
+    if re.search(r"return(-?\d+)inlst", compact):
+        return f"{language}::list_contains_constant"
+    list_length_comp_match = re.search(r"len\(lst\)\s*([<>=!]+)\s*(-?\d+)", compact)
+    if list_length_comp_match:
+        operator = list_length_comp_match.group(1)
+        if operator == "==":
+            return f"{language}::list_length_equals_constant"
+        return f"{language}::list_length_comparison_constant"
     if "len(lst)>0" in compact or "len(lst)!=0" in compact or "returnbool(lst)" in compact:
         return f"{language}::non_empty_collection_check"
     if "len(lst)==0" in compact or "returnnotlst" in compact:
@@ -803,10 +910,10 @@ def _sanitize_incorrect_patterns_for_family(incorrect_patterns, template_family,
                 item["score_cap"] = int(item.get("score_cap", 20) or 20)
             elif (
                 compact_pattern.startswith("deflower(")
-                and "return\"" in compact_pattern
+                and 'return"' in compact_pattern
             ) or (
                 compact_pattern.startswith("deflower_text(")
-                and "return\"" in compact_pattern
+                and 'return"' in compact_pattern
             ):
                 item["feedback"] = "Returning a constant string does not convert the input string to lowercase."
                 item["suggestion"] = "Return the lowercase version of the provided input, for example with s.lower()."
@@ -1234,6 +1341,157 @@ def _is_pattern_aligned_with_model(pattern, model_answer):
 
 def _deterministic_code_baselines(question, language):
     question_text = (question or "").lower()
+
+    # High-frequency phrasing support. These used to short-circuit into empty baselines
+    # and rely on model-answer parsing. That made registration brittle for new topics
+    # (especially Java/JS) when the model answer didn't match a known pattern.
+    if language in {"python", "java", "javascript"}:
+        suffix_n = _extract_last_n_characters_count(question_text)
+        if suffix_n and suffix_n > 0 and not _mentions_first_and_last_character(question_text):
+            accepted = []
+            if language == "python":
+                accepted = [f"return s[-{suffix_n}:]"]
+            elif language == "java":
+                accepted = [f"return s.substring(Math.max(0, s.length() - {suffix_n}));"]
+            elif language == "javascript":
+                accepted = [f"return s.slice(-{suffix_n});"]
+            return {
+                "accepted_solutions": accepted,
+                "test_sets": {
+                    "positive": [
+                        _build_case(["abcdefg"], "abcdefg"[-suffix_n:], f"basic last {suffix_n} characters", kind="normal", weight=1.0, required=True),
+                        _build_case(["a"], "a"[-suffix_n:], "single character input stays safe", kind="edge", weight=1.1, required=True),
+                    ],
+                    "negative": [
+                        _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                    ],
+                },
+                "incorrect_patterns": [
+                    {
+                        "pattern": "return s",
+                        "match_type": "contains",
+                        "feedback": "Returning the full string does not extract the requested suffix.",
+                        "suggestion": f"Return only the last {suffix_n} characters, for example with slicing from the end.",
+                        "score_cap": 20,
+                    },
+                    {
+                        "pattern": "return s[:",
+                        "match_type": "contains",
+                        "feedback": "Returning a prefix does not satisfy a last-characters (suffix) requirement.",
+                        "suggestion": f"Slice from the end to return the last {suffix_n} characters.",
+                        "score_cap": 20,
+                    },
+                ],
+            }
+
+        llc = _extract_list_length_comparison(question_text)
+        if llc and llc.get("value") is not None:
+            op = llc.get("operator")
+            val = int(llc.get("value"))
+            accepted = []
+            if language == "python":
+                accepted = [f"return len(lst) {op} {val}"]
+            elif language == "java":
+                accepted = [f"return lst.length {op} {val};"]
+            elif language == "javascript":
+                accepted = [f"return lst.length {op} {val};"]
+            def _cmp(length, operator, target):
+                if operator == "<":
+                    return length < target
+                if operator == "<=":
+                    return length <= target
+                if operator == ">":
+                    return length > target
+                if operator == ">=":
+                    return length >= target
+                return False
+
+            # Build one passing and one failing list deterministically.
+            if op == "<":
+                pass_len, fail_len = max(0, val - 1), val + 1
+            elif op == "<=":
+                pass_len, fail_len = max(0, val), val + 1
+            elif op == ">":
+                pass_len, fail_len = val + 1, max(0, val - 1)
+            elif op == ">=":
+                pass_len, fail_len = max(0, val), max(0, val - 1)
+            else:
+                pass_len, fail_len = max(0, val), val + 1
+
+            passing_list = list(range(pass_len))
+            failing_list = list(range(fail_len))
+            return {
+                "accepted_solutions": accepted,
+                "test_sets": {
+                    "positive": [
+                        _build_case([passing_list], True, f"list length satisfies len(lst) {op} {val}", kind="normal", weight=1.0, required=True),
+                        _build_case([[]], _cmp(0, op, val), "empty list edge case", kind="edge", weight=1.1, required=False),
+                    ],
+                    "negative": [
+                        _build_case([failing_list], False, f"list length does not satisfy len(lst) {op} {val}", kind="normal", weight=1.0, required=True),
+                    ],
+                },
+                "incorrect_patterns": [
+                    {
+                        "pattern": f"return len(lst) == {val}",
+                        "match_type": "contains",
+                        "feedback": "Using equality checks for an exact length, but the question requires a comparison.",
+                        "suggestion": f"Compare the length with {op}, for example with len(lst) {op} {val}.",
+                        "score_cap": 20,
+                    },
+                    {
+                        "pattern": f"return len(lst) != {val}",
+                        "match_type": "contains",
+                        "feedback": "Using inequality does not match the required comparison in the question.",
+                        "suggestion": f"Use len(lst) {op} {val} to match the requirement.",
+                        "score_cap": 20,
+                    },
+                ],
+            }
+
+        multi_match = re.search(r"\bmultiple\s+of\s+(-?\d+)\b", question_text)
+        if (
+            multi_match
+            and ("check" in question_text or "whether" in question_text or "is" in question_text)
+            and not re.search(r"divisible\s+by\s+\d+", question_text)
+        ):
+            divisor = int(multi_match.group(1))
+            accepted = []
+            if language == "python":
+                accepted = [f"return n % {divisor} == 0", f"return not n % {divisor}"]
+            elif language == "java":
+                accepted = [f"return n % {divisor} == 0;"]
+            elif language == "javascript":
+                accepted = [f"return n % {divisor} === 0;"]
+            return {
+                "accepted_solutions": accepted,
+                "test_sets": {
+                    "positive": [
+                        _build_case([0], True, "zero is a multiple of the constant", kind="edge", weight=1.1, required=True),
+                        _build_case([abs(divisor)], True, "exact multiple of constant", kind="normal", weight=1.0, required=True),
+                    ],
+                    "negative": [
+                        _build_case([abs(divisor) + 1], False, "non-multiple of constant", kind="normal", weight=1.0, required=True),
+                    ],
+                },
+                "incorrect_patterns": [
+                    {
+                        "pattern": f"return n % {divisor} != 0",
+                        "match_type": "contains",
+                        "feedback": f"Checking for a non-zero remainder solves the opposite problem. The function should return True only when the number is a multiple of {divisor}.",
+                        "suggestion": f"Use n % {divisor} == 0 to check whether it is a multiple.",
+                        "score_cap": 20,
+                    },
+                    {
+                        "pattern": f"return n % {divisor} == 1",
+                        "match_type": "contains",
+                        "feedback": f"Checking whether the remainder is 1 does not determine whether the number is a multiple of {divisor}.",
+                        "suggestion": f"Use n % {divisor} == 0 to check whether it is a multiple.",
+                        "score_cap": 20,
+                    },
+                ],
+            }
+
     divisible_match = re.search(r"divisible by\s+(-?\d+)", question_text)
 
     if divisible_match:
@@ -1287,6 +1545,7 @@ def _deterministic_code_baselines(question, language):
         return baseline
 
     if "factorial" in question_text:
+        inverted_op = {"<": ">", ">": "<", "<=": ">=", ">=": "<=", "==": "!=", "!=": "=="}.get(op, op)
         return {
             "accepted_solutions": [
                 "def fact(n):\n    if n == 0:\n        return 1\n    return n * fact(n - 1)" if language == "python" else "",
@@ -1623,2685 +1882,50 @@ def _deterministic_code_baselines(question, language):
             ],
         }
 
-    if _contains_all(question_text, "number", "positive") or "positive number" in question_text:
+    if _mentions_first_and_last_character(question_text):
         return {
             "accepted_solutions": [
-                "return n > 0" if language == "python" else "",
-                "return n > 0;" if language == "java" else "",
-                "return n > 0;" if language == "javascript" else "",
+                "return s[0] + s[-1]" if language == "python" else "",
+                "return String.valueOf(s.charAt(0)) + s.charAt(s.length() - 1);" if language == "java" else "",
+                "return s[0] + s[s.length - 1];" if language == "javascript" else "",
             ],
             "test_sets": {
                 "positive": [
-                    _build_case([1], True, "small positive", kind="normal", weight=1.0, required=True),
-                    _build_case([10], True, "larger positive", kind="normal", weight=1.1, required=False),
+                    _build_case(["python"], "pn", "basic first and last character extraction", kind="normal", weight=1.0, required=True),
+                    _build_case(["ab"], "ab", "two-character string returns both characters", kind="edge", weight=1.1, required=True),
+                    _build_case(["x"], "xx", "single character is both first and last", kind="edge", weight=1.2, required=True),
                 ],
                 "negative": [
-                    _build_case([0], False, "zero is not positive", kind="edge", weight=1.2, required=True),
-                    _build_case([-5], False, "negative value", kind="edge", weight=1.1, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n >= 0",
-                    "match_type": "contains",
-                    "feedback": "Treating zero as positive does not satisfy the strict positive-number requirement, since zero is neither positive nor negative.",
-                    "suggestion": "Return true only when the number is strictly greater than zero.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return n < 0",
-                    "match_type": "contains",
-                    "feedback": "Checking for negative numbers does not identify positive values.",
-                    "suggestion": "Use a strict greater-than-zero check instead.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    threshold_match = re.search(r"greater than\s+(-?\d+)", question_text)
-    if "number" in question_text and threshold_match:
-        threshold = int(threshold_match.group(1))
-        return {
-            "accepted_solutions": [
-                f"return n > {threshold}" if language == "python" else "",
-                f"return n > {threshold};" if language == "java" else "",
-                f"return n > {threshold};" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([threshold + 1], True, "value above threshold", kind="normal", weight=1.0, required=True),
-                    _build_case([threshold + 5], True, "larger value above threshold", kind="edge", weight=1.1, required=False),
-                ],
-                "negative": [
-                    _build_case([threshold], False, "threshold itself is not greater", kind="edge", weight=1.2, required=True),
-                    _build_case([threshold - 1], False, "value below threshold", kind="normal", weight=1.0, required=True),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": f"return n >= {threshold}",
-                    "match_type": "contains",
-                    "feedback": f"Using >= includes {threshold}, so the function also returns True for the threshold itself. The question requires numbers strictly greater than {threshold}, so use a strict greater-than comparison.",
-                    "suggestion": f"Use n > {threshold} so the threshold value itself returns False.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": f"return n < {threshold}",
-                    "match_type": "contains",
-                    "feedback": f"Checking whether the number is less than {threshold} solves the opposite problem. The question asks you to identify values greater than {threshold}, not smaller ones.",
-                    "suggestion": f"Use n > {threshold} so only values above the threshold return True.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if "absolute" in question_text and "value" in question_text:
-        return {
-            "accepted_solutions": [
-                "return abs(n)" if language == "python" else "",
-                "return Math.abs(n);" if language == "java" else "",
-                "return Math.abs(n);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([5], 5, "positive value", kind="normal", weight=1.0, required=True),
-                    _build_case([-7], 7, "negative value", kind="edge", weight=1.1, required=True),
-                    _build_case([0], 0, "zero value", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([-1], 1, "negative to positive trap", kind="trap", weight=1.0, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n",
-                    "match_type": "contains",
-                    "feedback": "Returning the input directly does not convert negative numbers to their absolute value.",
-                    "suggestion": "Return the absolute value, for example with abs(n).",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return -n",
-                    "match_type": "contains",
-                    "feedback": "Negating the input fails for positive values, which should remain unchanged.",
-                    "suggestion": "Return the absolute value, for example with abs(n).",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if _contains_all(question_text, "number", "negative") or "negative number" in question_text:
-        return {
-            "accepted_solutions": [
-                "return n < 0" if language == "python" else "",
-                "return n < 0;" if language == "java" else "",
-                "return n < 0;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([-1], True, "small negative", kind="normal", weight=1.0, required=True),
-                    _build_case([-10], True, "larger negative", kind="edge", weight=1.1, required=False),
-                ],
-                "negative": [
-                    _build_case([0], False, "zero is not negative", kind="edge", weight=1.2, required=True),
-                    _build_case([5], False, "positive value", kind="normal", weight=1.0, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n <= 0",
-                    "match_type": "contains",
-                    "feedback": "Treating zero as negative does not satisfy the strict negative-number requirement, since zero is neither positive nor negative.",
-                    "suggestion": "Return true only when the number is strictly less than zero.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return n > 0",
-                    "match_type": "contains",
-                    "feedback": "This checks positive numbers instead of negative numbers.",
-                    "suggestion": "Use a strict less-than-zero check such as n < 0.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not check whether the number is negative.",
-                    "suggestion": "Return the result of an actual negative-number check.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if "double" in question_text and "number" in question_text:
-        return {
-            "accepted_solutions": [
-                "return n * 2" if language == "python" else "",
-                "return n + n" if language == "python" else "",
-                "return n * 2;" if language == "java" else "",
-                "return n * 2;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([2], 4, "small positive integer", kind="normal", weight=1.0, required=True),
-                    _build_case([-3], -6, "negative integer", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([0], 0, "zero input", kind="edge", weight=1.2, required=True),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": r"(?m)^\s*return\s+n\s*;?\s*$",
-                    "match_type": "regex",
-                    "feedback": "Returning the input unchanged does not double the number.",
-                    "suggestion": "Multiply by 2 or add the number to itself before returning it.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return n + 2",
-                    "match_type": "contains",
-                    "feedback": "Adding 2 is not the same as doubling the input value.",
-                    "suggestion": "Use n * 2 or n + n to double the value.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if "uppercase" in question_text and "string" in question_text:
-        suggestion = "Call s.upper() before returning the result." if language == "python" else "Call s.toUpperCase() before returning the result."
-        return {
-            "accepted_solutions": [
-                "return s.upper()" if language == "python" else "",
-                "return s.toUpperCase();" if language == "java" else "",
-                "return s.toUpperCase();" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["ab"], "AB", "lowercase to uppercase", kind="normal", weight=1.0, required=True),
-                    _build_case([""], "", "empty string uppercase", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["Ab"], "AB", "mixed-case normalization trap", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s;",
-                    "match_type": "contains",
-                    "feedback": "Returning the original string does not convert it to uppercase.",
-                    "suggestion": suggestion,
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (
-        _contains_all(question_text, "check", "lowercase")
-        or (_contains_all(question_text, "string", "lowercase") and ("check" in question_text or "is " in question_text or " if " in question_text))
-    ):
-        return {
-            "accepted_solutions": [
-                "return s.islower()" if language == "python" else "",
-                "return any(c.isalpha() for c in s) and s == s.lower()" if language == "python" else "",
-                "return s.equals(s.toLowerCase()) && !s.equals(s.toUpperCase());" if language == "java" else "",
-                "return s === s.toLowerCase() && s !== s.toUpperCase();" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["hello"], True, "lowercase word", kind="normal", weight=1.0, required=True),
-                    _build_case(["python"], True, "another lowercase word", kind="normal", weight=1.0, required=True),
-                    _build_case(["abc123"], True, "lowercase letters with digits", kind="edge", weight=1.0, required=False),
-                ],
-                "negative": [
-                    _build_case(["Hello"], False, "mixed-case string", kind="normal", weight=1.1, required=True),
-                    _build_case(["ABC"], False, "uppercase string", kind="normal", weight=1.1, required=True),
-                    _build_case(["123"], False, "digits only are not lowercase letters", kind="trap", weight=1.0),
-                    _build_case([""], False, "empty string is not lowercase", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s.lower()",
-                    "match_type": "contains",
-                    "feedback": "Converting the string to lowercase returns a transformed string instead of checking whether it is already lowercase.",
-                    "suggestion": "Return a boolean check such as s.islower().",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not check whether the string is lowercase.",
-                    "suggestion": "Return a boolean expression that verifies the string is already lowercase.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if "lowercase" in question_text and "string" in question_text:
-        return {
-            "accepted_solutions": [
-                "return s.lower()" if language == "python" else "",
-                "return s.toLowerCase();" if language == "java" else "",
-                "return s.toLowerCase();" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["AB"], "ab", "uppercase to lowercase", kind="normal", weight=1.0, required=True),
-                    _build_case([""], "", "empty string lowercase", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["Ab"], "ab", "mixed-case normalization", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s;",
-                    "match_type": "contains",
-                    "feedback": "Returning the original string does not convert it to lowercase.",
-                    "suggestion": "Call lower() or toLowerCase() before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "length of string" in question_text or "find length of string" in question_text:
-        return {
-            "accepted_solutions": [
-                "return len(s)" if language == "python" else "",
-                "return s.length();" if language == "java" else "",
-                "return s.length;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["hello"], 5, "basic string length", kind="normal", weight=1.0, required=True),
-                    _build_case([""], 0, "empty string length", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["a"], 1, "single character length", kind="trap", weight=1.0, required=False),
-                    _build_case(["hello world"], 11, "string with space length", kind="edge", weight=1.1, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Returning 0 does not calculate the string length for non-empty inputs.",
-                    "suggestion": "Return the length of the input string, for example with len(s).",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "concatenate" in question_text and "string" in question_text:
-        return {
-            "accepted_solutions": [
-                "return a + b" if language == "python" else "",
-                "return ''.join([a,b])" if language == "python" else "",
-                "return a + b;" if language == "java" else "",
-                "return a + b;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["ab", "cd"], "abcd", "basic concatenation", kind="normal", weight=1.0, required=True),
-                    _build_case(["", "x"], "x", "empty first string", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["a", ""], "a", "empty second string", kind="edge", weight=1.0),
-                    _build_case(["hi", " there"], "hi there", "concatenate with whitespace", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return a",
-                    "match_type": "contains",
-                    "feedback": "Returning only the first string does not concatenate both inputs.",
-                    "suggestion": "Return the combined strings, for example with a + b.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "empty", "string"):
-        return {
-            "accepted_solutions": [
-                "return not s" if language == "python" else "",
-                "return s == ''" if language == "python" else "",
-                "return s.isEmpty();" if language == "java" else "",
-                "return s.length === 0;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([""], True, "empty string case", kind="edge", weight=1.2, required=True),
-                    _build_case(["abc"], False, "non-empty string", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([" "], False, "whitespace is still non-empty", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not actually check whether the string is empty.",
-                    "suggestion": "Return True only when the string has no characters.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "palindrome" in question_text:
-        return {
-            "accepted_solutions": [
-                "return s == s[::-1]" if language == "python" else "",
-                "return s.equals(new StringBuilder(s).reverse().toString());" if language == "java" else "",
-                "return s === s.split('').reverse().join('')" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["madam"], True, "palindrome string", kind="normal", weight=1.0, required=True),
-                    _build_case(["level"], True, "another palindrome", kind="normal", weight=1.0),
-                ],
-                "negative": [
-                    _build_case(["hello"], False, "non-palindrome", kind="normal", weight=1.2, required=True),
-                    _build_case(["ab"], False, "short non-palindrome", kind="trap", weight=1.0),
-                    _build_case([""], True, "empty string edge case", kind="edge", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return true;",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not actually check whether the value is a palindrome.",
-                    "suggestion": "Compare the value with its reverse or mirrored characters.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "ipv4" in question_text or _contains_all(question_text, "ip", "address"):
-        return {
-            "accepted_solutions": [
-                "parts = ip.split('.')\nreturn len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 and (p == '0' or not p.startswith('0')) for p in parts)" if language == "python" else "",
-                "String[] parts = ip.split(\"\\\\.\"); if (parts.length != 4) return false; for (String p : parts) { if (p.isEmpty() || (p.length() > 1 && p.startsWith(\"0\"))) return false; try { int n = Integer.parseInt(p); if (n < 0 || n > 255) return false; } catch (Exception e) { return false; } } return true;" if language == "java" else "",
-                "const parts = ip.split('.'); return parts.length === 4 && parts.every(p => /^\\d+$/.test(p) && Number(p) >= 0 && Number(p) <= 255 && (p === '0' || !p.startsWith('0')));" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["192.168.1.1"], True, "common valid IPv4 address", kind="normal", weight=1.0, required=True),
-                    _build_case(["0.0.0.0"], True, "all-zero IPv4 address", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["256.1.1.1"], False, "octet larger than 255", kind="normal", weight=1.1, required=True),
-                    _build_case(["1.2.3"], False, "too few octets", kind="edge", weight=1.0),
-                    _build_case(["01.2.3.4"], False, "leading zero octet", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return true",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not validate IPv4 structure or octet ranges.",
-                    "suggestion": "Split the string into four octets and validate each octet is numeric and between 0 and 255.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "valid", "json"):
-        return {
-            "accepted_solutions": [
-                "s = s.strip()\nreturn (s.startswith('{') and s.endswith('}')) or (s.startswith('[') and s.endswith(']'))" if language == "python" else "",
-                "s = s.trim(); return (s.startsWith(\"{\") && s.endsWith(\"}\")) || (s.startsWith(\"[\") && s.endsWith(\"]\"));" if language == "java" else "",
-                "s = s.trim(); return (s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'));" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(['{"a":1}'], True, "basic json object", kind="normal", weight=1.0, required=True),
-                    _build_case(['[1,2,3]'], True, "basic json array", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(['{a:1}'], False, "missing quoted key", kind="normal", weight=1.1, required=True),
-                    _build_case(['text'], False, "plain text is not json", kind="edge", weight=1.0),
-                    _build_case(['{"a":1'], False, "unbalanced json object", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return true",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not validate whether the string is JSON-like.",
-                    "suggestion": "At minimum, validate the trimmed opening and closing JSON delimiters before returning true.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "exception", "handling") and "division" in question_text:
-        return {
-            "accepted_solutions": [
-                "try { return a / b; } catch (Exception e) { return 0; }" if language == "java" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([10, 2], 5, "normal division", kind="normal", weight=1.0, required=True),
-                    _build_case([5, 0], 0, "division by zero fallback", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([9, 3], 3, "exact division", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "a / b",
-                    "match_type": "contains",
-                    "feedback": "Plain division without exception handling does not safely handle divide-by-zero cases.",
-                    "suggestion": "Wrap the division in try/catch and return a safe fallback for invalid division.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "convert", "string", "integer", "safely"):
-        return {
-            "accepted_solutions": [
-                "try { return Integer.parseInt(s); } catch (Exception e) { return 0; }" if language == "java" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["123"], 123, "valid integer string", kind="normal", weight=1.0, required=True),
-                    _build_case(["abc"], 0, "invalid string fallback", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["007"], 7, "leading zeros still parse", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "Integer.parseInt",
-                    "match_type": "contains",
-                    "feedback": "Parsing without exception handling is not safe for invalid numeric strings.",
-                    "suggestion": "Wrap Integer.parseInt(...) in a try/catch block and return a safe fallback value.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "nullpointerexception" in question_text or (_contains_all(question_text, "null") and _contains_all(question_text, "string", "length")):
-        return {
-            "accepted_solutions": [
-                "if (s == null) return 0; return s.length();" if language == "java" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abc"], 3, "normal string length", kind="normal", weight=1.0, required=True),
-                    _build_case([None], 0, "null-safe fallback", kind="edge", weight=1.3, required=True),
-                ],
-                "negative": [
-                    _build_case([""], 0, "empty string still valid", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": ".length()",
-                    "match_type": "contains",
-                    "feedback": "Accessing s.length() without a null guard can still throw a NullPointerException.",
-                    "suggestion": "Check for null first, then return the string length for valid inputs.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "valid", "email"):
-        return {
-            "accepted_solutions": [
-                "parts = s.split('@')\nreturn len(parts) == 2 and parts[0] != '' and '.' in parts[1] and not parts[1].startswith('.') and not parts[1].endswith('.')" if language == "python" else "",
-                "int at = s.indexOf('@'); return at > 0 && s.indexOf('@', at + 1) == -1 && s.indexOf('.', at) > at + 1 && !s.endsWith(\".\");" if language == "java" else "",
-                "const at = s.indexOf('@'); return at > 0 && s.indexOf('@', at + 1) === -1 && s.indexOf('.', at) > at + 1 && !s.endsWith('.');" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["user@example.com"], True, "basic valid email", kind="normal", weight=1.0, required=True),
-                    _build_case(["a.b@domain.org"], True, "valid email with dot in local part", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["userexample.com"], False, "missing at sign", kind="normal", weight=1.1, required=True),
-                    _build_case(["user@domain"], False, "missing dot in domain", kind="edge", weight=1.1),
-                    _build_case(["user@.com"], False, "dot immediately after at sign", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "@",
-                    "match_type": "contains",
-                    "feedback": "Checking only for '@' is too weak for even a basic email validation.",
-                    "suggestion": "Also verify there is a domain part and that the dot appears after '@'.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "valid", "url"):
-        return {
-            "accepted_solutions": [
-                "return s.startswith(('http://', 'https://')) and '://' in s and '.' in s.split('://', 1)[1]" if language == "python" else "",
-                "return (s.startsWith(\"http://\") || s.startsWith(\"https://\")) && s.substring(s.indexOf(\"://\") + 3).contains(\".\");" if language == "java" else "",
-                "return (s.startsWith('http://') || s.startsWith('https://')) && s.includes('://') && s.split('://')[1].includes('.');" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["https://example.com"], True, "basic https url", kind="normal", weight=1.0, required=True),
-                    _build_case(["http://site.org/path"], True, "basic http url with path", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["ftp://example.com"], False, "unsupported scheme", kind="normal", weight=1.1, required=True),
-                    _build_case(["https://localhost"], False, "missing dot in host", kind="edge", weight=1.0),
-                    _build_case(["example.com"], False, "missing scheme", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "http",
-                    "match_type": "contains",
-                    "feedback": "Checking only for the presence of 'http' is weaker than validating that the URL starts with http:// or https://.",
-                    "suggestion": "Validate the scheme explicitly and ensure the host portion is present.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "count", "vowel") and "string" in question_text:
-        return {
-            "accepted_solutions": [
-                "return sum(1 for c in s if c in 'aeiouAEIOU')" if language == "python" else "",
-                "return len([c for c in s if c in 'aeiouAEIOU'])" if language == "python" else "",
-                'int count = 0; for (char c : s.toCharArray()) { if ("aeiouAEIOU".indexOf(c) >= 0) count++; } return count;' if language == "java" else "",
-                "return (s.match(/[aeiou]/gi) || []).length;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["hello"], 2, "basic mixed vowel string", kind="normal", weight=1.0, required=True),
-                    _build_case(["AEIOU"], 5, "uppercase vowels", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([""], 0, "empty string", kind="edge", weight=1.1, required=False),
-                    _build_case(["xyz"], 0, "no vowels", kind="trap", weight=1.0, required=True),
-                    _build_case(["Alphabet"], 3, "mixed-case word", kind="normal", weight=1.1, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Always returning 0 does not count vowels in the input string.",
-                    "suggestion": "Check each character and count the ones that are vowels.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "count", "words"):
-        return {
-            "accepted_solutions": [
-                "return len(s.split())" if language == "python" else "",
-                "return s.trim().isEmpty() ? 0 : s.trim().split(\"\\\\s+\").length;" if language == "java" else "",
-                "return s.trim() === '' ? 0 : s.trim().split(/\\s+/).length;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["hello world"], 2, "two-word string", kind="normal", weight=1.0, required=True),
-                    _build_case(["one"], 1, "single word", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([" two  spaces here "], 3, "multiple spaces collapsed", kind="trap", weight=1.1),
-                    _build_case([""], 0, "empty string", kind="edge", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return len(s)",
-                    "match_type": "contains",
-                    "feedback": "Returning the string length counts characters, not words.",
-                    "suggestion": "Split the string into words and count the resulting tokens.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "remove", "spaces"):
-        return {
-            "accepted_solutions": [
-                "return s.replace(' ', '')" if language == "python" else "",
-                "return s.replace(\" \", \"\");" if language == "java" else "",
-                "return s.replace(/ /g, '');" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["a b c"], "abc", "remove internal spaces", kind="normal", weight=1.0, required=True),
-                    _build_case([" no spaces "], "nospaces", "remove leading and trailing spaces", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([""], "", "empty string", kind="edge", weight=1.0),
-                    _build_case(["a  b"], "ab", "multiple adjacent spaces", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s",
-                    "match_type": "contains",
-                    "feedback": "Returning the original string does not remove spaces.",
-                    "suggestion": "Replace or filter out the space characters before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "only", "digits") or "numeric" in question_text:
-        return {
-            "accepted_solutions": [
-                "return s.isdigit()" if language == "python" else "",
-                "return s.matches(\"\\\\d+\");" if language == "java" else "",
-                "return /^\\d+$/.test(s);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["123"], True, "all digits", kind="normal", weight=1.0, required=True),
-                    _build_case(["007"], True, "leading zeros still digits", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["12a"], False, "contains alphabet", kind="normal", weight=1.1, required=True),
-                    _build_case([""], False, "empty string", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not verify whether the string contains only digits.",
-                    "suggestion": "Check each character or use a digit-only helper before returning True.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "only", "alphabets") or _contains_all(question_text, "only", "alphabet"):
-        return {
-            "accepted_solutions": [
-                "return s.isalpha()" if language == "python" else "",
-                "return s.matches(\"[A-Za-z]+\");" if language == "java" else "",
-                "return /^[A-Za-z]+$/.test(s);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abc"], True, "lowercase alphabets", kind="normal", weight=1.0, required=True),
-                    _build_case(["AbC"], True, "mixed-case alphabets", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["abc1"], False, "contains digit", kind="normal", weight=1.1, required=True),
-                    _build_case([""], False, "empty string", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not verify whether the string contains only alphabets.",
-                    "suggestion": "Check that every character is alphabetic before returning True.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "balanced parentheses" in question_text or (_contains_all(question_text, "balanced") and "parentheses" in question_text):
-        return {
-            "accepted_solutions": [
-                "stack = 0\nfor ch in s:\n    if ch == '(':\n        stack += 1\n    elif ch == ')':\n        stack -= 1\n        if stack < 0:\n            return False\nreturn stack == 0" if language == "python" else "",
-                "int bal = 0; for (char ch : s.toCharArray()) { if (ch == '(') bal++; else if (ch == ')') { bal--; if (bal < 0) return false; } } return bal == 0;" if language == "java" else "",
-                "let bal = 0; for (const ch of s) { if (ch === '(') bal++; else if (ch === ')') { bal--; if (bal < 0) return false; } } return bal === 0;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["()"], True, "simple balanced", kind="normal", weight=1.0, required=True),
-                    _build_case(["(())"], True, "nested balanced", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["(()"], False, "missing closing bracket", kind="normal", weight=1.1, required=True),
-                    _build_case([")("], False, "wrong order", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "len(s) % 2 == 0",
-                    "match_type": "contains",
-                    "feedback": "Even length alone does not determine whether parentheses are balanced.",
-                    "suggestion": "Track opening and closing parentheses as you scan the string.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "anagram" in question_text:
-        return {
-            "accepted_solutions": [
-                "return sorted(a) == sorted(b)" if language == "python" else "",
-                "char[] x = a.toCharArray(); char[] y = b.toCharArray(); Arrays.sort(x); Arrays.sort(y); return Arrays.equals(x, y);" if language == "java" else "",
-                "return a.split('').sort().join('') === b.split('').sort().join('');" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["listen", "silent"], True, "common anagram pair", kind="normal", weight=1.0, required=True),
-                    _build_case(["aab", "aba"], True, "repeated letters", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["ab", "abc"], False, "different lengths", kind="normal", weight=1.0, required=True),
-                    _build_case(["rat", "car"], False, "same length non-anagram", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "len(a) == len(b)",
-                    "match_type": "contains",
-                    "feedback": "Equal length alone does not determine whether two strings are anagrams.",
-                    "suggestion": "Compare the character multiset, for example by sorting or counting characters.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "armstrong" in question_text:
-        return {
-            "accepted_solutions": [
-                "digits = str(n); return sum(int(d) ** len(digits) for d in digits) == n" if language == "python" else "",
-                "String digits = Integer.toString(n); int sum = 0; for (char d : digits.toCharArray()) sum += Math.pow(d - '0', digits.length()); return sum == n;" if language == "java" else "",
-                "const digits = String(n); return digits.split('').reduce((sum, d) => sum + Number(d) ** digits.length, 0) === n;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([153], True, "classic armstrong number", kind="normal", weight=1.0, required=True),
-                    _build_case([9474], True, "four-digit armstrong number", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([154], False, "near miss non-armstrong", kind="normal", weight=1.0, required=True),
-                    _build_case([10], False, "two-digit non-armstrong", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n > 0",
-                    "match_type": "contains",
-                    "feedback": "Checking only whether the number is positive does not determine whether it is an Armstrong number.",
-                    "suggestion": "Compare the number with the sum of its digits raised to the appropriate power.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "leap year" in question_text:
-        return {
-            "accepted_solutions": [
-                "return year % 400 == 0 or (year % 4 == 0 and year % 100 != 0)" if language == "python" else "",
-                "return year % 400 == 0 || (year % 4 == 0 && year % 100 != 0);" if language == "java" else "",
-                "return year % 400 === 0 || (year % 4 === 0 && year % 100 !== 0);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([2024], True, "standard leap year", kind="normal", weight=1.0, required=True),
-                    _build_case([2000], True, "century leap year divisible by 400", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([1900], False, "century year not divisible by 400", kind="trap", weight=1.2, required=True),
-                    _build_case([2023], False, "common year", kind="normal", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "year % 4 == 0",
-                    "match_type": "contains",
-                    "feedback": "Checking divisibility by 4 alone misses the century-year rule.",
-                    "suggestion": "Also require century years to be divisible by 400.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "gcd" in question_text or "greatest common divisor" in question_text:
-        return {
-            "accepted_solutions": [
-                "while b:\n    a, b = b, a % b\nreturn a" if language == "python" else "",
-                "while (b != 0) { int t = b; b = a % b; a = t; } return a;" if language == "java" else "",
-                "while (b !== 0) { const t = b; b = a % b; a = t; } return a;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([12, 18], 6, "common gcd case", kind="normal", weight=1.0, required=True),
-                    _build_case([7, 3], 1, "coprime numbers", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([10, 0], 10, "zero second operand", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return a * b",
-                    "match_type": "contains",
-                    "feedback": "Multiplying the inputs does not compute the greatest common divisor.",
-                    "suggestion": "Use the Euclidean algorithm to reduce the pair until the remainder is zero.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "lcm" in question_text or "least common multiple" in question_text:
-        return {
-            "accepted_solutions": [
-                "import math\nreturn abs(a * b) // math.gcd(a, b)" if language == "python" else "",
-                "int x = a, y = b; while (y != 0) { int t = y; y = x % y; x = t; } return Math.abs(a * b) / x;" if language == "java" else "",
-                "let x = a, y = b; while (y !== 0) { const t = y; y = x % y; x = t; } return Math.abs(a * b) / x;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([4, 6], 12, "common lcm case", kind="normal", weight=1.0, required=True),
-                    _build_case([5, 7], 35, "coprime numbers", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([3, 3], 3, "same numbers", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return a + b",
-                    "match_type": "contains",
-                    "feedback": "Adding the inputs does not compute the least common multiple.",
-                    "suggestion": "Use the relation lcm(a, b) = abs(a*b) / gcd(a, b).",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "power of 2" in question_text or "power of two" in question_text:
-        return {
-            "accepted_solutions": [
-                "return n > 0 and (n & (n - 1)) == 0" if language == "python" else "",
-                "return n > 0 && (n & (n - 1)) == 0;" if language == "java" else "",
-                "return n > 0 && (n & (n - 1)) === 0;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([8], True, "power of two", kind="normal", weight=1.0, required=True),
-                    _build_case([1], True, "one is a power of two", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([6], False, "non-power even number", kind="trap", weight=1.1, required=True),
-                    _build_case([0], False, "zero is not a power of two", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "n % 2 == 0",
-                    "match_type": "contains",
-                    "feedback": "Checking whether a number is even is not the same as checking whether it is a power of two.",
-                    "suggestion": "Use a repeated division or bitwise check that only powers of two satisfy.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "power of 3" in question_text or "power of three" in question_text:
-        return {
-            "accepted_solutions": [
-                "while n > 1:\n    if n % 3 != 0:\n        return False\n    n //= 3\nreturn n == 1" if language == "python" else "",
-                "while (n > 1) { if (n % 3 != 0) return false; n /= 3; } return n == 1;" if language == "java" else "",
-                "while (n > 1) { if (n % 3 !== 0) return false; n /= 3; } return n === 1;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([9], True, "power of three", kind="normal", weight=1.0, required=True),
-                    _build_case([1], True, "one is a power of three", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([12], False, "non-power of three", kind="trap", weight=1.1, required=True),
-                    _build_case([0], False, "zero is not a power of three", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "n % 3 == 0",
-                    "match_type": "contains",
-                    "feedback": "Checking divisibility by 3 once is not enough to determine whether the number is a power of three.",
-                    "suggestion": "Keep dividing by 3 until the value is no longer divisible and check whether it finishes at 1.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "reverse", "number") or _contains_all(question_text, "reverse", "a", "number"):
-        return {
-            "accepted_solutions": [
-                "return int(str(n)[::-1])" if language == "python" else "",
-                "StringBuilder sb = new StringBuilder(Integer.toString(n)); return Integer.parseInt(sb.reverse().toString());" if language == "java" else "",
-                "return Number(String(n).split('').reverse().join(''));" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([123], 321, "basic reverse number", kind="normal", weight=1.0, required=True),
-                    _build_case([1005], 5001, "number with internal zeros", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([0], 0, "zero input", kind="trap", weight=1.0),
-                    _build_case([10], 1, "trailing zero removed after integer conversion", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n",
-                    "match_type": "contains",
-                    "feedback": "Returning the original number does not reverse its digits.",
-                    "suggestion": "Reverse the digit order before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (_contains_all(question_text, "unique", "characters")) or (_contains_all(question_text, "all", "unique")):
-        return {
-            "accepted_solutions": [
-                "return len(s) == len(set(s))" if language == "python" else "",
-                "return s.chars().distinct().count() == s.length();" if language == "java" else "",
-                "return new Set(s).size === s.length;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abc"], True, "all unique letters", kind="normal", weight=1.0, required=True),
-                    _build_case([""], True, "empty string has unique characters", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["hello"], False, "repeated character string", kind="trap", weight=1.1, required=True),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not check for repeated characters.",
-                    "suggestion": "Compare the string length with the length of a set of its characters, or track seen characters.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "first", "two", "character") or re.search(r"first\s+2\s+characters?", question_text):
-        return {
-            "accepted_solutions": [
-                "return s[:2]" if language == "python" else "",
-                "return s.substring(0, Math.min(2, s.length()));" if language == "java" else "",
-                "return s.slice(0, 2);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abcd"], "ab", "basic first two characters", kind="normal", weight=1.0, required=True),
-                    _build_case(["a"], "a", "single character input", kind="edge", weight=1.1, required=True),
-                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["xyz"], "xy", "catches first-character-only logic", kind="trap", weight=1.0, required=True),
-                    _build_case(["hello"], "he", "catches returning too many characters", kind="trap", weight=1.0, required=False),
+                    _build_case(["hello"], "ho", "catches first-character-only or last-character-only logic", kind="trap", weight=1.1, required=True),
+                    _build_case(["code"], "ce", "catches middle-slice confusion", kind="trap", weight=1.0, required=False),
                 ],
             },
             "incorrect_patterns": [
                 {
                     "pattern": "return s[0]",
                     "match_type": "contains",
-                    "feedback": "Returning only the first character does not satisfy the requirement to return the first two characters of the string.",
-                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "feedback": "Returning only the first character does not satisfy the requirement to return both the first and last characters.",
+                    "suggestion": "Combine the first and last characters, for example with s[0] + s[-1].",
                     "score_cap": 20,
                 },
                 {
-                    "pattern": "return s[:1]",
+                    "pattern": "return s[-1]",
                     "match_type": "contains",
-                    "feedback": "Returning only one character does not satisfy the requirement to return the first two characters of the string.",
-                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "feedback": "Returning only the last character does not satisfy the requirement to return both the first and last characters.",
+                    "suggestion": "Combine the first and last characters, for example with s[0] + s[-1].",
                     "score_cap": 20,
                 },
                 {
-                    "pattern": "return s[:3]",
+                    "pattern": "return s[:2]",
                     "match_type": "contains",
-                    "feedback": "Returning three characters does not satisfy the requirement to return exactly the first two characters.",
-                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s",
-                    "match_type": "contains",
-                    "feedback": "Returning the whole string does not limit the result to the first two characters.",
-                    "suggestion": "Slice the input to the first two characters before returning it.",
+                    "feedback": "Returning the first two characters is different from returning the first and last characters.",
+                    "suggestion": "Combine the first and last characters instead of slicing the prefix.",
                     "score_cap": 20,
                 },
             ],
         }
 
-    if _contains_all(question_text, "first", "character") and _extract_character_prefix_count(question_text) in {None, 1}:
-        return {
-            "accepted_solutions": [
-                "return s[0]" if language == "python" else "",
-                "return s.charAt(0);" if language == "java" else "",
-                "return s[0];" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abc"], "a", "basic first character", kind="normal", weight=1.0, required=True),
-                    _build_case(["Z"], "Z", "single character string", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["hello"], "h", "longer string first character", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s[s.length - 1]",
-                    "match_type": "contains",
-                    "feedback": "Returning the last character does not satisfy the first-character requirement.",
-                    "suggestion": "Return the first character, for example with s[0] or s.charAt(0).",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "starts with" in question_text and "string" in question_text:
-        return {
-            "accepted_solutions": [
-                "return s.startswith('a')" if language == "python" else "",
-                "return s.startsWith(\"a\");" if language == "java" else "",
-                "return s.startsWith(\"a\");" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["apple"], True, "starts with a", kind="normal", weight=1.0, required=True),
-                    _build_case(["a"], True, "single a", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["banana"], False, "different first letter", kind="normal", weight=1.0, required=True),
-                    _build_case([""], False, "empty string", kind="edge", weight=1.0, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 'a' in s",
-                    "match_type": "contains",
-                    "feedback": "Checking for the presence of 'a' anywhere is different from checking whether the string starts with 'a'.",
-                    "suggestion": "Use startswith('a') or check the first character only.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s[0] == 'a'",
-                    "match_type": "contains",
-                    "feedback": "This fails on empty strings because indexing s[0] raises an error.",
-                    "suggestion": "Use a safe check like s.startswith('a').",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if _contains_all(question_text, "last", "character"):
-        return {
-            "accepted_solutions": [
-                "return s[-1]" if language == "python" else "",
-                "return s.charAt(s.length() - 1);" if language == "java" else "",
-                "return s[s.length - 1];" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abc"], "c", "basic last character", kind="normal", weight=1.0, required=True),
-                    _build_case(["Z"], "Z", "single character string", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["hello"], "o", "longer string last character", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s[0]",
-                    "match_type": "contains",
-                    "feedback": "Returning the first character does not satisfy the last-character requirement.",
-                    "suggestion": "Return the last character, for example with s[s.length - 1] or s.charAt(s.length() - 1).",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "odd" in question_text and "number" in question_text:
-        return {
-            "accepted_solutions": [
-                "return n % 2 != 0" if language == "python" else "",
-                "return (n & 1) == 1" if language == "python" else "",
-                "return n % 2 != 0;" if language == "java" else "",
-                "return n % 2 != 0;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([3], True, "positive odd", kind="normal", weight=1.0, required=True),
-                    _build_case([-5], True, "negative odd", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([2], False, "positive even", kind="normal", weight=1.0, required=True),
-                    _build_case([0], False, "zero is even", kind="edge", weight=1.1),
-                    _build_case([-2], False, "negative even", kind="trap", weight=1.2),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n % 2 == 0",
-                    "match_type": "contains",
-                    "feedback": "This checks even numbers instead of odd numbers.",
-                    "suggestion": "Use a modulo check for oddness, such as n % 2 != 0.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not check whether the number is odd.",
-                    "suggestion": "Return the result of an actual odd-number check.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if (
-        _contains_all(question_text, "number", "zero")
-        or "is zero" in question_text
-        or "equal to zero" in question_text
-        or "equals zero" in question_text
-    ):
-        return {
-            "accepted_solutions": [
-                "return n == 0" if language == "python" else "",
-                "return n == 0;" if language == "java" else "",
-                "return n === 0;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([0], True, "zero case", kind="normal", weight=1.0, required=True),
-                    _build_case([0.0], True, "zero float case", kind="edge", weight=1.1, required=False),
-                ],
-                "negative": [
-                    _build_case([1], False, "positive non-zero", kind="normal", weight=1.0, required=True),
-                    _build_case([-1], False, "negative non-zero", kind="edge", weight=1.1, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n != 0",
-                    "match_type": "contains",
-                    "feedback": "This checks non-zero values instead of checking whether the number is zero.",
-                    "suggestion": "Use an equality check against 0, such as n == 0.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not check whether the number is zero.",
-                    "suggestion": "Return the result of an actual zero check, such as n == 0.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if _contains_all(question_text, "convert", "string", "integer"):
-        return {
-            "accepted_solutions": [
-                "return int(s)" if language == "python" else "",
-                "return Integer.parseInt(s);" if language == "java" else "",
-                "return Number(s);" if language == "javascript" else "",
-                "return parseInt(s, 10);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["123"], 123, "basic numeric string", kind="normal", weight=1.0, required=True),
-                    _build_case(["007"], 7, "leading-zero numeric string", kind="edge", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case(["0"], 0, "zero string", kind="trap", weight=1.0),
-                    _build_case(["42"], 42, "larger numeric string", kind="normal", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s",
-                    "match_type": "contains",
-                    "feedback": "Returning the original string does not convert it to an integer.",
-                    "suggestion": "Parse the numeric string before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "even" in question_text:
-        return {
-            "accepted_solutions": ["return n % 2 == 0;", "return (n & 1) == 0;"],
-            "test_sets": {
-                "positive": [
-                    _build_case([2], True, "positive even", kind="normal", weight=1.0, required=True),
-                    _build_case([0], True, "zero is even", kind="edge", weight=1.1),
-                ],
-                "negative": [
-                    _build_case([3], False, "positive odd", kind="normal", weight=1.0, required=True),
-                    _build_case([-5], False, "negative odd", kind="edge", weight=1.1),
-                    _build_case([-2], True, "negative even", kind="trap", weight=1.2),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "% 2 == 1",
-                    "match_type": "contains",
-                    "feedback": "This checks odd numbers instead of even numbers.",
-                    "suggestion": "Use a modulo check against 0 for evenness.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return true;",
-                    "match_type": "contains",
-                    "feedback": "Always returning true does not check whether the number is even.",
-                    "suggestion": "Return the result of an actual even-number check.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if "prime" in question_text:
-        return {
-            "accepted_solutions": [
-                "return n > 1 and all(n % i != 0 for i in range(2, int(n ** 0.5) + 1))" if language == "python" else "",
-                "if (n <= 1) return false; for (int i = 2; i * i <= n; i++) { if (n % i == 0) return false; } return true;" if language == "java" else "",
-                "if (n <= 1) return false; for (let i = 2; i * i <= n; i++) { if (n % i === 0) return false; } return true;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([2], True, "smallest prime", kind="edge", weight=1.1, required=True),
-                    _build_case([13], True, "larger prime", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([1], False, "one is not prime", kind="edge", weight=1.2, required=True),
-                    _build_case([9], False, "composite odd number", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n > 1",
-                    "match_type": "contains",
-                    "feedback": "Checking only n > 1 incorrectly treats many composite numbers as prime.",
-                    "suggestion": "Test divisibility by smaller numbers before returning True.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "sum", "digits"):
-        return {
-            "accepted_solutions": [
-                "return sum(int(d) for d in str(n))" if language == "python" else "",
-                "int sum = 0; n = Math.abs(n); while (n != 0) { sum += n % 10; n /= 10; } return sum;" if language == "java" else "",
-                "return Math.abs(n).toString().split('').reduce((sum, d) => sum + Number(d), 0);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([123], 6, "sum digits of positive integer", kind="normal", weight=1.0, required=True),
-                    _build_case([0], 0, "zero input", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([909], 18, "includes zero digit", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return n",
-                    "match_type": "contains",
-                    "feedback": "Returning the original number does not sum its digits.",
-                    "suggestion": "Extract each digit and add them together before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "split", "dataset") and _contains_all(question_text, "train") and _contains_all(question_text, "test"):
-        return {
-            "accepted_solutions": [
-                "split = int(len(data) * 0.8); return data[:split], data[split:]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3, 4, 5]], [[1, 2, 3, 4], [5]], "basic 80/20 dataset split", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2, 3, 4]], [[1, 2, 3], [4]], "rounding down for train size", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[1, 2]], [[1], [2]], "small dataset split", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return data, data",
-                    "match_type": "contains",
-                    "feedback": "Returning the same dataset twice does not split it into training and test subsets.",
-                    "suggestion": "Partition the data into separate train and test slices before returning them.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "accuracy") and _contains_all(question_text, "predictions") and _contains_all(question_text, "labels"):
-        return {
-            "accepted_solutions": [
-                "return sum(1 for t, p in zip(y_true, y_pred) if t == p) / len(y_true)" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 0, 1], [1, 0, 1]], 1.0, "perfect accuracy", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 0], [1, 1]], 0.5, "half-correct predictions", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[0, 0], [1, 1]], 0.0, "all predictions incorrect", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return len(y_true)",
-                    "match_type": "contains",
-                    "feedback": "Returning the label count does not compute prediction accuracy.",
-                    "suggestion": "Compare predictions with labels and divide the number of matches by the total number of labels.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "mean", "squared", "error"):
-        return {
-            "accepted_solutions": [
-                "return sum((a - b) ** 2 for a, b in zip(y_true, y_pred)) / len(y_true)" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2], [1, 2]], 0.0, "zero error when predictions match", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2], [2, 4]], 2.5, "basic mse example", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[0], [3]], 9.0, "single-value squared error", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Always returning 0 does not compute the mean squared error.",
-                    "suggestion": "Average the squared differences between the true values and the predictions.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "precision", "score"):
-        return {
-            "accepted_solutions": [
-                "return tp / (tp + fp) if (tp + fp) else 0.0" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([8, 2], 0.8, "basic precision calculation", kind="normal", weight=1.0, required=True),
-                    _build_case([0, 0], 0.0, "zero predicted positives edge case", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([3, 1], 0.75, "non-trivial precision ratio", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return tp",
-                    "match_type": "contains",
-                    "feedback": "Returning true positives alone does not compute precision.",
-                    "suggestion": "Divide true positives by the total predicted positives tp + fp.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "recall", "score"):
-        return {
-            "accepted_solutions": [
-                "return tp / (tp + fn) if (tp + fn) else 0.0" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([8, 2], 0.8, "basic recall calculation", kind="normal", weight=1.0, required=True),
-                    _build_case([0, 0], 0.0, "zero actual positives edge case", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([3, 1], 0.75, "non-trivial recall ratio", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return tp",
-                    "match_type": "contains",
-                    "feedback": "Returning true positives alone does not compute recall.",
-                    "suggestion": "Divide true positives by the total actual positives tp + fn.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "f1", "score"):
-        return {
-            "accepted_solutions": [
-                "return 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([0.8, 0.8], 0.8, "matching precision and recall", kind="normal", weight=1.0, required=True),
-                    _build_case([0.5, 1.0], 0.6666666666666666, "imbalanced precision and recall", kind="normal", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([0.0, 0.0], 0.0, "zero metrics edge case", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return precision",
-                    "match_type": "contains",
-                    "feedback": "Returning only precision does not compute the F1 score.",
-                    "suggestion": "Use the harmonic mean of precision and recall.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "confusion", "matrix"):
-        return {
-            "accepted_solutions": [
-                "tn = fp = fn = tp = 0\nfor yt, yp in zip(y_true, y_pred):\n    if yt == 0 and yp == 0:\n        tn += 1\n    elif yt == 0 and yp == 1:\n        fp += 1\n    elif yt == 1 and yp == 0:\n        fn += 1\n    else:\n        tp += 1\nreturn [tn, fp, fn, tp]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([ [0, 1, 1, 0], [0, 1, 0, 1] ], [1, 1, 1, 1], "balanced confusion counts", kind="normal", weight=1.0, required=True),
-                    _build_case([ [1, 1], [1, 1] ], [0, 0, 0, 2], "all true positives", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([ [0, 0], [1, 1] ], [0, 2, 0, 0], "all false positives", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return [0,0,0,0]",
-                    "match_type": "normalized_contains",
-                    "feedback": "Returning zero counts does not compute the confusion matrix.",
-                    "suggestion": "Count TN, FP, FN, and TP across the paired true and predicted labels.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "missing", "values") and "none" in question_text:
-        return {
-            "accepted_solutions": [
-                "return any(x is None for x in lst)" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, None, 3]], True, "list contains missing value", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2, 3]], False, "list without missing values", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[None]], True, "single missing value", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return False",
-                    "match_type": "contains",
-                    "feedback": "Always returning False does not detect missing values in the input.",
-                    "suggestion": "Check whether any element is None before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "label", "encoding"):
-        return {
-            "accepted_solutions": [
-                "mapping = {label: i for i, label in enumerate(dict.fromkeys(lst))}; return [mapping[x] for x in lst]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([["cat", "dog", "cat"]], [0, 1, 0], "basic label encoding", kind="normal", weight=1.0, required=True),
-                    _build_case([["red", "blue"]], [0, 1], "distinct label order preserved", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([["same", "same"]], [0, 0], "same label maps consistently", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": "Returning the original labels does not perform label encoding.",
-                    "suggestion": "Map each distinct label to a numeric code and return the encoded list.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "fill", "missing") and "mean" in question_text:
-        return {
-            "accepted_solutions": [
-                "valid = [x for x in lst if x is not None]; mean = sum(valid) / len(valid); return [mean if x is None else x for x in lst]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, None, 3]], [1, 2.0, 3], "fill missing value with mean", kind="normal", weight=1.0, required=True),
-                    _build_case([[2, None, 4, None]], [2, 3.0, 4, 3.0], "fill multiple missing values", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[1, 2, 3]], [1, 2, 3], "no missing values leaves list unchanged", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": "Returning the original list does not fill missing values with the mean.",
-                    "suggestion": "Compute the mean of the non-missing values and replace each None with that mean.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if ("min-max" in question_text or "min max" in question_text) and ("normalize" in question_text or "normalization" in question_text):
-        return {
-            "accepted_solutions": [
-                "mn, mx = min(lst), max(lst); return [(x - mn) / (mx - mn) for x in lst]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], [0.0, 0.5, 1.0], "basic min-max normalization", kind="normal", weight=1.0, required=True),
-                    _build_case([[2, 4, 6]], [0.0, 0.5, 1.0], "scaled positive values", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[5, 5, 5]], [0.0, 0.0, 0.0], "constant values edge case", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return [x / max(lst) for x in lst]",
-                    "match_type": "contains",
-                    "feedback": "Dividing only by the maximum value does not perform full min-max normalization.",
-                    "suggestion": "Subtract the minimum value and divide by the full range max-min.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if "z-score" in question_text or "z score" in question_text or "standardize" in question_text or "standardization" in question_text:
-        return {
-            "accepted_solutions": [
-                "mean = sum(lst) / len(lst); std = (sum((x - mean) ** 2 for x in lst) / len(lst)) ** 0.5; return [(x - mean) / std for x in lst]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], [-1.224744871391589, 0.0, 1.224744871391589], "basic z-score standardization", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[2, 4, 6]], [-1.224744871391589, 0.0, 1.224744871391589], "same shape with different scale", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": "Returning the original list does not standardize the values.",
-                    "suggestion": "Center the values by the mean and divide by the standard deviation.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "k-fold", "cross", "validation") or _contains_all(question_text, "k", "fold", "cross", "validation"):
-        return {
-            "accepted_solutions": [
-                "fold_size = len(data) // k\nreturn [data[i * fold_size:(i + 1) * fold_size] for i in range(k - 1)] + [data[(k - 1) * fold_size:]]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([ [1, 2, 3, 4], 2 ], [[1, 2], [3, 4]], "split into two folds", kind="normal", weight=1.0, required=True),
-                    _build_case([ [1, 2, 3, 4, 5], 2 ], [[1, 2], [3, 4, 5]], "last fold keeps remainder", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([ [1, 2, 3], 3 ], [[1], [2], [3]], "single-item folds", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Returning 0 does not partition the dataset into folds.",
-                    "suggestion": "Return a list of folds that covers the input data.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "split", "features") and _contains_all(question_text, "labels"):
-        return {
-            "accepted_solutions": [
-                "return [row[:-1] for row in data], [row[-1] for row in data]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[[1, 2, 0], [3, 4, 1]]], [[[1, 2], [3, 4]], [0, 1]], "split rows into features and labels", kind="normal", weight=1.0, required=True),
-                    _build_case([[[5, 1]]], [[[5]], [1]], "single-row dataset", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[]], [[], []], "empty dataset edge case", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return data, data",
-                    "match_type": "contains",
-                    "feedback": "Returning the same dataset twice does not separate features from labels.",
-                    "suggestion": "Return the feature columns without the last element in each row and the last-column labels separately.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "linear", "regression", "prediction") or "y = mx + c" in question_text:
-        return {
-            "accepted_solutions": [
-                "return m * x + c" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([2, 3, 1], 7, "basic linear prediction", kind="normal", weight=1.0, required=True),
-                    _build_case([-1, 4, 2], -2, "negative slope prediction", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([0, 5, 3], 3, "zero slope returns intercept", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return x",
-                    "match_type": "contains",
-                    "feedback": "Returning only x does not compute the linear regression prediction.",
-                    "suggestion": "Use the formula y = m * x + c to compute the predicted value.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "sigmoid", "function") or _contains_all(question_text, "implement", "sigmoid"):
-        return {
-            "accepted_solutions": [
-                "return 1 / (1 + math.exp(-x))" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([0], 0.5, "sigmoid at zero", kind="normal", weight=1.0, required=True),
-                    _build_case([1], 0.7310585786300049, "positive input sigmoid", kind="normal", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([-1], 0.2689414213699951, "negative input sigmoid", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return x",
-                    "match_type": "contains",
-                    "feedback": "Returning x unchanged does not apply the sigmoid transformation.",
-                    "suggestion": "Compute 1 / (1 + exp(-x)) for the input value.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "softmax", "function") or _contains_all(question_text, "implement", "softmax"):
-        return {
-            "accepted_solutions": [
-                "exps = [math.exp(x) for x in lst]; total = sum(exps); return [x / total for x in exps]" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[0, 0]], [0.5, 0.5], "equal logits softmax", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2]], [0.2689414213699951, 0.7310585786300049], "two-value softmax", kind="normal", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[0]], [1.0], "single logit softmax", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": "Returning the input list unchanged does not apply softmax.",
-                    "suggestion": "Exponentiate the inputs and normalize them by their sum.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "binary", "cross", "entropy"):
-        return {
-            "accepted_solutions": [
-                "return -(y * math.log(p) + (1 - y) * math.log(1 - p))" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([1, 0.9], 0.10536051565782628, "positive class low loss", kind="normal", weight=1.0, required=True),
-                    _build_case([0, 0.1], 0.10536051565782628, "negative class low loss", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([1, 0.5], 0.6931471805599453, "uncertain prediction", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Returning 0 does not compute the binary cross-entropy loss.",
-                    "suggestion": "Use the target and predicted probability in the log-loss formula.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "gradient", "descent", "step"):
-        return {
-            "accepted_solutions": [
-                "return w - lr * grad" if language == "python" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([1.0, 0.5, 0.1], 0.95, "single gradient descent update", kind="normal", weight=1.0, required=True),
-                    _build_case([2.0, -1.0, 0.2], 2.2, "negative gradient increases weight", kind="normal", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([3.0, 0.0, 0.5], 3.0, "zero gradient leaves weight unchanged", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return w",
-                    "match_type": "contains",
-                    "feedback": "Returning the original weight does not apply the gradient descent update.",
-                    "suggestion": "Subtract the learning-rate-scaled gradient from the current weight.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if ("maximum" in question_text or "max" in question_text) and ("array" in question_text or "list" in question_text):
-        return {
-            "accepted_solutions": [
-                "return max(lst)" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return Collections.max(lst);", "return Arrays.stream(arr).max().orElse(Integer.MIN_VALUE);") if language == "java" else "",
-                _javascript_for_collection(question_text, "return Math.max(...arr);", "return Math.max(...lst);") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 5, 3]], 5, "mixed positive values", kind="normal", weight=1.0, required=True),
-                    _build_case([[-4, -2, -9]], -2, "all negative values", kind="edge", weight=1.4, required=True),
-                ],
-                "negative": [
-                    _build_case([[7]], 7, "single element array", kind="edge", weight=1.0),
-                    _build_case([[2, 2, 2]], 2, "duplicate maximum values", kind="trap", weight=1.0),
-                    _build_case([[0, -1, -2]], 0, "includes zero", kind="normal", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return arr[0];",
-                    "match_type": "contains",
-                    "feedback": "Returning only the first element does not find the maximum in general.",
-                    "suggestion": "Scan every element and keep track of the largest value.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return lst[0]",
-                    "match_type": "contains",
-                    "feedback": "Returning only the first element does not find the maximum in general.",
-                    "suggestion": "Scan every element and keep track of the largest value.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if ("minimum" in question_text or "min" in question_text) and ("array" in question_text or "list" in question_text):
-        min_pattern = (
-            "return lst[-1]" if language == "python"
-            else _javascript_for_collection(question_text, "return arr[arr.length-1];", "return lst[lst.length-1];") if language == "javascript"
-            else "return arr[arr.length-1];"
-        )
-        return {
-            "accepted_solutions": [
-                "return min(lst)" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return Collections.min(lst);", "return Arrays.stream(arr).min().orElse(Integer.MAX_VALUE);") if language == "java" else "",
-                _javascript_for_collection(question_text, "return Math.min(...arr);", "return Math.min(...lst);") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 5, 3]], 1, "mixed positive values", kind="normal", weight=1.0, required=True),
-                    _build_case([[-4, -2, -9]], -9, "all negative values", kind="edge", weight=1.4, required=True),
-                ],
-                "negative": [
-                    _build_case([[7]], 7, "single element array", kind="edge", weight=1.0),
-                    _build_case([[2, 2, 2]], 2, "duplicate minimum values", kind="trap", weight=1.0),
-                    _build_case([[0, -1, -2]], -2, "includes zero", kind="normal", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": min_pattern,
-                    "match_type": "contains" if language == "python" else "normalized_contains",
-                    "feedback": "Returning only the last element does not generally find the minimum value.",
-                    "suggestion": "Scan every element and keep track of the smallest value.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (_contains_all(question_text, "sum", "array")) or (_contains_all(question_text, "sum", "list")):
-        return {
-            "accepted_solutions": [
-                "return sum(lst)" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.stream().mapToInt(Integer::intValue).sum();", "return Arrays.stream(arr).sum();") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr.reduce((a,b)=>a+b,0);", "return lst.reduce((a,b)=>a+b,0);") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], 6, "small integer list", kind="normal", weight=1.0, required=True),
-                    _build_case([[0, 5, 7]], 12, "includes zero", kind="edge", weight=1.1),
-                ],
-                "negative": [
-                    _build_case([[-2, 3, -1]], 0, "mixed sign values", kind="edge", weight=1.2, required=True),
-                    _build_case([[]], 0, "empty input collection", kind="edge", weight=1.3),
-                    _build_case([[5]], 5, "single value collection", kind="trap", weight=0.9),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return arr[0];",
-                    "match_type": "contains",
-                    "feedback": "Returning only the first element does not compute the sum of the whole collection.",
-                    "suggestion": "Accumulate all values before returning the result.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (("average" in question_text or "mean" in question_text) and ("array" in question_text or "list" in question_text)):
-        return {
-            "accepted_solutions": [
-                "return sum(arr) / len(arr)" if language == "python" else "",
-                "return sum(lst) / len(lst)" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.stream().mapToInt(Integer::intValue).average().orElse(0.0);", "return Arrays.stream(arr).average().orElse(0.0);") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr.reduce((a,b)=>a+b,0) / arr.length;", "return lst.reduce((a,b)=>a+b,0) / lst.length;") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[2, 4, 6]], 4, "basic average", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2, 3, 4]], 2.5, "average with fractional result", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[5]], 5, "single-element average", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return sum(",
-                    "match_type": "contains",
-                    "feedback": "Returning the sum alone does not compute the average.",
-                    "suggestion": "Divide the sum by the number of elements to get the average.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "sum", "even", "numbers") and "list" in question_text:
-        return {
-            "accepted_solutions": [
-                "return sum(x for x in lst if x % 2 == 0)" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.stream().filter(x -> x % 2 == 0).mapToInt(Integer::intValue).sum();", "return Arrays.stream(arr).filter(x -> x % 2 == 0).sum();") if language == "java" else "",
-                "return lst.filter(x => x % 2 === 0).reduce((sum, x) => sum + x, 0);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3, 4]], 6, "basic even-number sum", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 3, 5]], 0, "no even numbers", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[0, 2, 5]], 2, "includes zero", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Returning 0 does not compute the sum of the even numbers in the list.",
-                    "suggestion": "Add only values where x % 2 == 0.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    element_position = _extract_element_position(question_text)
-    if element_position and element_position > 2 and ("list" in question_text or "array" in question_text):
-        index = element_position - 1
-        first_list = list(range(1, max(4, element_position + 3)))
-        second_list = list(range(10, 10 + max(4, element_position + 3)))
-        return {
-            "accepted_solutions": [
-                f"return lst[{index}]" if language == "python" else "",
-                _java_for_list_or_array(question_text, f"return lst.get({index});", f"return arr[{index}];") if language == "java" else "",
-                _javascript_for_collection(question_text, f"return arr[{index}];", f"return lst[{index}];") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([first_list], first_list[index], f"basic element at position {element_position}", kind="normal", weight=1.0, required=True),
-                    _build_case([second_list], second_list[index], "different values same position", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([list(range(20, 20 + max(4, element_position + 3)))], list(range(20, 20 + max(4, element_position + 3)))[index], "catches neighboring index confusion", kind="trap", weight=1.0, required=True),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": f"return lst[{max(0, index - 1)}]",
-                    "match_type": "contains",
-                    "feedback": f"Returning the item at index {max(0, index - 1)} does not satisfy the requirement to return the element at position {element_position}.",
-                    "suggestion": f"Return the item at index {index}, for example with lst[{index}].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": f"return lst[{index + 1}]",
-                    "match_type": "contains",
-                    "feedback": f"Returning the item after the required position does not satisfy the requirement to return the element at position {element_position}.",
-                    "suggestion": f"Return the item at index {index}, for example with lst[{index}].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": f"Returning the whole list does not return the element at position {element_position}.",
-                    "suggestion": f"Return the single value at index {index}, for example with lst[{index}].",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if (_contains_all(question_text, "first", "element")) and ("list" in question_text or "array" in question_text):
-        return {
-            "accepted_solutions": [
-                "return lst[0]" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.get(0);", "return arr[0];") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr[0];", "return lst[0];") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], 1, "basic first element", kind="normal", weight=1.0, required=True),
-                    _build_case([[7]], 7, "single element list", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[9, 3]], 9, "two-element list", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst[-1]",
-                    "match_type": "contains",
-                    "feedback": "Returning the last element does not satisfy the first-element requirement.",
-                    "suggestion": "Return the first item, for example with lst[0].",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (_contains_all(question_text, "second", "element")) and ("list" in question_text or "array" in question_text):
-        return {
-            "accepted_solutions": [
-                "return lst[1]" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.get(1);", "return arr[1];") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr[1];", "return lst[1];") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], 2, "basic second element", kind="normal", weight=1.0, required=True),
-                    _build_case([[7, 9]], 9, "two-element list", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[9, 3, 1]], 3, "catches first-element confusion", kind="trap", weight=1.0, required=True),
-                    _build_case([[4, 5, 6, 1]], 5, "catches last-element confusion", kind="trap", weight=1.1, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst[0]",
-                    "match_type": "contains",
-                    "feedback": "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0.",
-                    "suggestion": "Return the item at index 1, for example with lst[1].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return lst[-1]",
-                    "match_type": "contains",
-                    "feedback": "Returning the last element does not satisfy the second-element requirement. The task asks for the item at index 1, not the final item in the list.",
-                    "suggestion": "Return the item at index 1, for example with lst[1].",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (_contains_all(question_text, "last", "element")) and ("list" in question_text or "array" in question_text):
-        return {
-            "accepted_solutions": [
-                "return lst[-1]" if language == "python" else "",
-                "return lst[len(lst)-1]" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.get(lst.size() - 1);", "return arr[arr.length - 1];") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr[arr.length - 1];", "return lst[lst.length - 1];") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], 3, "basic last element", kind="normal", weight=1.0, required=True),
-                    _build_case([[7]], 7, "single element list", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[9, 3]], 3, "two-element list trap", kind="trap", weight=1.0, required=True),
-                    _build_case([[4, 5, 6, 1]], 1, "catches first-element confusion", kind="trap", weight=1.1, required=True),
-                    _build_case([[-1, 0, 1]], 1, "mixed-sign list", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst[0]",
-                    "match_type": "contains",
-                    "feedback": "Returning the first element does not satisfy the last-element requirement.",
-                    "suggestion": "Return the last item, for example with lst[-1].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return sorted(lst)[-1]",
-                    "match_type": "contains",
-                    "feedback": "Sorting and returning the largest value is different from returning the last item in the original list order.",
-                    "suggestion": "Return the element at the last position of the original list, for example with lst[-1].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return max(lst)",
-                    "match_type": "contains",
-                    "feedback": "Returning the maximum value is different from returning the last item in the list.",
-                    "suggestion": "Return the element at the last position of the original list, for example with lst[-1].",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    prefix_count = _extract_character_prefix_count(question_text)
-    if prefix_count and prefix_count > 0 and prefix_count != 2:
-        return {
-            "accepted_solutions": [
-                f"return s[:{prefix_count}]" if language == "python" else "",
-                f"return s.substring(0, Math.min({prefix_count}, s.length()));" if language == "java" else "",
-                f"return s.slice(0, {prefix_count});" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abcdef"], "abcdef"[:prefix_count], f"basic first {prefix_count} characters", kind="normal", weight=1.0, required=True),
-                    _build_case(["ab"], "ab"[:prefix_count], "shorter string input", kind="edge", weight=1.1, required=True),
-                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["xyzuvw"], "xyzuvw"[:prefix_count], "catches off-by-one prefix logic", kind="trap", weight=1.0, required=True),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": f"return s[:{max(1, prefix_count - 1)}]",
-                    "match_type": "contains",
-                    "feedback": f"Returning fewer than {prefix_count} characters does not satisfy the requirement to return the first {prefix_count} characters of the string.",
-                    "suggestion": f"Return a slice of the first {prefix_count} characters, for example with s[:{prefix_count}].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": f"return s[:{prefix_count + 1}]",
-                    "match_type": "contains",
-                    "feedback": f"Returning more than {prefix_count} characters does not satisfy the requirement to return exactly the first {prefix_count} characters.",
-                    "suggestion": f"Return a slice of the first {prefix_count} characters, for example with s[:{prefix_count}].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s",
-                    "match_type": "contains",
-                    "feedback": f"Returning the whole string does not limit the result to the first {prefix_count} characters.",
-                    "suggestion": f"Slice the input to the first {prefix_count} characters before returning it.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if _contains_all(question_text, "first", "two", "character"):
-        return {
-            "accepted_solutions": [
-                "return s[:2]" if language == "python" else "",
-                "return s.substring(0, Math.min(2, s.length()));" if language == "java" else "",
-                "return s.slice(0, 2);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["abcd"], "ab", "basic first two characters", kind="normal", weight=1.0, required=True),
-                    _build_case(["a"], "a", "single character input", kind="edge", weight=1.1, required=True),
-                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["xyz"], "xy", "catches first-character-only logic", kind="trap", weight=1.0, required=True),
-                    _build_case(["hello"], "he", "catches returning too many characters", kind="trap", weight=1.0, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return s[0]",
-                    "match_type": "contains",
-                    "feedback": "Returning only the first character does not satisfy the requirement to return the first two characters of the string.",
-                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s[:1]",
-                    "match_type": "contains",
-                    "feedback": "Returning only one character does not satisfy the requirement to return the first two characters of the string.",
-                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s[:3]",
-                    "match_type": "contains",
-                    "feedback": "Returning three characters does not satisfy the requirement to return exactly the first two characters.",
-                    "suggestion": "Return a slice of the first two characters, for example with s[:2].",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s",
-                    "match_type": "contains",
-                    "feedback": "Returning the whole string does not limit the result to the first two characters.",
-                    "suggestion": "Slice the input to the first two characters before returning it.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if ("list is empty" in question_text) or ("empty list" in question_text):
-        return {
-            "accepted_solutions": [
-                "return not lst" if language == "python" else "",
-                "return len(lst) == 0" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.isEmpty();", "return arr.length == 0;") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr.length === 0;", "return lst.length === 0;") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[]], True, "empty list case", kind="edge", weight=1.2, required=True),
-                    _build_case([[1]], False, "non-empty list case", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[""]], False, "single empty-string element still non-empty list", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return False",
-                    "match_type": "contains",
-                    "feedback": "Always returning False does not actually check whether the list is empty.",
-                    "suggestion": "Return True only when the list has no elements.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "remove", "duplicates") and "list" in question_text and "preserve order" in question_text:
-        return {
-            "accepted_solutions": [
-                "return list(dict.fromkeys(lst))" if language == "python" else "",
-                "return new ArrayList<>(new LinkedHashSet<>(lst));" if language == "java" else "",
-                "return [...new Set(lst)];" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 1, 3]], [1, 2, 3], "remove duplicates while keeping first occurrences", kind="normal", weight=1.0, required=True),
-                    _build_case([[]], [], "empty list remains empty", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[2, 2, 2]], [2], "all duplicates collapse to one value", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": "Returning the original list does not remove duplicates.",
-                    "suggestion": "Track seen values and keep only the first occurrence of each item.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "contains", "duplicates"):
-        return {
-            "accepted_solutions": [
-                "return len(lst) != len(set(lst))" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return new HashSet<>(lst).size() != lst.size();", "return Arrays.stream(arr).distinct().count() != arr.length;") if language == "java" else "",
-                _javascript_for_collection(question_text, "return new Set(arr).size !== arr.length;", "return new Set(lst).size !== lst.length;") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 2]], True, "list with duplicates", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2, 3]], False, "list without duplicates", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[]], False, "empty list has no duplicates", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return False",
-                    "match_type": "contains",
-                    "feedback": "Always returning False does not actually check whether duplicates exist.",
-                    "suggestion": "Compare the list length with the length of a set of its values.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "list", "sorted"):
-        return {
-            "accepted_solutions": [
-                "return all(lst[i] <= lst[i + 1] for i in range(len(lst) - 1))" if language == "python" else "",
-                _java_for_list_or_array(question_text, "for (int i = 0; i < lst.size() - 1; i++) { if (lst.get(i) > lst.get(i + 1)) return false; } return true;", "for (int i = 0; i < arr.length - 1; i++) { if (arr[i] > arr[i + 1]) return false; } return true;") if language == "java" else "",
-                "return lst.every((x, i) => i === 0 || lst[i - 1] <= x);" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], True, "ascending sorted list", kind="normal", weight=1.0, required=True),
-                    _build_case([[3, 2, 1]], False, "descending unsorted list", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[1, 1, 2]], True, "non-decreasing list with duplicates", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not check whether the list is sorted.",
-                    "suggestion": "Compare adjacent values and return False when the order drops.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if _contains_all(question_text, "frequency", "elements") and "list" in question_text:
-        return {
-            "accepted_solutions": [
-                "return {x: lst.count(x) for x in lst}" if language == "python" else "",
-                "Map<Integer, Integer> freq = new LinkedHashMap<>(); for (int x : lst) { freq.put(x, freq.getOrDefault(x, 0) + 1); } return freq;" if language == "java" else "",
-                "return lst.reduce((freq, x) => { freq[x] = (freq[x] || 0) + 1; return freq; }, {});" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 1]], {"1": 2, "2": 1}, "frequency count with repeated values", kind="normal", weight=1.0, required=True),
-                    _build_case([[]], {}, "empty list frequency map", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case([[3, 3, 3]], {"3": 3}, "single repeated value", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return {}",
-                    "match_type": "contains",
-                    "feedback": "Returning an empty dictionary does not count element frequencies.",
-                    "suggestion": "Count how many times each list value appears and return those counts.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if (
-        "more than 3" in question_text
-        and ("list" in question_text or "array" in question_text or "elements" in question_text)
-    ):
-        return {
-            "accepted_solutions": [
-                "return len(lst) > 3" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.size() > 3;", "return arr.length > 3;") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr.length > 3;", "return lst.length > 3;") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3, 4]], True, "four elements", kind="normal", weight=1.0, required=True),
-                    _build_case([[1, 2, 3, 4, 5]], True, "five elements", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[1, 2, 3]], False, "three elements", kind="edge", weight=1.1, required=True),
-                    _build_case([[]], False, "empty list", kind="edge", weight=1.0, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return len(lst) >= 3",
-                    "match_type": "contains",
-                    "feedback": "Checking for at least 3 elements does not satisfy the requirement of more than 3 elements.",
-                    "suggestion": "Return True only when the list length is greater than 3, for example len(lst) > 3.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return len(lst) > 2",
-                    "match_type": "contains",
-                    "feedback": "This allows lists of length 3, which does not meet the more-than-3 requirement.",
-                    "suggestion": "Require a length greater than 3, for example len(lst) > 3.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    equals_length_match = re.search(r"length\s+(?:equals|equal to|is)\s+(-?\d+)", question_text)
-    if equals_length_match and ("list" in question_text or "array" in question_text):
-        target_length = int(equals_length_match.group(1))
-        lower_length = target_length - 1 if target_length > 0 else 1
-        upper_length = target_length + 1
-        exact_list = list(range(target_length)) if target_length >= 0 else []
-        higher_list = list(range(upper_length))
-        lower_list = list(range(lower_length)) if lower_length >= 0 else []
-        return {
-            "accepted_solutions": [
-                f"return len(lst) == {target_length}" if language == "python" else "",
-                f"return len(lst) != 0 and len(lst) == {target_length}" if language == "python" and target_length > 0 else "",
-                f"return lst.size() == {target_length};" if language == "java" else "",
-                f"return arr.length === {target_length};" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([exact_list], True, f"list length equals {target_length}", kind="normal", weight=1.1, required=True),
-                    _build_case([list(reversed(exact_list))], True, f"different list with length {target_length}", kind="normal", weight=1.0, required=False),
-                ],
-                "negative": [
-                    _build_case([lower_list], False, f"list length below {target_length}", kind="edge", weight=1.2, required=True),
-                    _build_case([higher_list], False, f"list length above {target_length}", kind="edge", weight=1.2, required=True),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": f"return len(lst) > {target_length}",
-                    "match_type": "contains",
-                    "feedback": f"Checking whether the list length is greater than {target_length} solves a different problem. This task requires the length to be exactly {target_length}.",
-                    "suggestion": f"Use len(lst) == {target_length} to require the exact length.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": f"return len(lst) >= {target_length}",
-                    "match_type": "contains",
-                    "feedback": f"Using >= allows lists longer than {target_length}, but this task requires the length to be exactly {target_length}.",
-                    "suggestion": f"Use len(lst) == {target_length} to require the exact length.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return len(lst)",
-                    "match_type": "contains",
-                    "feedback": "Returning the list length itself does not answer the yes-or-no question. The function should return a boolean indicating whether the length matches the required value.",
-                    "suggestion": f"Compare the length to {target_length}, for example with len(lst) == {target_length}.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if (
-        (_contains_all(question_text, "length", "list"))
-        or (_contains_all(question_text, "get", "length", "list"))
-        or (_contains_all(question_text, "count", "elements") and "list" in question_text)
-        or (_contains_all(question_text, "number", "elements") and "list" in question_text)
-        or ("number of elements in list" in question_text)
-    ):
-        return {
-            "accepted_solutions": [
-                "return len(lst)" if language == "python" else "",
-                "return sum(1 for _ in lst)" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.size();", "return arr.length;") if language == "java" else "",
-                _javascript_for_collection(question_text, "return arr.length;", "return lst.length;") if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], 3, "multi-element list length", kind="normal", weight=1.0, required=True),
-                    _build_case([[]], 0, "empty list length", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([[7]], 1, "single element list", kind="trap", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 0",
-                    "match_type": "contains",
-                    "feedback": "Returning 0 does not calculate the number of elements in the list.",
-                    "suggestion": "Return the number of items, for example with len(lst).",
-                    "score_cap": 20,
-                }
-                ,
-                {
-                    "pattern": "def count(lst): return len(set(lst))",
-                    "match_type": "normalized_contains",
-                    "feedback": "Counting unique elements does not return the full list length when duplicates exist.",
-                    "suggestion": "Return the full length with len(lst) or count every element.",
-                    "score_cap": 20,
-                }
-            ],
-        }
-
-    if ("ends with" in question_text or "endswith" in question_text or "suffix" in question_text) and "string" in question_text:
-        return {
-            "accepted_solutions": [
-                "return s.endswith('z')" if language == "python" and "'z'" in question_text else "",
-                'return s.endswith("z")' if language == "python" and '"z"' in question_text else "",
-                "return s.endswith('z')" if language == "python" and "'z'" not in question_text and '"z"' not in question_text else "",
-                "return len(s) > 0 and s[-1] == 'z'" if language == "python" and "'z'" in question_text else "",
-                'return len(s) > 0 and s[-1] == "z"' if language == "python" and '"z"' in question_text else "",
-                "return len(s) > 0 and s[-1] == 'z'" if language == "python" and "'z'" not in question_text and '"z"' not in question_text else "",
-                'return s.endsWith("z");' if language == "java" or language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case(["buzz"], True, "ends with z", kind="normal", weight=1.0, required=True),
-                    _build_case(["z"], True, "single z", kind="edge", weight=1.1, required=True),
-                ],
-                "negative": [
-                    _build_case(["apple"], False, "different last character", kind="normal", weight=1.0, required=True),
-                    _build_case([""], False, "empty string", kind="edge", weight=1.2, required=True),
-                    _build_case(["maze"], False, "contains z but does not end with z", kind="trap", weight=1.1, required=False),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return 'z' in s",
-                    "match_type": "contains",
-                    "feedback": "Checking whether z appears anywhere is different from checking whether the string ends with z.",
-                    "suggestion": "Use a suffix check such as s.endswith('z').",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s[0] == 'z'",
-                    "match_type": "contains",
-                    "feedback": "Checking the first character does not verify the ending character.",
-                    "suggestion": "Check the last character or use s.endswith('z').",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return s[-1] == 'z'",
-                    "match_type": "contains",
-                    "feedback": "Checking s[-1] directly can fail on empty strings.",
-                    "suggestion": "Use a safe suffix check such as s.endswith('z').",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if (
-        (
-            "at least one element" in question_text
-            or "has items" in question_text
-            or "has any" in question_text
-            or "not empty" in question_text
-            or "non-empty" in question_text
-            or "non empty" in question_text
-        )
-        and ("list" in question_text or "array" in question_text or "collection" in question_text)
-    ):
-        return {
-            "accepted_solutions": [
-                "return len(lst) > 0" if language == "python" else "",
-                "return bool(lst)" if language == "python" else "",
-                "return lst != []" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return !lst.isEmpty();", "return arr.length > 0;") if language == "java" else "",
-                "return arr.length > 0;" if language == "javascript" else "",
-                "return !!arr.length;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1]], True, "single element collection has items", kind="normal", weight=1.1, required=True),
-                    _build_case([[0, 2]], True, "multi-element collection has items", kind="normal", weight=1.0, required=True),
-                ],
-                "negative": [
-                    _build_case([[]], False, "empty collection has no items", kind="edge", weight=1.3, required=True),
-                    _build_case([[False]], True, "falsy value still counts as an element", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return len(lst) == 0",
-                    "match_type": "contains",
-                    "feedback": "Checking whether the list is empty solves the opposite problem. The function should return True when the list has at least one element.",
-                    "suggestion": "Use len(lst) > 0 or bool(lst) to check for one or more elements.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return not lst",
-                    "match_type": "contains",
-                    "feedback": "Using not lst returns True for empty lists, but this task asks for True when the list has at least one element.",
-                    "suggestion": "Use bool(lst) or len(lst) > 0 instead.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return lst",
-                    "match_type": "contains",
-                    "feedback": "Returning the list itself does not explicitly return the required boolean result.",
-                    "suggestion": "Return a boolean expression such as len(lst) > 0 or bool(lst).",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if (
-        _contains_all(question_text, "empty", "list")
-        or _contains_all(question_text, "empty", "array")
-        or _contains_all(question_text, "list", "empty")
-        or _contains_all(question_text, "array", "empty")
-    ):
-        return {
-            "accepted_solutions": [
-                "return not lst" if language == "python" else "",
-                "return len(lst) == 0" if language == "python" else "",
-                _java_for_list_or_array(question_text, "return lst.isEmpty();", "return arr.length == 0;") if language == "java" else "",
-                "return arr.length === 0;" if language == "javascript" else "",
-                "return !arr.length;" if language == "javascript" else "",
-            ],
-            "test_sets": {
-                "positive": [
-                    _build_case([[]], True, "empty collection case", kind="edge", weight=1.2, required=True),
-                    _build_case([[1]], False, "non-empty collection case", kind="normal", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([[0]], False, "truthy collection trap case", kind="trap", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [
-                {
-                    "pattern": "return True",
-                    "match_type": "contains",
-                    "feedback": "Always returning True does not check whether the collection is empty.",
-                    "suggestion": "Return True only when the collection has no elements.",
-                    "score_cap": 20,
-                },
-                {
-                    "pattern": "return False",
-                    "match_type": "contains",
-                    "feedback": "Always returning False does not check whether the collection is empty.",
-                    "suggestion": "Return True only when the collection has no elements.",
-                    "score_cap": 20,
-                },
-            ],
-        }
-
-    if "array" in question_text:
-        return {
-            "accepted_solutions": [],
-            "test_sets": {
-                "positive": [
-                    _build_case([[1, 2, 3]], None, "representative array input", kind="normal", weight=1.0),
-                    _build_case([[]], None, "empty array edge case", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case([[0, -1, 5]], None, "mixed-sign trap array", kind="trap", weight=1.2),
-                    _build_case([[7]], None, "single-element edge case", kind="edge", weight=1.0),
-                ],
-            },
-            "incorrect_patterns": [],
-        }
-
-    if "string" in question_text:
-        return {
-            "accepted_solutions": [],
-            "test_sets": {
-                "positive": [
-                    _build_case(["hello"], None, "representative string input", kind="normal", weight=1.0),
-                    _build_case([""], None, "empty string edge case", kind="edge", weight=1.2, required=True),
-                ],
-                "negative": [
-                    _build_case(["a"], None, "single-character trap case", kind="trap", weight=0.9),
-                    _build_case(["hello world"], None, "string containing space", kind="edge", weight=1.1),
-                ],
-            },
-            "incorrect_patterns": [],
-        }
-
-    if "recursive" in question_text or "recursion" in question_text:
-        return {
-            "accepted_solutions": [],
-            "test_sets": {
-                "positive": [
-                    _build_case([0], None, "base-case recursion input", kind="edge", weight=1.4, required=True),
-                    _build_case([3], None, "small recursive step", kind="normal", weight=1.0),
-                ],
-                "negative": [
-                    _build_case([5], None, "deeper recursion trap case", kind="trap", weight=1.2),
-                ],
-            },
-            "incorrect_patterns": [],
-        }
-
-    return {
-        "accepted_solutions": [],
-        "test_sets": {
-            "positive": [
-                _build_case([], None, "faculty model answer baseline positive case"),
-                _build_case([], None, "faculty model answer baseline edge-case positive"),
-            ],
-            "negative": [
-                _build_case([], None, "faculty model answer baseline negative case"),
-                _build_case([], None, "faculty model answer baseline edge case"),
-            ],
-        },
-        "incorrect_patterns": [],
-    }
+    return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
 
 
 def _deterministic_markup_baselines(question, language):
@@ -4678,7 +2302,7 @@ def _build_python_oracle_baseline_from_model_answer(model_answer):
     }
 
 
-def _python_model_answer_baselines(model_answer):
+def _python_model_answer_baselines(model_answer, question_text=None, language="python"):
     compact = re.sub(r"\s+", "", (model_answer or "").lower())
     if not compact:
         return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
@@ -4751,6 +2375,44 @@ def _python_model_answer_baselines(model_answer):
                     "match_type": "contains",
                     "feedback": "Returning three characters does not satisfy the requirement to return exactly the first two characters.",
                     "suggestion": "Return a slice of the first two characters, for example with s[:2].",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if "returns[len(s)//2]" in compact:
+        return {
+            "accepted_solutions": ["return s[len(s)//2]"],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abc"], "b", "basic odd-length string middle character", kind="normal", weight=1.0, required=True),
+                    _build_case(["hello"], "l", "longer odd-length string", kind="edge", weight=1.1, required=True),
+                    _build_case(["x"], "x", "single-character string", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["radar"], "d", "catches first/last-character confusion", kind="trap", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return s[0]",
+                    "match_type": "contains",
+                    "feedback": "Returning the first character does not satisfy the requirement to return the middle character of the string.",
+                    "suggestion": "Index into the center of the string, for example with s[len(s)//2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s[-1]",
+                    "match_type": "contains",
+                    "feedback": "Returning the last character does not satisfy the requirement to return the middle character of the string.",
+                    "suggestion": "Index into the center of the string, for example with s[len(s)//2].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the whole string does not extract the middle character.",
+                    "suggestion": "Return only the center character, for example with s[len(s)//2].",
                     "score_cap": 20,
                 },
             ],
@@ -4970,6 +2632,147 @@ def _python_model_answer_baselines(model_answer):
             ],
         }
 
+    suffix_character_count = _extract_last_n_characters_count(question_text)
+    if suffix_character_count and suffix_character_count > 0:
+        return {
+            "accepted_solutions": [
+                f"return s[-{suffix_character_count}:]" if language == "python" else "",
+                f"return s.substring(Math.max(0, s.length() - {suffix_character_count}));" if language == "java" else "",
+                f"return s.slice(-{suffix_character_count});" if language == "javascript" else "",
+            ],
+            "test_sets": {
+                "positive": [
+                    _build_case(["abcdefg"], "abcdefg"[-suffix_character_count:], f"basic last {suffix_character_count} characters", kind="normal", weight=1.0, required=True),
+                    _build_case(["a"], "a"[-suffix_character_count:], "single character input stays safe", kind="edge", weight=1.1, required=True),
+                    _build_case(["ab"], "ab"[-suffix_character_count:], "exact-length string input", kind="edge", weight=1.0, required=True),
+                    _build_case([""], "", "empty string stays empty", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case(["xyzuvw"], "xyzuvw"[-suffix_character_count:], "catches off-by-one suffix logic", kind="trap", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return s[:{suffix_character_count}]",
+                    "match_type": "contains",
+                    "feedback": f"Returning the first {suffix_character_count} characters does not satisfy the requirement to return the last {suffix_character_count} characters of the string.",
+                    "suggestion": f"Return a slice of the last {suffix_character_count} characters, for example with s[-{suffix_character_count}:].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return s[-1:]",
+                    "match_type": "contains",
+                    "feedback": f"Returning only the last character does not satisfy the requirement to return the last {suffix_character_count} characters of the string.",
+                    "suggestion": f"Return a slice of the last {suffix_character_count} characters, for example with s[-{suffix_character_count}:].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return s[:-{suffix_character_count}]",
+                    "match_type": "contains",
+                    "feedback": f"Returning everything except the last {suffix_character_count} characters does not satisfy the requirement to return the suffix itself.",
+                    "suggestion": f"Return the last {suffix_character_count} characters with a suffix slice such as s[-{suffix_character_count}:].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": f"Returning the whole string does not limit the result to the last {suffix_character_count} characters.",
+                    "suggestion": f"Slice the input to the last {suffix_character_count} characters before returning it.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    contains_value_match = re.search(r"return(-?\d+)inlst", compact)
+    if contains_value_match:
+        target = int(contains_value_match.group(1))
+        return {
+            "accepted_solutions": [f"return {target} in lst"],
+            "test_sets": {
+                "positive": [
+                    _build_case([[target, 3, 1]], True, f"list contains {target}", kind="normal", weight=1.0, required=True),
+                    _build_case([[1, target, 2]], True, f"{target} appears in the middle of the list", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([[1, 2, 3]], False, f"list does not contain {target}", kind="normal", weight=1.0, required=True),
+                    _build_case([[]], False, "empty list does not contain the value", kind="edge", weight=1.1, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": f"Always returning True does not check whether the list actually contains {target}.",
+                    "suggestion": f"Test membership directly, for example with {target} in lst.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return lst",
+                    "match_type": "contains",
+                    "feedback": "Returning the list itself does not answer the yes-or-no membership question.",
+                    "suggestion": f"Return a boolean membership check, for example with {target} in lst.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return lst[0] == {target}",
+                    "match_type": "contains",
+                    "feedback": f"Checking only the first element does not determine whether {target} appears anywhere in the list.",
+                    "suggestion": f"Check membership across the whole list, for example with {target} in lst.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    list_length_comp = _extract_list_length_comparison(question_text)
+    if list_length_comp and list_length_comp["value"] is not None:
+        op = list_length_comp["operator"]
+        val = list_length_comp["value"]
+        inverted_op = {"<": ">", ">": "<", "<=": ">=", ">=": "<=", "==": "!=", "!=": "=="}.get(op, op)
+        if op == "<":
+            passing_list = list(range(val - 1)) if val > 0 else []
+            failing_list = list(range(val + 1))
+        elif op == ">":
+            passing_list = list(range(val + 1))
+            failing_list = list(range(max(0, val - 1)))
+        elif op == "<=":
+            passing_list = list(range(val))
+            failing_list = list(range(val + 1))
+        elif op == ">=":
+            passing_list = list(range(val))
+            failing_list = list(range(max(0, val - 1)))
+        else:
+            passing_list = list(range(val))
+            shorter = list(range(max(0, val - 1)))
+            failing_list = shorter
+        return {
+            "accepted_solutions": [f"return len(lst) {op} {val}"],
+            "test_sets": {
+                "positive": [
+                    _build_case([passing_list], True, f"list length satisfies len(lst) {op} {val}", kind="normal", weight=1.0, required=True),
+                    _build_case([[]], len([]) < val if op == "<" else len([]) > val if op == ">" else len([]) == val if op == "==" else True, "empty list edge case", kind="edge", weight=1.1, required=False),
+                ],
+                "negative": [
+                    _build_case([failing_list], False, f"list length does not satisfy len(lst) {op} {val}", kind="normal", weight=1.0, required=True),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": f"return len(lst) {inverted_op} {val}",
+                    "match_type": "contains",
+                    "feedback": f"This comparison is inverted. The question asks for len(lst) {op} {val}.",
+                    "suggestion": f"Use len(lst) {op} {val} to match the required condition.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": f"return len(lst) == {val}",
+                    "match_type": "contains",
+                    "feedback": f"Using equality (==) checks for an exact length, but the question requires a {op} comparison.",
+                    "suggestion": f"Compare the length with {op}, for example with len(lst) {op} {val}.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
     function_match = re.search(r"def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)", model_answer or "")
     params = []
     if function_match:
@@ -5008,7 +2811,7 @@ def _build_deterministic_baseline_package(question, model_answer, language):
     if language in {"python", "java", "javascript"}:
         baseline = _deterministic_code_baselines(question, language)
         if language == "python":
-            baseline = _merge_generated_package(baseline, _python_model_answer_baselines(model_answer))
+            baseline = _merge_generated_package(baseline, _python_model_answer_baselines(model_answer, question_text=question, language=language))
         return baseline
     return _deterministic_markup_baselines(question, language)
 
@@ -5069,6 +2872,30 @@ def _prune_placeholder_tests(test_sets, template_family):
                     or isinstance(parsed_expected, bool)
                 ):
                     continue
+            if normalized_family == "python::first_and_last_character":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+
+                parsed_expected = normalized.get("expected_output")
+                if isinstance(parsed_expected, str):
+                    # expected_output may be a raw string (e.g. pn) or a JSON-encoded string (e.g. "pn")
+                    try:
+                        unwrapped = json.loads(parsed_expected)
+                        if isinstance(unwrapped, str):
+                            parsed_expected = unwrapped
+                    except Exception:
+                        pass
+                if (
+                    not isinstance(parsed_input, list)
+                    or len(parsed_input) != 1
+                    or not isinstance(parsed_input[0], str)
+                    or not isinstance(parsed_expected, str)
+                    or len(parsed_input[0]) < 1
+                    or parsed_expected != (parsed_input[0][:1] + parsed_input[0][-1:])
+                ):
+                    continue
             if normalized_family == "python::list_length_equals_constant":
                 try:
                     parsed_input = json.loads(normalized.get("input") or "")
@@ -5093,6 +2920,41 @@ def _prune_placeholder_tests(test_sets, template_family):
                     or not parsed_input
                     or not isinstance(parsed_input[0], str)
                     or not isinstance(parsed_expected, str)
+                ):
+                    continue
+            if normalized_family == "python::middle_character":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                parsed_expected = normalized.get("expected_output")
+                if isinstance(parsed_expected, str):
+                    try:
+                        unwrapped = json.loads(parsed_expected)
+                        if isinstance(unwrapped, str):
+                            parsed_expected = unwrapped
+                    except Exception:
+                        pass
+                if (
+                    not isinstance(parsed_input, list)
+                    or len(parsed_input) != 1
+                    or not isinstance(parsed_input[0], str)
+                    or len(parsed_input[0]) % 2 == 0
+                    or not isinstance(parsed_expected, str)
+                    or len(parsed_expected) != 1
+                ):
+                    continue
+            if normalized_family == "python::list_contains_constant":
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                    parsed_expected = json.loads(normalized.get("expected_output") or "")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if (
+                    not isinstance(parsed_input, list)
+                    or len(parsed_input) != 1
+                    or not isinstance(parsed_input[0], list)
+                    or not isinstance(parsed_expected, bool)
                 ):
                     continue
             if normalized_family == "python::element_at_index_constant":
@@ -5122,6 +2984,174 @@ def _prune_placeholder_tests(test_sets, template_family):
                 continue
             cleaned[bucket].append(normalized)
     return cleaned
+
+
+def _canonicalize_family_test_descriptions(test_sets, template_family, question_text):
+    normalized_family = (template_family or "").strip().lower()
+    normalized_question = (question_text or "").strip().lower()
+    canonicalized = {"positive": [], "negative": []}
+
+    if normalized_family == "python::first_and_last_character":
+        for bucket in ("positive", "negative"):
+            for item in (test_sets or {}).get(bucket, []):
+                normalized = _normalize_test_case(item)
+                if not normalized:
+                    continue
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                    parsed_expected = json.loads(normalized.get("expected_output") or "")
+                except (TypeError, json.JSONDecodeError):
+                    parsed_input = None
+                    parsed_expected = None
+
+                if (
+                    isinstance(parsed_input, list)
+                    and len(parsed_input) == 1
+                    and isinstance(parsed_input[0], str)
+                    and isinstance(parsed_expected, str)
+                ):
+                    source = parsed_input[0]
+                    if bucket == "positive":
+                        if len(source) == 1:
+                            normalized["description"] = "single character is both first and last"
+                        elif len(source) == 2:
+                            normalized["description"] = "two-character string returns both characters"
+                        else:
+                            normalized["description"] = "basic first and last character extraction"
+                    else:
+                        if len(source) >= 2:
+                            normalized["description"] = "catches first-character-only or last-character-only logic"
+                canonicalized[bucket].append(normalized)
+        return canonicalized
+
+    if normalized_family == "python::list_length_equals_constant":
+        target_length = None
+        match = re.search(r"(?:exactly|equal to|equals|is)\s+([a-z0-9-]+)", normalized_question)
+        if match:
+            target_length = _parse_small_int_token(match.group(1))
+        for bucket in ("positive", "negative"):
+            for item in (test_sets or {}).get(bucket, []):
+                normalized = _normalize_test_case(item)
+                if not normalized:
+                    continue
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                    parsed_expected = json.loads(normalized.get("expected_output") or "")
+                except (TypeError, json.JSONDecodeError):
+                    parsed_input = None
+                    parsed_expected = None
+
+                if (
+                    isinstance(parsed_input, list)
+                    and len(parsed_input) == 1
+                    and isinstance(parsed_input[0], list)
+                    and isinstance(parsed_expected, bool)
+                ):
+                    source = parsed_input[0]
+                    if bucket == "positive":
+                        if target_length is not None:
+                            normalized["description"] = f"list length equals {target_length}"
+                    else:
+                        if target_length is not None:
+                            if len(source) < target_length:
+                                normalized["description"] = f"list length below {target_length}"
+                            elif len(source) > target_length:
+                                normalized["description"] = f"list length above {target_length}"
+                canonicalized[bucket].append(normalized)
+        return canonicalized
+
+    if normalized_family == "python::suffix_characters_constant":
+        suffix_count = _extract_last_n_characters_count(normalized_question)
+        for bucket in ("positive", "negative"):
+            for item in (test_sets or {}).get(bucket, []):
+                normalized = _normalize_test_case(item)
+                if not normalized:
+                    continue
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    parsed_input = None
+
+                if (
+                    suffix_count
+                    and isinstance(parsed_input, list)
+                    and len(parsed_input) == 1
+                    and isinstance(parsed_input[0], str)
+                    and bucket == "positive"
+                ):
+                    source = parsed_input[0]
+                    if source == "":
+                        normalized["description"] = "empty string stays empty"
+                    elif len(source) == 1:
+                        normalized["description"] = "single character input stays safe"
+                    elif len(source) == suffix_count:
+                        normalized["description"] = "exact-length string input"
+                canonicalized[bucket].append(normalized)
+        return canonicalized
+
+    if normalized_family == "python::middle_character":
+        for bucket in ("positive", "negative"):
+            for item in (test_sets or {}).get(bucket, []):
+                normalized = _normalize_test_case(item)
+                if not normalized:
+                    continue
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    parsed_input = None
+
+                if (
+                    isinstance(parsed_input, list)
+                    and len(parsed_input) == 1
+                    and isinstance(parsed_input[0], str)
+                ):
+                    source = parsed_input[0]
+                    if bucket == "positive":
+                        if len(source) == 1:
+                            normalized["description"] = "single-character string"
+                        elif len(source) == 3:
+                            normalized["description"] = "basic odd-length string middle character"
+                        else:
+                            normalized["description"] = "longer odd-length string"
+                    elif bucket == "negative":
+                        normalized["description"] = "catches first/last-character confusion"
+                canonicalized[bucket].append(normalized)
+        return canonicalized
+
+    if normalized_family == "python::list_contains_constant":
+        target = _extract_list_contains_constant(normalized_question)
+        for bucket in ("positive", "negative"):
+            for item in (test_sets or {}).get(bucket, []):
+                normalized = _normalize_test_case(item)
+                if not normalized:
+                    continue
+                try:
+                    parsed_input = json.loads(normalized.get("input") or "")
+                except (TypeError, json.JSONDecodeError):
+                    parsed_input = None
+
+                if (
+                    target is not None
+                    and isinstance(parsed_input, list)
+                    and len(parsed_input) == 1
+                    and isinstance(parsed_input[0], list)
+                ):
+                    source = parsed_input[0]
+                    if bucket == "positive":
+                        if source and target in source and source[0] == target:
+                            normalized["description"] = f"list contains {target}"
+                        else:
+                            normalized["description"] = f"{target} appears in the middle of the list"
+                    else:
+                        normalized["description"] = (
+                            "empty list does not contain the value"
+                            if source == []
+                            else f"list does not contain {target}"
+                        )
+                canonicalized[bucket].append(normalized)
+        return canonicalized
+
+    return test_sets
 
 
 def _merge_generated_package(base_payload, generated_payload):
@@ -5206,6 +3236,13 @@ def _extract_family_variant(template_family, question_text, model_answer):
         return (
             str(question_count) if question_count is not None else None
         ) or (answer_match.group(1) if answer_match else None) or (answer_match.group(2) if answer_match else None)
+
+    if normalized_family == "python::list_contains_constant":
+        question_value = _extract_list_contains_constant(normalized_question)
+        answer_match = re.search(r"return(-?\d+)inlst", compact_answer)
+        return (
+            str(question_value) if question_value is not None else None
+        ) or (answer_match.group(1) if answer_match else None)
 
     if normalized_family == "python::element_at_index_constant":
         question_position = _extract_element_position(normalized_question)
@@ -5323,7 +3360,6 @@ def merge_with_existing_profiles(payload, existing_profiles):
             match_type = ((item or {}).get("match_type") or "").strip().lower()
             normalized = pattern.strip().rstrip(";")
 
-            # Drop patterns that incorrectly flag a correct doubling implementation.
             if match_type in {"contains", "normalized_contains"} and normalized in {
                 "return n",
                 "return n + n",
@@ -5331,7 +3367,6 @@ def merge_with_existing_profiles(payload, existing_profiles):
             }:
                 continue
 
-            # Fix feedback for the "tripling" mistake.
             if "return n * 3" in normalized or "return n*3" in normalized:
                 item = dict(item)
                 item["feedback"] = "This triples the input instead of doubling it."
@@ -5491,7 +3526,6 @@ def enrich_question_profile(payload, force_llm=False, repair_context=None):
             n_cases=oracle_cases,
         )
         if oracle_package:
-            # Keep handcrafted trap/negative tests and merge oracle positives on top.
             enriched = _merge_generated_package(enriched, oracle_package)
 
     parsed, llm_source = _call_llm_for_registration_package(
@@ -5511,7 +3545,6 @@ def enrich_question_profile(payload, force_llm=False, repair_context=None):
                 accepted.append(cleaned)
 
     test_sets = {"positive": [], "negative": []}
-    # Use LLM test sets only if the Oracle didn't provide deterministic tests
     if not oracle_package:
         for bucket in ("positive", "negative"):
             for item in (parsed.get("test_sets") or {}).get(bucket, []):
@@ -5728,9 +3761,219 @@ def finalize_question_profile(payload):
     ]
     positive_tests = _dedupe_tests_by_io(positive_tests)
     negative_tests = _dedupe_tests_by_io(negative_tests)
-    finalized["test_sets"] = {"positive": positive_tests, "negative": negative_tests}
+    finalized["test_sets"] = _canonicalize_family_test_descriptions(
+        {"positive": positive_tests, "negative": negative_tests},
+        template_family,
+        finalized.get("question"),
+    )
     finalized["positive_test_count"] = len(positive_tests)
     finalized["negative_test_count"] = len(negative_tests)
+
+    if language == "python":
+        def _parse_json_value(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except Exception:
+                    return value
+            return value
+
+        def _build_test_cases(test_cases):
+            cases = []
+            for item in test_cases:
+                parsed_input = _parse_json_value(item.get("input"))
+                parsed_expected = _parse_json_value(item.get("expected_output"))
+                if parsed_expected is None:
+                    continue
+                if isinstance(parsed_input, list):
+                    args = tuple(parsed_input)
+                elif parsed_input is None:
+                    continue
+                else:
+                    args = (parsed_input,)
+                cases.append((args, parsed_expected))
+            return cases
+
+        def _filter_accepted_solutions(candidates, cases):
+            if not cases:
+                return candidates
+            filtered = []
+            inputs = [case[0] for case in cases]
+            expected = [case[1] for case in cases]
+            for item in candidates:
+                if not isinstance(item, str) or not item.strip():
+                    continue
+                code, fn_name = _wrap_python_snippet(item, question_text)
+                if not code or not fn_name:
+                    continue
+                result = _run_code_with_timeout(code, fn_name, inputs)
+                if not result or not result.get("ok"):
+                    continue
+                outputs = result.get("outputs") or []
+                if len(outputs) != len(inputs):
+                    continue
+                ok = True
+                for output, exp in zip(outputs, expected):
+                    if not output.get("ok"):
+                        ok = False
+                        break
+                    value = output.get("result")
+                    if isinstance(exp, bool) and not isinstance(value, bool):
+                        ok = False
+                        break
+                    if not _smart_outputs_equal(exp, value, question_text):
+                        ok = False
+                        break
+                if ok:
+                    filtered.append(item)
+            return filtered
+
+        execution_cases = _build_test_cases(positive_tests + negative_tests)
+        if execution_cases:
+            filtered = _filter_accepted_solutions(finalized.get("accepted_solutions", []), execution_cases)
+            if not filtered and model_answer:
+                filtered = [model_answer]
+            finalized["accepted_solutions"] = filtered[: AUTO_GENERATE_MAX_ALTERNATIVES + 1]
+
+    incorrect_patterns = []
+    pattern_map = {}
+    pattern_order = []
+    for item in finalized.get("incorrect_patterns", []) or []:
+        normalized = _normalize_incorrect_pattern(item)
+        if not normalized:
+            continue
+        key = (normalized.get("pattern"), normalized.get("match_type"))
+        if key not in pattern_map:
+            pattern_order.append(key)
+        pattern_map[key] = normalized
+    for key in pattern_order:
+        incorrect_patterns.append(pattern_map[key])
+
+    # Guardrails:
+    # 1) Never store a correct/accepted solution as an "incorrect pattern".
+    # 2) Never store f-string-related feedback unless the question actually asks for f-strings.
+    accepted_compact = set()
+    if language == "python":
+        for ans in finalized.get("accepted_solutions", []) or []:
+            if not isinstance(ans, str) or not ans.strip():
+                continue
+            try:
+                accepted_compact.add(normalize_python_structure(ans).replace(" ", "").replace("\t", "").lower())
+            except Exception:
+                accepted_compact.add(re.sub(r"\s+", "", ans).lower())
+    asks_fstring = bool(re.search(r"(?i)(?<![a-z0-9])f[- ]string(?![a-z0-9])|formatted string literal", question_text))
+    filtered_patterns = []
+    for item in incorrect_patterns:
+        pattern_text = (item.get("pattern") or "").strip()
+        compact_pattern = re.sub(r"\s+", "", pattern_text).lower()
+        if compact_pattern and compact_pattern in accepted_compact:
+            continue
+        feedback_text = (item.get("feedback") or "")
+        if not asks_fstring and re.search(r"(?i)f-?strings?", feedback_text):
+            continue
+        filtered_patterns.append(item)
+    incorrect_patterns = filtered_patterns
+    if template_family == "python::positive_number" or "positive number" in question_text or "is positive" in question_text:
+        for item in incorrect_patterns:
+            pattern_text = (item.get("pattern") or "")
+            if (">= 0" in pattern_text or ">=0" in pattern_text) and "positive" in (item.get("feedback") or ""):
+                item["feedback"] = (
+                    "Treating zero as positive does not satisfy the strict positive-number requirement, since zero is neither positive nor negative."
+                )
+    if template_family == "python::double_number" or "double a number" in question_text:
+        pruned = []
+        for item in incorrect_patterns:
+            pattern_text = (item.get("pattern") or "").strip()
+            match_type = (item.get("match_type") or "").strip().lower()
+
+            if match_type in {"contains", "normalized_contains"} and (
+                "return n + n" in pattern_text
+                or "return n+n" in pattern_text
+                or "def double(n): return n + n" in pattern_text
+                or "def double(n): return n+n" in pattern_text
+            ):
+                continue
+
+            if match_type == "normalized_contains" and pattern_text.replace(" ", "") in {
+                "defdouble(n):returnn",
+                "defdouble(n):returnn;",
+            }:
+                item = dict(item)
+                item["match_type"] = "regex"
+                item["pattern"] = r"(?m)^\s*def\s+double\s*\([^)]*\)\s*:\s*return\s+n\s*;?\s*$"
+
+            if "return n * 3" in pattern_text or "return n*3" in pattern_text:
+                item = dict(item)
+                item["feedback"] = "This triples the input instead of doubling it."
+                item["suggestion"] = "Use n * 2 or n + n to double the value."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+
+            pruned.append(item)
+        incorrect_patterns = pruned
+    cleaned_patterns = []
+    for item in incorrect_patterns:
+        feedback = (item.get("feedback") or "").lower()
+        if ("safe fallback" in feedback and "primary review" in feedback) or (
+            "retry the evaluation" in feedback and "rule-based checks" in feedback
+        ):
+            continue
+        cleaned_patterns.append(item)
+    incorrect_patterns = _sanitize_incorrect_patterns_for_family(
+        cleaned_patterns,
+        template_family,
+        finalized.get("question"),
+    )
+    finalized["incorrect_patterns"] = incorrect_patterns
+
+    all_tests = positive_tests + negative_tests
+
+    finalized["package_status"] = "generated" if all_tests else "draft"
+    finalized["package_confidence"] = 0.35 if all_tests else 0.1
+    finalized["review_required"] = True
+    finalized["package_summary"] = "Generated package content pending validation."
+
+    if language in {"html", "css", "react", "mysql", "mongodb"}:
+        if language == "html":
+            return _finalize_from_syntax_result(
+                finalized,
+                check_html_syntax(model_answer),
+                "HTML package ready for static review.",
+                confidence=0.72,
+            )
+        if language == "css":
+            return _finalize_from_syntax_result(
+                finalized,
+                check_css_syntax(model_answer),
+                "CSS package ready for static review.",
+                confidence=0.72,
+            )
+        if language == "react":
+            return _finalize_from_syntax_result(
+                finalized,
+                check_react_syntax(model_answer),
+                "React package ready for static review.",
+                confidence=0.7,
+            )
+        if language == "mysql":
+            return _finalize_from_syntax_result(
+                finalized,
+                check_mysql_syntax(model_answer),
+                "MySQL package ready for static review.",
+                confidence=0.74,
+            )
+        if language == "mongodb":
+            return _finalize_from_syntax_result(
+                finalized,
+                check_mongodb_syntax(model_answer),
+                "MongoDB package ready for static review.",
+                confidence=0.74,
+            )
+
+    if not all_tests:
+        finalized["package_summary"] = "No generated test sets available yet."
+        return finalized
 
     if language == "python":
         def _parse_json_value(value):
@@ -5826,7 +4069,6 @@ def finalize_question_profile(payload):
             pattern_text = (item.get("pattern") or "").strip()
             match_type = (item.get("match_type") or "").strip().lower()
 
-            # Do not flag correct doubling variants.
             if match_type in {"contains", "normalized_contains"} and (
                 "return n + n" in pattern_text
                 or "return n+n" in pattern_text
@@ -5835,7 +4077,6 @@ def finalize_question_profile(payload):
             ):
                 continue
 
-            # Avoid substring-matching "return n" inside "return n + n".
             if match_type == "normalized_contains" and pattern_text.replace(" ", "") in {
                 "defdouble(n):returnn",
                 "defdouble(n):returnn;",
@@ -5844,7 +4085,6 @@ def finalize_question_profile(payload):
                 item["match_type"] = "regex"
                 item["pattern"] = r"(?m)^\s*def\s+double\s*\([^)]*\)\s*:\s*return\s+n\s*;?\s*$"
 
-            # Fix feedback for tripling.
             if "return n * 3" in pattern_text or "return n*3" in pattern_text:
                 item = dict(item)
                 item["feedback"] = "This triples the input instead of doubling it."
@@ -5853,7 +4093,6 @@ def finalize_question_profile(payload):
 
             pruned.append(item)
         incorrect_patterns = pruned
-    # Drop any placeholder fallback feedback that leaked into incorrect patterns.
     cleaned_patterns = []
     for item in incorrect_patterns:
         feedback = (item.get("feedback") or "").lower()
@@ -5918,9 +4157,8 @@ def finalize_question_profile(payload):
         return finalized
 
     if language == "python":
-        # Attempt auto-repair/normalization for Python indentation/structure
         repaired_answer = normalize_python_structure(model_answer)
-        
+
         actual_code, function_name = _wrap_python_snippet(repaired_answer, finalized.get("question", ""))
         if not function_name:
             finalized["package_status"] = "draft"
@@ -5931,12 +4169,9 @@ def finalize_question_profile(payload):
 
         cases = [_parse_hidden_test_input(item.get("input")) for item in all_tests]
         expected_outputs = [_parse_expected_output(item.get("expected_output")) for item in all_tests]
-        
-        # Use the actual_code (which might be wrapped or repaired) for validation
+
         run_result = _run_code_with_timeout(actual_code, function_name, cases)
-        
-        # If the repaired version still fails, try one last time with the raw input 
-        # just in case our normalization was too aggressive
+
         if not run_result.get("ok") and repaired_answer != model_answer:
             raw_code, raw_fn = _wrap_python_snippet(model_answer, finalized.get("question", ""))
             if raw_fn:
@@ -5953,13 +4188,11 @@ def finalize_question_profile(payload):
             finalized["exam_ready"] = False
             return finalized
 
-        # If we successfully validated a repaired version, swap the official model answer
         if run_result.get("ok") and actual_code.startswith("def ") and "model_answer" in finalized:
-             # Update accepted solutions if it was auto-repaired into a valid function
-             finalized["model_answer"] = actual_code
-             if "accepted_solutions" in finalized:
-                 if actual_code not in finalized["accepted_solutions"]:
-                     finalized["accepted_solutions"].insert(0, actual_code)
+            finalized["model_answer"] = actual_code
+            if "accepted_solutions" in finalized:
+                if actual_code not in finalized["accepted_solutions"]:
+                    finalized["accepted_solutions"].insert(0, actual_code)
 
         outputs = run_result.get("outputs", [])
         passed = 0

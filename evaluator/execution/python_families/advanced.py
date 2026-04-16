@@ -258,7 +258,8 @@ def evaluate_advanced_family(question, question_text, families, normalized_stude
         }
 
     # ── f-string ─────────────────────────────────────────────────────────────
-    if any(kw in q for kw in ("f-string", "f string", "formatted string literal")):
+    # Avoid false positives like "of string" which contains the substring "f string".
+    if re.search(r"(?i)(?<![a-z0-9])f[- ]string(?![a-z0-9])|formatted string literal", q):
         if not _has_fstring(student_answer):
             return {
                 "result_type": "zero_pass",
