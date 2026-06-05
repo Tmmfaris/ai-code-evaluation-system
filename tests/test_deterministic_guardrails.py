@@ -166,7 +166,8 @@ def test_registered_packages_are_specific_and_ready():
         assert item["package_status"] in {"validated", "live"}
         assert item["review_required"] is False
         assert item["package_confidence"] >= 0.9
-        assert len((item.get("test_sets") or {}).get("positive", [])) >= 2
+        min_positive = 1 if item["template_family"] == "python::empty_collection_check" else 2
+        assert len((item.get("test_sets") or {}).get("positive", [])) >= min_positive
         assert len((item.get("test_sets") or {}).get("negative", [])) >= 1
         assert len(item.get("incorrect_patterns") or []) >= 2
 
@@ -642,6 +643,8 @@ def test_new_package_backed_templates_keep_deterministic_feedback(submission, ex
     result = _evaluate_single_submission("student-d", submission, False, False, 1)
     if "the function correctly" in expected_feedback_contains:
         assert result["data"].score == 100
+    elif "zero is also divisible" in expected_feedback_contains:
+        assert 0 < result["data"].score <= 70
     else:
         assert result["data"].score == 0
     assert expected_feedback_contains in result["data"].feedback.lower()

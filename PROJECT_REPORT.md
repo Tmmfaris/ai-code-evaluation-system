@@ -36,33 +36,36 @@ This project report has been prepared as part of the development and documentati
 ## Table of Contents
 
 1. Introduction
-2. Background and Need for the Project
-3. Problem Statement
-4. Objectives
-5. Scope of the Project
-6. Overview of the Model
-7. Working Principle of the System
-8. Technology Stack
-9. System Architecture
-10. Main Stored Package Fields
-11. Methodology Followed
-12. Problems Faced During the Project
-13. How the Problems Were Identified
-14. Solutions Implemented to Overcome the Problems
-15. Measures Taken to Improve Accuracy
-16. System Requirements
-17. Sample Workflow and API Usage
-18. Results and Achievements
-19. Key Files and Their Role
-20. Testing and Validation Strategy
-21. Current Strengths of the Model
-22. Current Limitations
-23. Future Enhancements
-24. Conclusion
-25. References
-26. Appendix A: Sample API Outputs
-27. Appendix B: Actual Test Results and Benchmark Snapshot
-28. Appendix C: Swagger Screenshot Placement Notes
+2. Literature Review / Related Work
+3. Background and Need for the Project
+4. Problem Statement
+5. Objectives
+6. Scope of the Project
+7. Overview of the Model
+8. Working Principle of the System
+9. Technology Stack
+10. System Architecture
+11. Main Stored Package Fields
+12. Methodology Followed
+13. Problems Faced During the Project
+14. How the Problems Were Identified
+15. Solutions Implemented to Overcome the Problems
+16. Measures Taken to Improve Accuracy
+17. Formal Scoring Model
+18. System Requirements
+19. Sample Workflow and API Usage
+20. Results and Achievements
+21. What Makes This System Unique
+22. Key Files and Their Role
+23. Testing and Validation Strategy
+24. Current Strengths of the Model
+25. Current Limitations
+26. Future Enhancements and Research Direction
+27. Conclusion
+28. References
+29. Appendix A: Sample API Outputs
+30. Appendix B: Actual Test Results and Benchmark Snapshot
+31. Appendix C: Swagger Screenshot Placement Notes
 
 <<<PAGE_BREAK>>>
 
@@ -74,7 +77,29 @@ In many academic platforms, the same types of questions are asked repeatedly acr
 
 This project has gradually evolved from a more LLM-dependent evaluator into a deterministic-first, package-backed evaluation system. It now emphasizes structured question packages, hidden tests, accepted solutions, incorrect-pattern matching, guarded feedback generation, and regression-protected behavior.
 
-## 2. Background and Need for the Project
+## 2. Literature Review / Related Work
+
+Academic evaluation systems have traditionally followed three broad approaches: manual grading, rule-based automated grading, and AI-assisted grading.
+
+### 2.1 Manual and Rule-Based Evaluation
+
+Manual grading remains the most trusted method in many institutions because a human evaluator can understand context, intent, and edge cases. However, it is time-consuming, difficult to scale, and can vary across evaluators. Rule-based systems improved speed by checking fixed expected outputs, syntax patterns, or exact answers, but they often fail when students solve a problem using a different yet valid approach.
+
+### 2.2 AI-Based and LLM-Based Evaluation
+
+Recent AI-based grading systems, especially LLM-assisted evaluators, improved flexibility because they can compare logically similar answers and generate natural-language feedback. However, these systems also introduced serious issues for academic use:
+
+- inconsistency across repeated evaluations
+- hallucinated reasoning
+- weak reproducibility
+- score and feedback contradictions
+- poor explainability for moderation or review
+
+### 2.3 Gap in Existing Approaches
+
+Manual grading is accurate but not scalable. Pure rule-based grading is scalable but brittle. Pure LLM-based grading is flexible but unstable. This project was developed in response to that gap. Its design tries to combine the strengths of structured rule-based evaluation with selective AI assistance, while keeping deterministic evidence as the final authority wherever possible.
+
+## 3. Background and Need for the Project
 
 Automatic evaluation is a difficult problem in education. A basic evaluator may compare the student answer with a sample answer or ask an AI model to judge correctness. However, this approach usually creates practical issues such as:
 
@@ -88,7 +113,7 @@ For an academy-level app, these weaknesses are serious. Students expect fairness
 
 That is the problem this project tries to solve.
 
-## 3. Problem Statement
+## 4. Problem Statement
 
 The project addresses the following core problem:
 
@@ -103,7 +128,7 @@ The project specifically aims to solve these difficulties:
 - poor handling of hidden tests and edge cases
 - repeated failures when new topics appear
 
-## 4. Objectives
+## 5. Objectives
 
 The main objectives of the project are:
 
@@ -117,7 +142,7 @@ The main objectives of the project are:
 8. To make the system suitable for academy deployment inside an educational app.
 9. To protect the system using regression and benchmark tests.
 
-## 5. Scope of the Project
+## 6. Scope of the Project
 
 The project includes the following functional scope:
 
@@ -133,7 +158,7 @@ The project includes the following functional scope:
 
 The current strongest area of the system is structured coding-question evaluation, especially for Python beginner and intermediate question families.
 
-## 6. Overview of the Model
+## 7. Overview of the Model
 
 The core design of the model is based on the concept of a reusable question package.
 
@@ -153,7 +178,7 @@ Once this package is stored, later student answers can be evaluated against it i
 
 This architecture makes the project more suitable for academic use because the question is understood once and then reused many times.
 
-## 7. Working Principle of the System
+## 8. Working Principle of the System
 
 The working flow of the project is:
 
@@ -170,7 +195,7 @@ The working flow of the project is:
 
 This means the evaluator is not only checking answers. It is also maintaining reusable knowledge about each question.
 
-## 8. Technology Stack
+## 9. Technology Stack
 
 The project uses the following technologies:
 
@@ -181,27 +206,41 @@ The project uses the following technologies:
 - local LLM integration through `llama_cpp`
 - structured schema validation
 - deterministic code execution modules
+- family-specific rule modules for Python and JavaScript
+
+In implementation terms, the technology stack is not only the external libraries. It also includes the internal evaluation modules that make the system operational. Important technical modules include:
+
+- `evaluator/question_rule_generator.py` for package generation
+- `evaluator/execution/shared.py` for shared execution and oracle-style evaluation
+- `evaluator/rules/shared.py` for shared rule logic
+- `evaluator/rules/python_families/` for Python family rules
+- `evaluator/rules/javascript_families/` for JavaScript family rules such as numbers, strings, and lists
+- `evaluator/orchestration/` for evaluation flow control
+- `evaluator/comparison/` for answer comparison, logic checking, and feedback generation
 
 Important project files include:
 
-- [app.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/app.py>)
-- [config.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/config.py>)
-- [schemas.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/schemas.py>)
-- [README.md](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/README.md>)
+- [app.py](./app.py)
+- [config.py](./config.py)
+- [schemas.py](./schemas.py)
+- [README.md](./README.md)
+- [evaluator/question_rule_generator.py](./evaluator/question_rule_generator.py)
+- [evaluator/execution/shared.py](./evaluator/execution/shared.py)
+- [evaluator/rules/shared.py](./evaluator/rules/shared.py)
 
-## 9. System Architecture
+## 10. System Architecture
 
 The project can be viewed as several coordinated layers.
 
-### 9.1 API Layer
+### 10.1 API Layer
 
 This layer handles incoming requests for question registration, question retrieval, approval, and student evaluation.
 
 Main endpoint handling is in:
 
-- [app.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/app.py>)
+- [app.py](./app.py)
 
-### 9.2 Question Package Generation Layer
+### 10.2 Question Package Generation Layer
 
 This layer is responsible for generating question packages. It decides the template family and creates:
 
@@ -214,43 +253,49 @@ This layer is responsible for generating question packages. It decides the templ
 
 Important files:
 
-- [evaluator/question_rule_generator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_rule_generator.py>)
-- [evaluator/question_package/workflow.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_package/workflow.py>)
-- [evaluator/question_package/generator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_package/generator.py>)
-- [evaluator/question_package/validator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_package/validator.py>)
+- [evaluator/question_rule_generator.py](./evaluator/question_rule_generator.py)
+- [evaluator/question_package/workflow.py](./evaluator/question_package/workflow.py)
+- [evaluator/question_package/generator.py](./evaluator/question_package/generator.py)
+- [evaluator/question_package/validator.py](./evaluator/question_package/validator.py)
 
-### 9.3 Question Profile Storage Layer
+### 10.3 Question Profile Storage Layer
 
 This is the persistent memory of the system. It stores reusable evaluation rulebooks for questions.
 
 Important files:
 
-- [evaluator/question_profile_repository.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_profile_repository.py>)
-- [evaluator/question_profile_store.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_profile_store.py>)
+- [evaluator/question_profile_repository.py](./evaluator/question_profile_repository.py)
+- [evaluator/question_profile_store.py](./evaluator/question_profile_store.py)
 
-### 9.4 Evaluation Orchestration Layer
+### 10.4 Evaluation Orchestration Layer
 
 This layer applies deterministic scoring using package-backed evidence such as hidden tests, accepted solutions, and incorrect-pattern matches.
 
 Important files:
 
-- [evaluator/main_evaluator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/main_evaluator.py>)
-- [evaluator/orchestration/pipeline.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/orchestration/pipeline.py>)
+- [evaluator/main_evaluator.py](./evaluator/main_evaluator.py)
+- [evaluator/orchestration/pipeline.py](./evaluator/orchestration/pipeline.py)
+- [evaluator/orchestration/confidence.py](./evaluator/orchestration/confidence.py)
+- [evaluator/comparison/answer_comparator.py](./evaluator/comparison/answer_comparator.py)
+- [evaluator/comparison/feedback_generator.py](./evaluator/comparison/feedback_generator.py)
+- [evaluator/comparison/logic_checker.py](./evaluator/comparison/logic_checker.py)
 
-### 9.5 Execution Layer
+### 10.5 Execution Layer
 
 This layer executes hidden tests and family-specific logic for supported languages.
 
 Important files:
 
-- [evaluator/execution/shared.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/execution/shared.py>)
-- [evaluator/execution/python_families/numbers.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/execution/python_families/numbers.py>)
-- [evaluator/execution/python_families/strings.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/execution/python_families/strings.py>)
-- [evaluator/execution/python_families/lists.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/execution/python_families/lists.py>)
+- [evaluator/execution/shared.py](./evaluator/execution/shared.py)
+- [evaluator/execution/python_families/numbers.py](./evaluator/execution/python_families/numbers.py)
+- [evaluator/execution/python_families/strings.py](./evaluator/execution/python_families/strings.py)
+- [evaluator/execution/python_families/lists.py](./evaluator/execution/python_families/lists.py)
+- [evaluator/rules/python_families/](./evaluator/rules/python_families)
+- [evaluator/rules/javascript_families/](./evaluator/rules/javascript_families)
 
 <<<PAGE_BREAK>>>
 
-## 10. Main Stored Package Fields
+## 11. Main Stored Package Fields
 
 One of the most important achievements of the project is the creation of a reusable question profile store. The following package fields are central to the evaluator:
 
@@ -267,7 +312,7 @@ One of the most important achievements of the project is the creation of a reusa
 
 These fields are stored so they can be reused later during evaluation. Because of this, the system behaves more like a structured academic engine than a simple prompt-driven evaluator.
 
-## 11. Methodology Followed
+## 12. Methodology Followed
 
 The development of the project followed an iterative engineering methodology:
 
@@ -286,11 +331,11 @@ The development of the project followed an iterative engineering methodology:
 
 This method helped the project improve steadily. Most major improvements came from solving real observed failures, not only from theoretical planning.
 
-## 12. Problems Faced During the Project
+## 13. Problems Faced During the Project
 
 This section explains the real difficulties faced during development.
 
-### 12.1 Overreliance on LLM-Based Grading
+### 13.1 Overreliance on LLM-Based Grading
 
 In the earlier stages, the evaluator relied too much on free-form LLM comparison. This caused multiple issues:
 
@@ -301,7 +346,7 @@ In the earlier stages, the evaluator relied too much on free-form LLM comparison
 
 This was a serious problem because academic systems require repeatability.
 
-### 12.2 Weak Registration Packages
+### 13.2 Weak Registration Packages
 
 Many registration attempts produced packages that were incomplete or too weak. Common issues included:
 
@@ -313,7 +358,7 @@ Many registration attempts produced packages that were incomplete or too weak. C
 
 This often caused `POST /questions/register` failures such as `422 Unprocessable Entity`.
 
-### 12.3 Register-Evaluate Drift
+### 13.3 Register-Evaluate Drift
 
 The same question could be normalized differently during registration and evaluation. As a result:
 
@@ -321,7 +366,7 @@ The same question could be normalized differently during registration and evalua
 - evaluation sometimes missed reusable package logic
 - registration and evaluation behaved differently for the same question
 
-### 12.4 Reuse of the Wrong Stored Package
+### 13.4 Reuse of the Wrong Stored Package
 
 Sometimes a previously stored package was reused because the wording looked similar, even though the logic was different.
 
@@ -334,7 +379,7 @@ Examples:
 
 This was a major risk because it could lead to incorrect student scoring.
 
-### 12.5 Correct Score but Incorrect Feedback
+### 13.5 Correct Score but Incorrect Feedback
 
 One of the most serious issues was that the score could be correct while the feedback was wrong. For example:
 
@@ -345,7 +390,7 @@ One of the most serious issues was that the score could be correct while the fee
 
 This reduced trust in the system.
 
-### 12.6 Overbroad Incorrect-Pattern Rules
+### 13.6 Overbroad Incorrect-Pattern Rules
 
 Some incorrect-pattern rules were too broad. Patterns like `return s` or `return len(lst)` could match many forms of code, including ones that were not actually the same mistake.
 
@@ -355,11 +400,11 @@ This caused:
 - poor-quality explanations
 - incorrect pattern-based scoring
 
-### 12.7 New Question and New Topic Instability
+### 13.7 New Question and New Topic Instability
 
 When new topics or new question forms appeared, package generation could fail or become too generic. This directly affected the requirement that the model should continue working when new questions are added.
 
-### 12.8 Weak Hidden-Test Quality
+### 13.8 Weak Hidden-Test Quality
 
 Generated hidden tests sometimes had issues such as:
 
@@ -370,11 +415,11 @@ Generated hidden tests sometimes had issues such as:
 
 Weak tests directly reduce evaluation reliability.
 
-### 12.9 Test Contamination from Local Data
+### 13.9 Test Contamination from Local Data
 
 Because the project stores packages and evaluation history persistently, existing local stored data sometimes affected automated tests. This made the test suite less deterministic until isolation measures were introduced.
 
-## 13. How the Problems Were Identified
+## 14. How the Problems Were Identified
 
 The project team identified problems through:
 
@@ -389,17 +434,17 @@ The project team identified problems through:
 
 The automated tests were especially important for identifying and reproducing problems. The most useful test files included:
 
-- [tests/test_monitoring_and_registration.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_monitoring_and_registration.py>)
-- [tests/test_deterministic_guardrails.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_deterministic_guardrails.py>)
-- [tests/test_regressions.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py>)
-- [tests/test_benchmark.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_benchmark.py>)
-- [tests/test_evaluator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_evaluator.py>)
+- [tests/test_monitoring_and_registration.py](./tests/test_monitoring_and_registration.py)
+- [tests/test_deterministic_guardrails.py](./tests/test_deterministic_guardrails.py)
+- [tests/test_regressions.py](./tests/test_regressions.py)
+- [tests/test_benchmark.py](./tests/test_benchmark.py)
+- [tests/test_evaluator.py](./tests/test_evaluator.py)
 
 These tests helped discover not only surface bugs, but also deeper structural issues in package generation, scoring, and feedback behavior.
 
-## 14. Solutions Implemented to Overcome the Problems
+## 15. Solutions Implemented to Overcome the Problems
 
-### 14.1 Shift to Deterministic-First Scoring
+### 15.1 Shift to Deterministic-First Scoring
 
 The most important change in the project was moving away from LLM-first grading and toward deterministic-first scoring.
 
@@ -412,7 +457,7 @@ The system now gives priority to:
 
 This reduced evaluation instability significantly.
 
-### 14.2 Creation of Reusable Question Packages
+### 15.2 Creation of Reusable Question Packages
 
 Instead of rediscovering question logic every time, the system now creates reusable packages. These packages act as permanent scoring rulebooks.
 
@@ -423,17 +468,17 @@ This solved several problems:
 - enabled reuse across many student submissions
 - preserved question-specific evaluation logic
 
-### 14.3 Persistent Question Profile Storage
+### 15.3 Persistent Question Profile Storage
 
 The system stores packages in a persistent profile store. This means accepted solutions, hidden tests, incorrect patterns, and readiness metadata are available for later evaluations.
 
 This turned the evaluator into a reusable system rather than a stateless comparison engine.
 
-### 14.4 Shared Signature Normalization
+### 15.4 Shared Signature Normalization
 
 The project introduced centralized question signature normalization. Registration and evaluation now use the same normalized signature builder, reducing drift between the two workflows.
 
-### 14.5 Strict Registration Quality Gates
+### 15.5 Strict Registration Quality Gates
 
 The project added stronger quality requirements during registration. Packages are checked for:
 
@@ -445,11 +490,11 @@ The project added stronger quality requirements during registration. Packages ar
 
 This prevented weak or generic packages from silently becoming trusted live packages.
 
-### 14.6 Family-Aware and Parameter-Aware Reuse
+### 15.6 Family-Aware and Parameter-Aware Reuse
 
 Stored packages are now reused only when both family logic and important parameters match. This prevents wrong-package reuse across similar-looking questions.
 
-### 14.7 Expansion of Deterministic Question Families
+### 15.7 Expansion of Deterministic Question Families
 
 To support more new questions without failure, deterministic family coverage was expanded. Important supported Python families now include:
 
@@ -468,11 +513,13 @@ To support more new questions without failure, deterministic family coverage was
 
 This dramatically improved new-question handling for many academy-style exercises.
 
-### 14.8 Automatic Package Bootstrap During Evaluation
+Although Python family coverage is the strongest and most explicitly expanded area in the current system, the project also includes JavaScript family-rule support through dedicated modules for categories such as numbers, strings, and lists. This is important because the system is already designed for broader multi-language growth rather than being limited to Python alone.
+
+### 15.8 Automatic Package Bootstrap During Evaluation
 
 If evaluation receives full inline question context and a valid stored package is missing, the system can attempt to build a usable package automatically. This reduces evaluation-time failures.
 
-### 14.9 Final Response Guardrails
+### 15.9 Final Response Guardrails
 
 The project added final-response repair logic so that contradictory outputs are corrected before they are returned.
 
@@ -483,7 +530,7 @@ Examples of what this protects against:
 - vague feedback when exact deterministic evidence exists
 - package-backed hidden-test failure being ignored by final feedback
 
-### 14.10 Hidden-Test Cleanup and Sanitization
+### 15.10 Hidden-Test Cleanup and Sanitization
 
 The project introduced controls such as:
 
@@ -492,13 +539,13 @@ The project introduced controls such as:
 - edge-case reinforcement
 - template-specific pattern sanitization
 
-### 14.11 Test Isolation and Regression Protection
+### 15.11 Test Isolation and Regression Protection
 
 The project added isolated test-store configuration and stronger regression tests so that local stored package data would not interfere with automated test outcomes.
 
 <<<PAGE_BREAK>>>
 
-## 15. Measures Taken to Improve Accuracy
+## 16. Measures Taken to Improve Accuracy
 
 Because the target use case is academic evaluation, accuracy improvement has been a central goal. The following measures were taken:
 
@@ -512,7 +559,29 @@ Because the target use case is academic evaluation, accuracy improvement has bee
 8. Suspicious evaluation monitoring for audit.
 9. Benchmark and regression-driven development.
 
-## 16. System Requirements
+## 17. Formal Scoring Model
+
+The system can be represented analytically as a deterministic-first scoring function:
+
+`Score = f(H, P, E, G)`
+
+Where:
+
+- `H` = hidden-test outcome
+- `P` = incorrect-pattern findings
+- `E` = equivalence with accepted solutions or approved alternative logic
+- `G` = guardrail corrections applied to the final result
+
+A more practical interpretation of the same logic is:
+
+1. If required hidden tests fail, the score must remain low regardless of generic feedback.
+2. If a strong incorrect-pattern rule matches, the score is capped according to that pattern.
+3. If the answer is equivalent to an accepted solution and passes relevant tests, the score can be high.
+4. Final response guardrails prevent contradictory score-feedback combinations from being returned.
+
+This analytical view is important academically because it shows that the evaluator is not using an arbitrary black-box decision for every answer. Instead, it applies a layered decision model where deterministic evidence has priority.
+
+## 18. System Requirements
 
 The current project is designed to run in a local development environment with the following practical requirements:
 
@@ -531,6 +600,16 @@ Important package dependencies currently listed in the project include:
 - `llama-cpp-python`
 - `pyyaml`
 
+Core runtime modules that should be considered essential to the system design include:
+
+- `app.py`
+- `config.py`
+- `schemas.py`
+- `evaluator/question_rule_generator.py`
+- `evaluator/execution/shared.py`
+- `evaluator/rules/shared.py`
+- `evaluator/orchestration/pipeline.py`
+
 Typical runtime folders used by the project include:
 
 - `data/`
@@ -540,11 +619,11 @@ Typical runtime folders used by the project include:
 
 The system can still perform many deterministic tasks even when the LLM is unavailable, because the protected path is designed to depend primarily on package-backed rules rather than free-form model scoring.
 
-## 17. Sample Workflow and API Usage
+## 19. Sample Workflow and API Usage
 
 The following simplified workflow shows how the project behaves in practice.
 
-### 17.1 Registration Workflow
+### 19.1 Registration Workflow
 
 ```text
 Question Input
@@ -560,7 +639,7 @@ Package Validation
 Question Profile Store
 ```
 
-### 17.2 Evaluation Workflow
+### 19.2 Evaluation Workflow
 
 ```text
 Student Submission
@@ -578,7 +657,7 @@ Final Feedback Guardrails Applied
 Result Returned
 ```
 
-### 17.3 Example Registration Request
+### 19.3 Example Registration Request
 
 ```json
 {
@@ -593,7 +672,7 @@ Result Returned
 }
 ```
 
-### 17.4 Example Registration Outcome
+### 19.4 Example Registration Outcome
 
 The expected useful registration output includes fields such as:
 
@@ -605,7 +684,7 @@ The expected useful registration output includes fields such as:
 - `package_status`
 - `package_confidence`
 
-### 17.5 Example Student Evaluation Request
+### 19.5 Example Student Evaluation Request
 
 ```json
 {
@@ -626,7 +705,7 @@ The expected useful registration output includes fields such as:
 }
 ```
 
-### 17.6 Example Evaluation Result
+### 19.6 Example Evaluation Result
 
 A successful evaluation typically returns:
 
@@ -638,70 +717,116 @@ A successful evaluation typically returns:
 
 This structured output is important because the project is designed not only to score answers, but also to explain the result in a reusable academic format.
 
-## 18. Results and Achievements
+## 20. Results and Achievements
 
 The project produced several important outcomes.
 
-### 18.1 Architectural Achievements
+### 20.1 Architectural Achievements
 
 - The evaluator moved from a more LLM-centered design to a deterministic-first design.
 - Reusable question packages became the core unit of evaluation.
 - The question profile store became a persistent rulebook repository for future use.
 
-### 18.2 Functional Achievements
+### 20.2 Functional Achievements
 
 - New questions can often be registered automatically through family inference and model-answer-derived logic.
 - Student evaluation now reuses stored package fields instead of re-guessing question logic.
 - Hidden tests and incorrect patterns now influence scoring directly in the protected path.
 
-### 18.3 Quality Achievements
+### 20.3 Quality Achievements
 
 - Contradictory score and feedback combinations were reduced through final guardrails.
 - Reuse of stale or mismatched question packages was reduced through parameter-aware matching.
 - More deterministic Python question families were supported than in earlier versions.
 
-### 18.4 Engineering Achievements
+### 20.4 Engineering Achievements
 
 - The project now includes regression protection for known bugs.
 - Focused tests protect package generation, deterministic scoring, and monitoring behavior.
 - Test isolation was improved so local stored data does not easily corrupt automated results.
 
-### 18.5 Academic Value
+### 20.5 Academic Value
 
 From an academic perspective, the most important achievement is that the system now evaluates repeated questions more fairly and consistently by using stored structured logic rather than unstable one-time AI judgment.
 
 <<<PAGE_BREAK>>>
 
-## 19. Key Files and Their Role
+## 21. What Makes This System Unique
 
-- [app.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/app.py>)
+This system is different from a standard AI grader in several important ways.
+
+### 21.1 Deterministic-First Instead of LLM-First
+
+Many AI evaluators allow the language model to decide correctness directly. This system does the opposite: deterministic evidence is prioritized first, and LLM usage is limited to support roles such as package enrichment or wording improvement.
+
+### 21.2 Reusable Question Packages
+
+The project treats each question as a reusable evaluation asset. Accepted solutions, hidden tests, incorrect patterns, and readiness metadata are stored and reused later. This makes the evaluator more repeatable and more suitable for academy use.
+
+### 21.3 Regression-Protected Evaluation
+
+When a real bug or failure is discovered, the system converts that learning into regression tests and benchmark protection. This prevents the same issue from quietly returning in later updates.
+
+### 21.4 Parameter-Aware Reuse
+
+The evaluator does not reuse stored packages simply because wording is similar. It checks family and parameter compatibility, such as threshold, divisor, list index, or string prefix length.
+
+These features together form the main novelty of the system: it combines structured reusable rulebooks with guarded deterministic scoring, instead of depending on one-time model judgment alone.
+
+## 22. Key Files and Their Role
+
+- [app.py](./app.py)
   Main API layer, package bootstrap logic, evaluation orchestration, and final response repair.
 
-- [evaluator/question_rule_generator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_rule_generator.py>)
+- [evaluator/question_rule_generator.py](./evaluator/question_rule_generator.py)
   Core question package generation logic, family inference, hidden-test generation, and pattern sanitization.
 
-- [evaluator/question_package/workflow.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_package/workflow.py>)
+- [evaluator/question_package/workflow.py](./evaluator/question_package/workflow.py)
   Registration workflow for preparing and validating packages.
 
-- [evaluator/question_profile_repository.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_profile_repository.py>)
+- [evaluator/question_profile_repository.py](./evaluator/question_profile_repository.py)
   Persistent storage logic for question packages.
 
-- [evaluator/orchestration/pipeline.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/orchestration/pipeline.py>)
+- [evaluator/question_learning_repository.py](./evaluator/question_learning_repository.py)
+  Repository layer for learning signals and future package-improvement data.
+
+- [evaluator/orchestration/pipeline.py](./evaluator/orchestration/pipeline.py)
   Deterministic scoring pipeline, package-backed logic, and accuracy overrides.
 
-- [evaluator/execution/shared.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/execution/shared.py>)
-  Shared execution helpers and universal evaluation support.
+- [evaluator/orchestration/confidence.py](./evaluator/orchestration/confidence.py)
+  Confidence-related scoring support used in orchestration decisions.
 
-- [tests/test_monitoring_and_registration.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_monitoring_and_registration.py>)
+- [evaluator/execution/shared.py](./evaluator/execution/shared.py)
+  Shared execution helpers and universal evaluation support. This is one of the largest and most technically important modules in the project.
+
+- [evaluator/rules/shared.py](./evaluator/rules/shared.py)
+  Shared rule logic used across multiple evaluation paths. This is a major common rule module in the system.
+
+- [evaluator/comparison/answer_comparator.py](./evaluator/comparison/answer_comparator.py)
+  Compares answers beyond exact string matching.
+
+- [evaluator/comparison/feedback_generator.py](./evaluator/comparison/feedback_generator.py)
+  Builds and refines evaluation feedback.
+
+- [evaluator/comparison/logic_checker.py](./evaluator/comparison/logic_checker.py)
+  Checks logic-level similarity and differences between faculty and student solutions.
+
+- [evaluator/rules/python_families/](./evaluator/rules/python_families)
+  Contains Python family rules such as numbers, strings, and lists.
+
+- [evaluator/rules/javascript_families/](./evaluator/rules/javascript_families)
+  Contains JavaScript family rules such as numbers, strings, and lists.
+
+- [tests/test_monitoring_and_registration.py](./tests/test_monitoring_and_registration.py)
   Protects question registration quality and monitoring behavior.
 
-- [tests/test_deterministic_guardrails.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_deterministic_guardrails.py>)
+- [tests/test_deterministic_guardrails.py](./tests/test_deterministic_guardrails.py)
   Protects deterministic package-backed behavior and guardrail logic.
 
-- [tests/test_regressions.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py>)
+- [tests/test_regressions.py](./tests/test_regressions.py)
   Protects previously fixed bugs from returning.
 
-## 20. Testing and Validation Strategy
+## 23. Testing and Validation Strategy
 
 The project uses multiple layers of testing:
 
@@ -714,7 +839,7 @@ The project uses multiple layers of testing:
 
 This layered approach is important because different errors appear at different stages. One issue may affect registration while another affects scoring or feedback. Therefore a single test type would not be enough.
 
-## 21. Current Strengths of the Model
+## 24. Current Strengths of the Model
 
 The current system has the following strengths:
 
@@ -727,15 +852,15 @@ The current system has the following strengths:
 - safer handling of new but structurally familiar question types
 - better development safety through tests and monitoring
 
-## 22. Current Limitations
+## 25. Current Limitations
 
 Even though the project has improved substantially, some limitations remain.
 
-### 19.1 Absolute perfect accuracy for every unseen future question is not realistic
+### 25.1 Absolute perfect accuracy for every unseen future question is not realistic
 
 For covered families, the system can be made highly reliable and deterministic. However, for completely new, ambiguous, or advanced question structures, perfect fully automatic evaluation is still difficult.
 
-### 19.2 New family support is an ongoing requirement
+### 25.2 New family support is an ongoing requirement
 
 Whenever new question structures appear, the system may still need:
 
@@ -744,25 +869,28 @@ Whenever new question structures appear, the system may still need:
 - improved incorrect-pattern rules
 - new regression cases
 
-### 19.3 Some cases may still require review
+### 25.3 Some cases may still require review
 
 For truly novel questions, stronger manual review or admin approval logic may still be appropriate until the new family is properly supported.
 
-## 23. Future Enhancements
+## 26. Future Enhancements and Research Direction
 
 The following improvements are recommended for future work:
 
 1. Expand deterministic family support across more languages and question types.
-2. Add stronger registration coverage requirements for all families.
-3. Create better review tools for weak or draft packages.
-4. Build dashboards for suspicious evaluations and package health.
-5. Keep converting real failures into regression tests.
-6. Add more benchmark coverage for newly introduced topics.
-7. Improve automatic package generation for more advanced question structures.
+2. Strengthen multi-language evaluation support for Java, JavaScript, SQL, and related structured question families.
+3. Add stronger registration coverage requirements for all families.
+4. Create better review tools for weak or draft packages.
+5. Build dashboards for suspicious evaluations and package health.
+6. Keep converting real failures into regression tests.
+7. Add more benchmark coverage for newly introduced topics.
+8. Improve automatic package generation for more advanced question structures.
+9. Explore adaptive difficulty and personalized evaluation support for future educational systems.
+10. Connect evaluation outputs with learning analytics so repeated error patterns can support academic intervention and feedback loops.
 
 <<<PAGE_BREAK>>>
 
-## 24. Conclusion
+## 27. Conclusion
 
 The AI Intelligent Evaluation Model has developed into a much stronger and more reliable academic evaluation system than a simple prompt-driven grader.
 
@@ -780,25 +908,25 @@ These problems were overcome through architectural redesign, deterministic scori
 
 As a result, the project now has a strong foundation for academy-level deployment. Its most important achievement is that it treats each question as a reusable evaluation asset, not just as a one-time prompt. That makes the system more accurate, more explainable, and more suitable for long-term educational use.
 
-## 25. References
+## 28. References
 
 The report is based on the current project implementation and documentation available in the repository, especially:
 
-- [README.md](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/README.md>)
-- [app.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/app.py>)
-- [config.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/config.py>)
-- [schemas.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/schemas.py>)
-- [evaluator/question_rule_generator.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_rule_generator.py>)
-- [evaluator/question_package/workflow.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_package/workflow.py>)
-- [evaluator/question_profile_repository.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/question_profile_repository.py>)
-- [evaluator/orchestration/pipeline.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/evaluator/orchestration/pipeline.py>)
-- [tests/test_monitoring_and_registration.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_monitoring_and_registration.py>)
-- [tests/test_deterministic_guardrails.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_deterministic_guardrails.py>)
-- [tests/test_regressions.py](</c:/DSA ICT/Internship/ai-intelligent-evaluation-model/tests/test_regressions.py>)
+- [README.md](./README.md)
+- [app.py](./app.py)
+- [config.py](./config.py)
+- [schemas.py](./schemas.py)
+- [evaluator/question_rule_generator.py](./evaluator/question_rule_generator.py)
+- [evaluator/question_package/workflow.py](./evaluator/question_package/workflow.py)
+- [evaluator/question_profile_repository.py](./evaluator/question_profile_repository.py)
+- [evaluator/orchestration/pipeline.py](./evaluator/orchestration/pipeline.py)
+- [tests/test_monitoring_and_registration.py](./tests/test_monitoring_and_registration.py)
+- [tests/test_deterministic_guardrails.py](./tests/test_deterministic_guardrails.py)
+- [tests/test_regressions.py](./tests/test_regressions.py)
 
 <<<PAGE_BREAK>>>
 
-## 26. Appendix A: Sample API Outputs
+## 29. Appendix A: Sample API Outputs
 
 This appendix includes representative examples of the kinds of payloads and outputs used in the system.
 
@@ -942,7 +1070,7 @@ One of the practical failure cases observed during the project was a registratio
 
 <<<PAGE_BREAK>>>
 
-## 27. Appendix B: Actual Test Results and Benchmark Snapshot
+## 30. Appendix B: Actual Test Results and Benchmark Snapshot
 
 This appendix records a current snapshot of selected automated verification results collected during report preparation on April 17, 2026.
 
@@ -1030,7 +1158,7 @@ This is actually consistent with the project’s development model. The system i
 
 <<<PAGE_BREAK>>>
 
-## 28. Appendix C: Swagger Screenshot Placement Notes
+## 31. Appendix C: Swagger Screenshot Placement Notes
 
 This terminal environment does not provide direct browser screenshot capture for the locally running Swagger UI. For that reason, this appendix provides the exact screenshot slots that should be inserted into the final submitted Word or PDF version after opening the API in a browser.
 
@@ -1045,6 +1173,24 @@ Recommended screenshots to insert:
 Suggested caption:
 
 `Figure C.1: Swagger UI home page showing the available question registration and student evaluation APIs.`
+
+Suggested screenshot content:
+
+- overall endpoint list
+- runtime-visible API groups
+- navigation view of available operations
+
+### C.1.1 Health Endpoint Screenshot
+
+Suggested screenshot content:
+
+- `GET /health`
+- health response body
+- runtime or service-state information
+
+Suggested caption:
+
+`Figure C.1.1: Swagger health endpoint used to confirm runtime availability and service state.`
 
 ### C.2 Question Registration API
 

@@ -8,9 +8,12 @@ from evaluator.question_package.generator import generate_question_package
 from evaluator.question_package.reuser import reuse_existing_package_content
 from evaluator.question_package.validator import validate_question_package
 from config import (
+    AUTO_ACTIVATE_VALIDATED_QUESTIONS,
+    MIN_PACKAGE_CONFIDENCE_FOR_EXAM,
     QUESTION_REGISTER_HARD_MAX_ATTEMPTS,
     QUESTION_REGISTER_LLM_MAX_ATTEMPTS,
     QUESTION_REGISTER_MAX_ATTEMPTS,
+    REQUIRE_FACULTY_APPROVAL_FOR_LIVE,
     REQUIRE_PACKAGE_COVERAGE_FOR_REGISTRATION,
     REGISTER_REQUIRE_LLM_ASSISTANCE,
     REGISTER_STRICT_VALIDATE,
@@ -76,6 +79,33 @@ def _has_required_case_coverage(package):
         and len(incorrect_patterns) >= 2
         and len(accepted_solutions) >= 1
     )
+
+
+def _apply_runtime_approval_flags(package):
+    updated = dict(package or {})
+    status = (updated.get("package_status") or "").strip().lower()
+    confidence = float(updated.get("package_confidence", 0.0) or 0.0)
+    review_required = bool(updated.get("review_required", True))
+
+    if REQUIRE_FACULTY_APPROVAL_FOR_LIVE:
+        updated["approval_status"] = (updated.get("approval_status") or "pending").strip().lower()
+        updated["exam_ready"] = bool(
+            updated.get("approval_status") == "approved"
+            and confidence >= MIN_PACKAGE_CONFIDENCE_FOR_EXAM
+            and not review_required
+        )
+        return updated
+
+    if status in {"validated", "live"} and confidence >= MIN_PACKAGE_CONFIDENCE_FOR_EXAM and not review_required:
+        updated["approval_status"] = "approved"
+        updated["approved_by"] = updated.get("approved_by") or "system"
+        updated["exam_ready"] = True
+        if AUTO_ACTIVATE_VALIDATED_QUESTIONS:
+            updated["package_status"] = "live"
+    else:
+        updated["approval_status"] = (updated.get("approval_status") or "pending").strip().lower()
+        updated["exam_ready"] = False
+    return updated
 
 
 def _candidate_rank(package):
@@ -169,9 +199,9 @@ def _enforce_llm_requirement(package, force_llm=False):
             waived["package_summary"] = (
                 "Deterministic package validated. LLM requirement waived due to sufficient test coverage."
             )
-            return waived
+            return _apply_runtime_approval_flags(waived)
         return _mark_missing_llm_assistance(package)
-    return package
+    return _apply_runtime_approval_flags(package)
 
 
 def _is_fully_correct(package):

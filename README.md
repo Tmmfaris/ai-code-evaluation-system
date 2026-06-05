@@ -241,7 +241,7 @@ The repo now includes a formal project report and a local Word-export workflow f
 
 Main report assets:
 - [PROJECT_REPORT.md](./PROJECT_REPORT.md)
-- `PROJECT_REPORT.docx`
+- [PROJECT_REPORT.docx](./PROJECT_REPORT.docx)
 - [tools/generate_docx_report.py](./tools/generate_docx_report.py)
 
 The project report currently includes:
@@ -256,6 +256,13 @@ The project report currently includes:
 - actual test and benchmark snapshots
 - Swagger screenshot placement notes
 - references
+
+Appendix-oriented report evidence currently included:
+- sample registration request/response structure
+- sample student evaluation request/response structure
+- current focused test snapshot notes
+- current benchmark snapshot notes
+- Swagger screenshot placement guidance for final submission
 
 ### Regenerating the Word report
 

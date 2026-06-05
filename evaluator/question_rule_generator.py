@@ -939,6 +939,55 @@ def _sanitize_incorrect_patterns_for_family(incorrect_patterns, template_family,
                 item["suggestion"] = "Return the item at index 1, for example with lst[1]."
                 item["score_cap"] = int(item.get("score_cap", 20) or 20)
 
+        if normalized_family == "python::first_and_last_character" or _mentions_first_and_last_character(normalized_question):
+            if compact_pattern in {"returns[1:-1]", "defends(s):returns[1:-1]"}:
+                item["feedback"] = (
+                    "Returning the middle slice does not satisfy the requirement to return the first and last characters. "
+                    "This removes the ends instead of combining them."
+                )
+                item["suggestion"] = "Combine the first and last characters, for example with s[0] + s[-1]."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif compact_pattern in {"returns", "defends(s):returns"}:
+                item["feedback"] = (
+                    "Returning the whole string does not satisfy the requirement to return only the first and last characters."
+                )
+                item["suggestion"] = "Combine the first and last characters, for example with s[0] + s[-1]."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+
+        if normalized_family == "python::divisible_by_constant" or "multiple of" in normalized_question or "divisible by" in normalized_question:
+            if compact_pattern in {"defmult3(n):returnn%3==0ifnelsefalse", "returnn%3==0ifnelsefalse"}:
+                item["suggestion"] = "Do not special-case 0 here; use n % 3 == 0 so zero is treated as divisible."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif compact_pattern in {"defmult3(n):returnn%3==1", "returnn%3==1"}:
+                item["suggestion"] = "Use n % 3 == 0 so the function returns True only for multiples of 3."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif compact_pattern in {"defmult3(n):returntrue", "returntrue"}:
+                item["suggestion"] = "Check the input value directly, for example with n % 3 == 0."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+
+        if normalized_family == "python::list_length_equals_constant" or "list length" in normalized_question:
+            if compact_pattern in {"return0", "deflen2(lst):return0", "deflen(lst):return0"}:
+                # A numeric constant return is not a relevant family-specific misconception here.
+                # Keep the final package focused on boolean/list-length mistakes.
+                continue
+            if compact_pattern in {"returnfalse", "deflen2(lst):returnfalse", "deflen(lst):returnfalse"}:
+                item["feedback"] = (
+                    "Always returning False does not check whether the list length is exactly the required value. "
+                    "The function should return True when the list has the required number of elements."
+                )
+                item["suggestion"] = "Compare the list length to the required value, for example with len(lst) == 2."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif compact_pattern in {"deflen2(lst):returnlen(lst)>=2", "returnlen(lst)>=2"}:
+                item["suggestion"] = "Use len(lst) == 2 so only lists with exactly 2 elements return True."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+            elif compact_pattern in {"returnlst", "deflen2(lst):returnlst", "deflen(lst):returnlst"}:
+                item["feedback"] = (
+                    "Returning the list itself does not answer the yes-or-no question. "
+                    "The function should return a boolean indicating whether the list length matches the required value."
+                )
+                item["suggestion"] = "Compare the list length to the required value, for example with len(lst) == 2."
+                item["score_cap"] = int(item.get("score_cap", 20) or 20)
+
         sanitized.append(item)
     return sanitized
 
@@ -1395,6 +1444,53 @@ def _deterministic_code_baselines(question, language):
                 accepted = [f"return lst.length {op} {val};"]
             elif language == "javascript":
                 accepted = [f"return lst.length {op} {val};"]
+            if op == "==":
+                exact_list = list(range(max(0, val)))
+                if val <= 0:
+                    alt_exact_list = []
+                elif val == 1:
+                    alt_exact_list = [42]
+                else:
+                    alt_exact_list = list(reversed(exact_list))
+                lower_list = list(range(max(0, val - 1)))
+                higher_list = list(range(val + 1))
+                return {
+                    "accepted_solutions": accepted,
+                    "test_sets": {
+                        "positive": [
+                            _build_case([exact_list], True, f"list length equals {val}", kind="normal", weight=1.1, required=True),
+                            _build_case([alt_exact_list], True, f"different list with length {val}", kind="normal", weight=1.0, required=val > 0),
+                        ],
+                        "negative": [
+                            _build_case([lower_list], False, f"list length below {val}", kind="edge", weight=1.2, required=True),
+                            _build_case([higher_list], False, f"list length above {val}", kind="edge", weight=1.2, required=True),
+                        ],
+                    },
+                    "incorrect_patterns": [
+                        {
+                            "pattern": f"return len(lst) > {val}",
+                            "match_type": "contains",
+                            "feedback": f"Checking whether the list length is greater than {val} solves a different problem. This task requires the length to be exactly {val}.",
+                            "suggestion": f"Use len(lst) == {val} to require the exact length.",
+                            "score_cap": 20,
+                        },
+                        {
+                            "pattern": f"return len(lst) >= {val}",
+                            "match_type": "contains",
+                            "feedback": f"Using >= allows lists longer than {val}, but this task requires the length to be exactly {val}.",
+                            "suggestion": f"Use len(lst) == {val} to require the exact length.",
+                            "score_cap": 20,
+                        },
+                        {
+                            "pattern": "return len(lst)",
+                            "match_type": "contains",
+                            "feedback": "Returning the list length itself does not answer the yes-or-no question. The function should return a boolean indicating whether the length matches the required value.",
+                            "suggestion": f"Compare the length to {val}, for example with len(lst) == {val}.",
+                            "score_cap": 20,
+                        },
+                    ],
+                }
+
             def _cmp(length, operator, target):
                 if operator == "<":
                     return length < target
@@ -1922,6 +2018,20 @@ def _deterministic_code_baselines(question, language):
                     "suggestion": "Combine the first and last characters instead of slicing the prefix.",
                     "score_cap": 20,
                 },
+                {
+                    "pattern": "def ends(s): return s[1:-1]",
+                    "match_type": "normalized_contains",
+                    "feedback": "Returning the middle slice does not satisfy the requirement to return the first and last characters. This removes the ends instead of combining them.",
+                    "suggestion": "Combine the first and last characters, for example with s[0] + s[-1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "def ends(s): return s",
+                    "match_type": "normalized_contains",
+                    "feedback": "Returning the whole string does not satisfy the requirement to return only the first and last characters.",
+                    "suggestion": "Combine the first and last characters, for example with s[0] + s[-1].",
+                    "score_cap": 20,
+                },
             ],
         }
 
@@ -2307,6 +2417,112 @@ def _python_model_answer_baselines(model_answer, question_text=None, language="p
     if not compact:
         return {"accepted_solutions": [], "test_sets": {"positive": [], "negative": []}, "incorrect_patterns": []}
 
+    if "returnn==0" in compact or "returnnotn" in compact:
+        return {
+            "accepted_solutions": ["return n == 0", "return not n"],
+            "test_sets": {
+                "positive": [
+                    _build_case([0], True, "zero is equal to zero", kind="normal", weight=1.0, required=True),
+                    _build_case([0.0], True, "floating-point zero is also zero", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([1], False, "positive non-zero value", kind="normal", weight=1.0, required=True),
+                    _build_case([-1], False, "negative non-zero value", kind="edge", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return n != 0",
+                    "match_type": "contains",
+                    "feedback": "Checking for a non-zero value solves the opposite problem. The function should return True only when the number is exactly zero.",
+                    "suggestion": "Use n == 0 to check whether the number is zero.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return n == 1",
+                    "match_type": "contains",
+                    "feedback": "Checking whether the number equals 1 does not determine whether it is zero.",
+                    "suggestion": "Use n == 0 to check whether the number is zero.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "def is_zero(n): return True",
+                    "match_type": "normalized_contains",
+                    "feedback": "Always returning True does not check whether the number is zero.",
+                    "suggestion": "Use the input value and compare it to 0, for example with n == 0.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    endswith_match = re.search(r"""return[a-z_][a-z0-9_]*\.endswith\((['"])(.*?)\1\)""", compact)
+    if endswith_match:
+        suffix = endswith_match.group(2)
+        positive_primary = f"a{suffix}" if suffix else suffix
+        positive_edge = f"zz{suffix}" if suffix else suffix
+        negative_primary = "abc"
+        if suffix and negative_primary.endswith(suffix):
+            negative_primary = "abx"
+        return {
+            "accepted_solutions": [f"return s.endswith('{suffix}')"],
+            "test_sets": {
+                "positive": [
+                    _build_case([positive_primary], True, "string ends with required suffix", kind="normal", weight=1.0, required=True),
+                    _build_case([positive_edge], True, "different string with same suffix", kind="edge", weight=1.1, required=True),
+                ],
+                "negative": [
+                    _build_case([negative_primary], False, "string does not end with suffix", kind="normal", weight=1.0, required=True),
+                    _build_case([""], False, "empty string does not match suffix", kind="edge", weight=1.1, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return True",
+                    "match_type": "contains",
+                    "feedback": "Always returning True does not check whether the string ends with the required suffix.",
+                    "suggestion": "Use s.endswith(...) so only matching suffixes return True.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "return s",
+                    "match_type": "contains",
+                    "feedback": "Returning the string itself does not answer the yes-or-no suffix check.",
+                    "suggestion": "Return a boolean suffix check, for example with s.endswith(...).",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
+    if re.search(r"returnlen\(lst\)(?![<>=!])", compact):
+        return {
+            "accepted_solutions": ["return len(lst)"],
+            "test_sets": {
+                "positive": [
+                    _build_case([[1, 2, 3]], 3, "multi-element list length", kind="normal", weight=1.0, required=True),
+                    _build_case([[]], 0, "empty list length", kind="edge", weight=1.2, required=True),
+                ],
+                "negative": [
+                    _build_case([[7]], 1, "single element list", kind="trap", weight=1.0, required=False),
+                ],
+            },
+            "incorrect_patterns": [
+                {
+                    "pattern": "return 0",
+                    "match_type": "contains",
+                    "feedback": "Returning 0 does not calculate the number of elements in the list.",
+                    "suggestion": "Return the number of items, for example with len(lst).",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "def count(lst): return len(set(lst))",
+                    "match_type": "normalized_contains",
+                    "feedback": "Counting unique elements does not return the full list length when duplicates exist.",
+                    "suggestion": "Return the full length with len(lst) or count every element.",
+                    "score_cap": 20,
+                },
+            ],
+        }
+
     prefix_match = re.search(r"return[a-z_][a-z0-9_]*\[:(-?\d+)\]", compact) or re.search(r"return[a-z_][a-z0-9_]*\[0:(-?\d+)\]", compact)
     if prefix_match:
         prefix_count = int(prefix_match.group(1))
@@ -2437,7 +2653,21 @@ def _python_model_answer_baselines(model_answer, question_text=None, language="p
                     "feedback": "Returning the original string does not convert it to lowercase.",
                     "suggestion": "Call s.lower() before returning the result.",
                     "score_cap": 20,
-                }
+                },
+                {
+                    "pattern": "def lower(s): return s.lower",
+                    "match_type": "normalized_contains",
+                    "feedback": "Returning the lower method itself does not convert the input string. Call s.lower() to return the lowercase string.",
+                    "suggestion": "Call s.lower() before returning the result.",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "def lower(s): return \"abc\"",
+                    "match_type": "normalized_contains",
+                    "feedback": "Returning a constant string does not convert the input string to lowercase.",
+                    "suggestion": "Return the lowercase version of the provided input, for example with s.lower().",
+                    "score_cap": 20,
+                },
             ],
         }
 
@@ -2625,6 +2855,27 @@ def _python_model_answer_baselines(model_answer, question_text=None, language="p
                 {
                     "pattern": "return lst[-1]",
                     "match_type": "contains",
+                    "feedback": "Returning the last element does not satisfy the second-element requirement. The task asks for the item at index 1, not the final item in the list.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": r"^\s*def\s+second\s*\(\s*lst\s*\)\s*:\s*return\s+lst\s*$",
+                    "match_type": "regex",
+                    "feedback": "Returning the whole list does not return the second element. The task asks for a single item, so the function should return the value at index 1 instead of the entire list.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "def second(lst): return lst[0]",
+                    "match_type": "normalized_contains",
+                    "feedback": "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0.",
+                    "suggestion": "Return the item at index 1, for example with lst[1].",
+                    "score_cap": 20,
+                },
+                {
+                    "pattern": "def second(lst): return lst[-1]",
+                    "match_type": "normalized_contains",
                     "feedback": "Returning the last element does not satisfy the second-element requirement. The task asks for the item at index 1, not the final item in the list.",
                     "suggestion": "Return the item at index 1, for example with lst[1].",
                     "score_cap": 20,

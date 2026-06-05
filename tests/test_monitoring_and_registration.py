@@ -11,6 +11,7 @@ from evaluator.question_package.workflow import prepare_question_profiles_until_
 from evaluator.execution.shared import generate_universal_oracle_test_package_for_registration
 from app import (
     DETERMINISTIC_FINAL_FEEDBACK_TEMPLATES,
+    _apply_final_package_response_override,
     _evaluate_single_submission,
     _build_bad_package_detail,
     _build_fixed_evaluation_data,
@@ -118,6 +119,79 @@ def test_package_backed_generic_feedback_is_repaired_to_specific_pattern_feedbac
     )
 
     assert repaired.feedback == "This checks even numbers instead of odd numbers."
+
+
+def test_final_package_override_preserves_partial_credit_for_zero_edge_case_miss():
+    repaired = _apply_final_package_response_override(
+        question="Check if number is multiple of 3",
+        student_answer="def mult3(n): return n % 3 == 0 if n else False",
+        question_metadata={
+            "language": "python",
+            "template_family": "python::divisible_by_constant",
+            "accepted_solutions": ["def mult3(n): return n % 3 == 0"],
+            "incorrect_patterns": [
+                {
+                    "pattern": "def mult3(n): return n % 3 == 0 if n else False",
+                    "match_type": "normalized_contains",
+                    "feedback": "The function incorrectly returns False for 0, but 0 is also divisible by 3.",
+                    "score_cap": 20,
+                }
+            ],
+        },
+        evaluation_data=_build_fixed_evaluation_data(
+            60,
+            "The answer is close, but it fails the zero edge case.",
+            "The student logic does not correctly solve the problem yet.",
+            strong=False,
+        ),
+    )
+
+    assert repaired.score == 60
+    assert "0" in repaired.feedback or "zero" in repaired.feedback.lower()
+
+
+def test_final_package_override_lifts_low_zero_edge_case_score_to_fair_partial_credit():
+    repaired = _apply_final_package_response_override(
+        question="Check if number is multiple of 3",
+        student_answer="def mult3(n): return n % 3 == 0 if n else False",
+        question_metadata={
+            "language": "python",
+            "template_family": "python::divisible_by_constant",
+            "accepted_solutions": ["def mult3(n): return n % 3 == 0"],
+            "incorrect_patterns": [],
+        },
+        evaluation_data=_build_fixed_evaluation_data(
+            10,
+            "Close answer but missed zero case.",
+            "The student logic does not correctly solve the problem yet.",
+            strong=False,
+        ),
+    )
+
+    assert repaired.score == 60
+    assert "0" in repaired.feedback or "zero" in repaired.feedback.lower()
+
+
+def test_final_package_override_exact_match_uses_exact_match_logic_message():
+    repaired = _apply_final_package_response_override(
+        question="Check if number is multiple of 3",
+        student_answer="def mult3(n): return n % 3 == 0",
+        question_metadata={
+            "language": "python",
+            "template_family": "python::divisible_by_constant",
+            "accepted_solutions": ["def mult3(n): return n % 3 == 0"],
+            "incorrect_patterns": [],
+        },
+        evaluation_data=_build_fixed_evaluation_data(
+            100,
+            "The function correctly checks divisibility.",
+            "The student used a different approach, but the logic is correct.",
+            strong=True,
+        ),
+    )
+
+    assert repaired.score == 100
+    assert repaired.logic_evaluation == "The student answer matches a known correct solution, and the logic is correct."
 
 
 def test_register_supports_threshold_lowercase_and_second_element_questions():
@@ -601,13 +675,107 @@ def test_register_sanitizes_lowercase_and_second_element_incorrect_pattern_feedb
         "Returning a constant string does not convert the input string to lowercase.",
     ) in lowercase_patterns
     assert (
-        "def second(lst): return lst",
+        r"^\s*def\s+second\s*\(\s*lst\s*\)\s*:\s*return\s+lst\s*$",
         "Returning the whole list does not return the second element. The task asks for a single item, so the function should return the value at index 1 instead of the entire list.",
     ) in second_element_patterns
     assert (
         "def second(lst): return lst[0]",
         "Returning the first element does not satisfy the second-element requirement. The task asks for the item at index 1, not the item at index 0.",
     ) in second_element_patterns
+
+
+def test_register_sanitizes_list_length_equals_constant_incorrect_pattern_feedback():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_len2",
+                "question": "Check if list length is exactly 2",
+                "model_answer": "def len2(lst): return len(lst) == 2",
+                "language": "python",
+            },
+        ],
+        force_llm=False,
+    )
+
+    package = packages[0]
+    patterns = {
+        (item["pattern"], item["feedback"])
+        for item in package["incorrect_patterns"]
+    }
+
+    assert (
+        "return len(lst) >= 2",
+        "Using >= allows lists longer than 2, but this task requires the length to be exactly 2.",
+    ) in patterns
+    assert not any(pattern == "return 0" for pattern, _ in patterns)
+    assert not any("14 out of 15" in feedback for _, feedback in patterns)
+
+
+def test_register_sanitizes_first_and_last_character_middle_slice_feedback():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_first_last",
+                "question": "Return first and last character of string",
+                "model_answer": "def ends(s): return s[0] + s[-1]",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    patterns = {
+        (item["pattern"], item["feedback"])
+        for item in packages[0]["incorrect_patterns"]
+    }
+
+    assert (
+        "def ends(s): return s[1:-1]",
+        "Returning the middle slice does not satisfy the requirement to return the first and last characters. This removes the ends instead of combining them.",
+    ) in patterns
+
+
+def test_register_auto_approves_exam_ready_validated_deterministic_packages():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_auto_live",
+                "question": "Check if number is multiple of 3",
+                "model_answer": "def mult3(n): return n % 3 == 0",
+                "language": "python",
+            },
+        ],
+        force_llm=True,
+    )
+
+    package = packages[0]
+    assert package["approval_status"] == "approved"
+    assert package["exam_ready"] is True
+    assert package["package_status"] in {"validated", "live"}
+
+
+def test_register_sanitizes_direct_suggestions_for_list_length_equals_constant():
+    packages = prepare_question_profiles_until_correct(
+        [
+            {
+                "question_id": "q_len2_direct",
+                "question": "Check if list length is exactly 2",
+                "model_answer": "def len2(lst): return len(lst) == 2",
+                "language": "python",
+            },
+        ],
+        force_llm=False,
+    )
+
+    patterns = {
+        (item["pattern"], item["suggestion"])
+        for item in packages[0]["incorrect_patterns"]
+    }
+
+    assert (
+        "return len(lst) >= 2",
+        "Use len(lst) == 2 so only lists with exactly 2 elements return True.",
+    ) in patterns
 
 
 def test_register_can_infer_specific_family_from_model_answer_for_new_wording():
@@ -1146,7 +1314,7 @@ def test_evaluation_uses_inline_temporary_package_when_bootstrap_cannot_register
 
     assert "error" not in result
     assert result["question_metadata"]["template_family"] == "python::model_answer_derived"
-    assert result["question_metadata"]["package_status"] == "validated"
+    assert result["question_metadata"]["package_status"] in {"validated", "live"}
     assert result["question_metadata"]["inline_temporary_package"] is True
     assert result["data"].score == 100
 
@@ -1189,3 +1357,75 @@ def test_evaluation_handles_new_python_topic_without_registered_package():
     assert isinstance(result["question_metadata"]["template_family"], str)
     assert result["question_metadata"]["template_family"].startswith("python::")
     assert result["data"].score == 100
+
+
+def test_evaluation_accepts_divisible_by_six_factorized_equivalent():
+    submission = QuestionSubmission(
+        question_id="q_div6_equiv",
+        question="Check if number is divisible by 6",
+        model_answer="def div6(n): return n % 6 == 0",
+        student_answer="def div6(n): return n % 3 == 0 and n % 2 == 0",
+        language="python",
+    )
+
+    result = _evaluate_single_submission("student-div6-equiv", submission, False, False, 1)
+
+    assert "error" not in result
+    assert result["data"].score == 100
+    assert "divisibility by 6" in (result["data"].feedback or "").lower()
+
+
+def test_evaluation_accepts_middle_character_equivalent_index():
+    submission = QuestionSubmission(
+        question_id="q_middle_equiv",
+        question="Return middle character of string (assume odd length)",
+        model_answer="def middle(s): return s[len(s)//2]",
+        student_answer="def middle(s): return s[(len(s)-1)//2]",
+        language="python",
+    )
+
+    result = _evaluate_single_submission("student-middle-equiv", submission, False, False, 1)
+
+    assert "error" not in result
+    assert result["data"].score == 100
+    assert "middle character" in (result["data"].feedback or "").lower()
+
+
+def test_evaluation_accepts_list_contains_count_equivalent():
+    submission = QuestionSubmission(
+        question_id="q_has5_count_equiv",
+        question="Check if list contains value 5",
+        model_answer="def has5(lst): return 5 in lst",
+        student_answer="def has5(lst): return lst.count(5) > 0",
+        language="python",
+    )
+
+    result = _evaluate_single_submission("student-has5-count-equiv", submission, False, False, 1)
+
+    assert "error" not in result
+    assert result["data"].score == 100
+    assert "contains 5" in (result["data"].feedback or "").lower()
+
+
+def test_evaluation_list_contains_false_patterns_remain_hard_fail():
+    bad_submissions = [
+        QuestionSubmission(
+            question_id="q_has5_false_constant",
+            question="Check if list contains value 5",
+            model_answer="def has5(lst): return 5 in lst",
+            student_answer="def has5(lst): return False",
+            language="python",
+        ),
+        QuestionSubmission(
+            question_id="q_has5_wrong_comparison",
+            question="Check if list contains value 5",
+            model_answer="def has5(lst): return 5 in lst",
+            student_answer="def has5(lst): return 5 == lst",
+            language="python",
+        ),
+    ]
+
+    for idx, submission in enumerate(bad_submissions):
+        result = _evaluate_single_submission(f"student-has5-bad-{idx}", submission, False, False, 1)
+        assert "error" not in result
+        assert result["data"].score == 0
